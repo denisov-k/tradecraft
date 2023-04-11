@@ -163,6 +163,7 @@ FREICOIN_CORE_H = \
   compressor.h \
   consensus/consensus.h \
   consensus/merkleproof.h \
+  consensus/merklerange.h \
   consensus/tx_check.h \
   consensus/tx_verify.h \
   core_io.h \
@@ -662,6 +663,7 @@ libfreicoin_consensus_a_SOURCES = \
   consensus/amount.cpp \
   consensus/merkle.cpp \
   consensus/merkleproof.cpp \
+  consensus/merklerange.cpp 
   consensus/merkle.h \
   consensus/params.h \
   consensus/tx_check.cpp \
@@ -951,6 +953,7 @@ libfreicoinkernel_la_SOURCES = \
   compressor.cpp \
   consensus/merkle.cpp \
   consensus/merkleproof.cpp \
+  consensus/merklerange.cpp \
   consensus/tx_check.cpp \
   consensus/tx_verify.cpp \
   core_read.cpp \
