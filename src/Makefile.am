@@ -290,6 +290,7 @@ FREICOIN_CORE_H = \
   script/sign.h \
   script/signingprovider.h \
   script/solver.h \
+  sharechain.h \
   signet.h \
   stratum.h \
   streams.h \
@@ -482,6 +483,7 @@ libfreicoin_node_a_SOURCES = \
   rpc/signmessage.cpp \
   rpc/txoutproof.cpp \
   script/sigcache.cpp \
+  sharechain.cpp \
   signet.cpp \
   stratum.cpp \
   torcontrol.cpp \
@@ -663,7 +665,7 @@ libfreicoin_consensus_a_SOURCES = \
   consensus/amount.cpp \
   consensus/merkle.cpp \
   consensus/merkleproof.cpp \
-  consensus/merklerange.cpp 
+  consensus/merklerange.cpp \
   consensus/merkle.h \
   consensus/params.h \
   consensus/tx_check.cpp \
