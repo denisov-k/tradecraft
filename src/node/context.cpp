@@ -28,6 +28,7 @@
 #include <node/warnings.h>
 #include <policy/fees.h>
 #include <scheduler.h>
+#include <sharechain.h>
 #include <txmempool.h>
 #include <validation.h>
 #include <validationinterface.h>
