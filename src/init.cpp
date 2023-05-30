@@ -76,6 +76,7 @@
 #include <rpc/util.h>
 #include <scheduler.h>
 #include <script/sigcache.h>
+#include <sharechain.h> // for SetupShareChainParamsOptions
 #include <stratum.h>
 #include <sync.h>
 #include <torcontrol.h>
@@ -698,6 +699,8 @@ void SetupServerArgs(ArgsManager& argsman)
     argsman.AddArg("-stratumallowip=<ip>", "Allow Stratum work requests from specified source. Valid for <ip> are a single IP (e.g. 1.2.3.4), a network/netmask (e.g. 1.2.3.4/255.255.255.0) or a network/CIDR (e.g. 1.2.3.4/24). This option can be specified multiple times", ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
     argsman.AddArg("-defaultminingaddress=<addr>", "Set the default mining address for the stratum server, used if the miner authenticates with a blank username. (Conflicts with -stratumwallet option)", ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
     argsman.AddArg("-miningmindiff=<n>", strprintf("Set the minimum difficulty for stratum clients (default: %u)", DEFAULT_MINING_DIFFICULTY), ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
+
+    SetupShareChainParamsOptions(argsman);
 
 #if HAVE_DECL_FORK
     argsman.AddArg("-daemon", strprintf("Run in the background as a daemon and accept commands (default: %d)", DEFAULT_DAEMON), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);

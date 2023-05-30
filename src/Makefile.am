@@ -335,6 +335,7 @@ FREICOIN_CORE_H = \
   util/readwritefile.h \
   util/result.h \
   util/serfloat.h \
+  util/sharechaintype.h \
   util/signalinterrupt.h \
   util/sock.h \
   util/strencodings.h \
@@ -768,6 +769,7 @@ libfreicoin_util_a_SOURCES = \
   util/fs.cpp \
   util/fs_helpers.cpp \
   util/hasher.cpp \
+  util/sharechaintype.cpp \
   util/sock.cpp \
   util/syserror.cpp \
   util/moneystr.cpp \
@@ -1009,6 +1011,7 @@ libfreicoinkernel_la_SOURCES = \
   util/moneystr.cpp \
   util/rbf.cpp \
   util/serfloat.cpp \
+  util/sharechaintype.cpp \
   util/signalinterrupt.cpp \
   util/strencodings.cpp \
   util/string.cpp \
