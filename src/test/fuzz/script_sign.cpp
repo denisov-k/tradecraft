@@ -1,10 +1,21 @@
 // Copyright (c) 2020-2021 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <chainparams.h>
 #include <key.h>
-#include <psbt.h>
+#include <pst.h>
 #include <pubkey.h>
 #include <script/keyorigin.h>
 #include <script/sign.h>
@@ -88,9 +99,10 @@ FUZZ_TARGET(script_sign, .init = initialize_script_sign)
     {
         const std::optional<CMutableTransaction> mutable_transaction = ConsumeDeserializable<CMutableTransaction>(fuzzed_data_provider, TX_WITH_WITNESS);
         const std::optional<CTxOut> tx_out = ConsumeDeserializable<CTxOut>(fuzzed_data_provider);
+        const uint32_t refheight = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
         const unsigned int n_in = fuzzed_data_provider.ConsumeIntegral<unsigned int>();
-        if (mutable_transaction && tx_out && mutable_transaction->vin.size() > n_in) {
-            SignatureData signature_data_1 = DataFromTransaction(*mutable_transaction, n_in, *tx_out);
+        if (mutable_transaction && tx_out && mutable_transaction->vin.size() > n_in && refheight <= mutable_transaction->lock_height) {
+            SignatureData signature_data_1 = DataFromTransaction(*mutable_transaction, n_in, *tx_out, refheight);
             CTxIn input;
             UpdateInput(input, signature_data_1);
             const CScript script = ConsumeScript(fuzzed_data_provider);
@@ -110,13 +122,18 @@ FUZZ_TARGET(script_sign, .init = initialize_script_sign)
                 SignatureData empty;
                 (void)SignSignature(provider, tx_from, tx_to, n_in, fuzzed_data_provider.ConsumeIntegral<int>(), empty);
             }
-            if (n_in < script_tx_to.vin.size()) {
+            if (n_in < script_tx_to.vin.size() && refheight < mutable_transaction->lock_height) {
                 SignatureData empty;
+<<<<<<< v29.0
                 auto from_pub_key = ConsumeScript(fuzzed_data_provider);
                 auto amount = ConsumeMoney(fuzzed_data_provider);
                 auto n_hash_type = fuzzed_data_provider.ConsumeIntegral<int>();
                 (void)SignSignature(provider, from_pub_key, script_tx_to, n_in, amount, n_hash_type, empty);
                 MutableTransactionSignatureCreator signature_creator{tx_to, n_in, ConsumeMoney(fuzzed_data_provider), fuzzed_data_provider.ConsumeIntegral<int>()};
+=======
+                (void)SignSignature(provider, ConsumeScript(fuzzed_data_provider), script_tx_to, n_in, ConsumeMoney(fuzzed_data_provider), fuzzed_data_provider.ConsumeIntegral<uint32_t>(), fuzzed_data_provider.ConsumeIntegral<int>(), empty);
+                MutableTransactionSignatureCreator signature_creator{tx_to, n_in, ConsumeMoney(fuzzed_data_provider), fuzzed_data_provider.ConsumeIntegral<uint32_t>(), fuzzed_data_provider.ConsumeIntegral<int>()};
+>>>>>>> tc-28.1
                 std::vector<unsigned char> vch_sig;
                 CKeyID address;
                 if (fuzzed_data_provider.ConsumeBool()) {

@@ -1,8 +1,23 @@
 // Copyright (c) 2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+<<<<<<< v29.0
 #include <addresstype.h>
+=======
+#include <config/freicoin-config.h> // IWYU pragma: keep
+>>>>>>> tc-28.1
 #include <bench/bench.h>
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 #include <key.h>
@@ -59,7 +74,7 @@ static void WalletIsMine(benchmark::Bench& bench, bool legacy_wallet, int num_co
         }
     }
 
-    const CScript script = GetScriptForDestination(DecodeDestination(ADDRESS_BCRT1_UNSPENDABLE));
+    const CScript script = GetScriptForDestination(DecodeDestination(ADDRESS_FCRT1_UNSPENDABLE));
 
     bench.run([&] {
         LOCK(wallet->cs_wallet);

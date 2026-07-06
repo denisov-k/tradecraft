@@ -1,13 +1,25 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_TXMEMPOOL_H
-#define BITCOIN_TXMEMPOOL_H
+#ifndef FREICOIN_TXMEMPOOL_H
+#define FREICOIN_TXMEMPOOL_H
 
 #include <coins.h>
 #include <consensus/amount.h>
+#include <consensus/params.h>
 #include <indirectmap.h>
 #include <kernel/cs_main.h>
 #include <kernel/mempool_entry.h>          // IWYU pragma: export
@@ -93,10 +105,18 @@ class CompareTxMemPoolEntryByDescendantScore
 public:
     bool operator()(const CTxMemPoolEntry& a, const CTxMemPoolEntry& b) const
     {
-        double a_mod_fee, a_size, b_mod_fee, b_size;
+        CAmount a_mod_fee, b_mod_fee;
+        double a_size, b_size;
 
         GetModFeeAndSize(a, a_mod_fee, a_size);
         GetModFeeAndSize(b, b_mod_fee, b_size);
+
+        // Adjust to higher refheight
+        if (a.GetReferenceHeight() < b.GetReferenceHeight()) {
+            a_mod_fee = GetTimeAdjustedValue(a_mod_fee, b.GetReferenceHeight() - a.GetReferenceHeight());
+        } else {
+            b_mod_fee = GetTimeAdjustedValue(b_mod_fee, a.GetReferenceHeight() - b.GetReferenceHeight());
+        }
 
         // Avoid division by rewriting (a/b > c/d) as (a*d > c*b).
         double f1 = a_mod_fee * b_size;
@@ -109,7 +129,7 @@ public:
     }
 
     // Return the fee/size we're using for sorting this entry.
-    void GetModFeeAndSize(const CTxMemPoolEntry &a, double &mod_fee, double &size) const
+    void GetModFeeAndSize(const CTxMemPoolEntry &a, CAmount &mod_fee, double &size) const
     {
         // Compare feerate with descendants to feerate of the transaction, and
         // return the fee/size for the max.
@@ -138,8 +158,15 @@ class CompareTxMemPoolEntryByScore
 public:
     bool operator()(const CTxMemPoolEntry& a, const CTxMemPoolEntry& b) const
     {
-        double f1 = (double)a.GetFee() * b.GetTxSize();
-        double f2 = (double)b.GetFee() * a.GetTxSize();
+        CAmount aFee = a.GetFee();
+        CAmount bFee = b.GetFee();
+        if (a.GetReferenceHeight() < b.GetReferenceHeight()) {
+            aFee = GetTimeAdjustedValue(aFee, b.GetReferenceHeight() - a.GetReferenceHeight());
+        } else {
+            bFee = GetTimeAdjustedValue(bFee, a.GetReferenceHeight() - b.GetReferenceHeight());
+        }
+        double f1 = (double)aFee * b.GetTxSize();
+        double f2 = (double)bFee * a.GetTxSize();
         if (f1 == f2) {
             return b.GetTx().GetHash() < a.GetTx().GetHash();
         }
@@ -451,7 +478,7 @@ public:
      * all inputs are in the mapNextTx array). If sanity-checking is turned off,
      * check does nothing.
      */
-    void check(const CCoinsViewCache& active_coins_tip, int64_t spendheight) const EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
+    void check(const CCoinsViewCache& active_coins_tip, int64_t spendheight, const Consensus::Params& params) const EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
 
     void removeRecursive(const CTransaction& tx, MemPoolRemovalReason reason) EXCLUSIVE_LOCKS_REQUIRED(cs);
@@ -950,4 +977,4 @@ public:
     /** Clear m_temp_added and m_non_base_coins. */
     void Reset();
 };
-#endif // BITCOIN_TXMEMPOOL_H
+#endif // FREICOIN_TXMEMPOOL_H

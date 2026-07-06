@@ -1,7 +1,18 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <rpc/request.h>
 
@@ -19,7 +30,7 @@
 #include <vector>
 
 /**
- * JSON-RPC protocol.  Bitcoin speaks version 1.0 for maximum compatibility,
+ * JSON-RPC protocol.  Freicoin speaks version 1.0 for maximum compatibility,
  * but uses JSON-RPC 1.1/2.0 standards for parts of the 1.0 standard that were
  * unspecified (HTTP errors and contents of 'error').
  *
@@ -27,7 +38,7 @@
  * 1.2 spec: http://jsonrpc.org/historical/json-rpc-over-http.html
  *
  * If the server receives a request with the JSON-RPC 2.0 marker `{"jsonrpc": "2.0"}`
- * then Bitcoin will respond with a strictly specified response.
+ * then Freicoin will respond with a strictly specified response.
  * It will only return an HTTP error code if an actual HTTP error is encountered
  * such as the endpoint is not found (404) or the request is not formatted correctly (500).
  * Otherwise the HTTP code is always OK (200) and RPC errors will be included in the

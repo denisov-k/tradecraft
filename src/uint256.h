@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_UINT256_H
-#define BITCOIN_UINT256_H
+#ifndef FREICOIN_UINT256_H
+#define FREICOIN_UINT256_H
 
 #include <crypto/common.h>
 #include <span.h>
@@ -210,4 +221,18 @@ public:
     static const uint256 ONE;
 };
 
+<<<<<<< v29.0
 #endif // BITCOIN_UINT256_H
+=======
+/* uint256 from std::string_view, containing byte-reversed hex encoding.
+ * DEPRECATED. Unlike FromHex this accepts any invalid input, thus it is fragile and deprecated!
+ */
+inline uint256 uint256S(std::string_view str)
+{
+    uint256 rv;
+    rv.SetHexDeprecated(str);
+    return rv;
+}
+
+#endif // FREICOIN_UINT256_H
+>>>>>>> tc-28.1

@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022 Pieter Wuille
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """Script to find the optimal parameters for the headerssync module through simulation."""
 
@@ -136,7 +147,7 @@ ATTACK_HEADERS = LIMIT_FRACTION * MINCHAINWORK_HEADERS
 
 
 def find_max_headers(when):
-    """Compute the maximum number of headers a valid Bitcoin chain can have at given time."""
+    """Compute the maximum number of headers a valid Freicoin chain can have at given time."""
     # When exploiting the timewarp attack, this can be up to 6 per second since genesis.
     return 6 * ((when - GENESIS_TIME) // timedelta(seconds=1))
 

@@ -1,12 +1,27 @@
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+<<<<<<< v29.0
 #include <bitcoin-build-config.h> // IWYU pragma: keep
+=======
+#include <config/freicoin-config.h> // IWYU pragma: keep
+>>>>>>> tc-28.1
 
 #include <interfaces/init.h>
 #include <interfaces/node.h>
-#include <qt/bitcoin.h>
+#include <qt/freicoin.h>
 #include <qt/guiconstants.h>
 #include <qt/test/apptests.h>
 #include <qt/test/optiontests.h>
@@ -75,7 +90,7 @@ int main(int argc, char* argv[])
     int num_test_failures{0};
 
     {
-        BitcoinApplication app;
+        FreicoinApplication app;
         app.createNode(*init);
 
         AppTests app_tests(app);

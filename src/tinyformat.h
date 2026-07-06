@@ -145,8 +145,12 @@ namespace tfm = tinyformat;
 #include <attributes.h> // Added for Bitcoin Core
 #include <iostream>
 #include <sstream>
+<<<<<<< v29.0
 #include <stdexcept> // Added for Bitcoin Core
 #include <util/string.h> // Added for Bitcoin Core
+=======
+#include <stdexcept> // Added for Freicoin
+>>>>>>> tc-28.1
 
 #ifndef TINYFORMAT_ASSERT
 #   include <cassert>
@@ -180,6 +184,7 @@ namespace tfm = tinyformat;
 
 namespace tinyformat {
 
+<<<<<<< v29.0
 // Added for Bitcoin Core. Similar to std::runtime_format from C++26.
 struct RuntimeFormat {
     const std::string& fmt; // Not a string view, because tinyformat requires a c_str
@@ -199,6 +204,9 @@ struct FormatStringCheck {
 };
 
 // Added for Bitcoin Core
+=======
+// Added for Freicoin
+>>>>>>> tc-28.1
 class format_error: public std::runtime_error
 {
 public:
@@ -1165,9 +1173,21 @@ TINYFORMAT_FOREACH_ARGNUM(TINYFORMAT_MAKE_FORMAT_FUNCS)
 
 #endif
 
+<<<<<<< v29.0
+=======
+// Added for Freicoin
+template<typename... Args>
+std::string format(const std::string &fmt, const Args&... args)
+{
+    std::ostringstream oss;
+    format(oss, fmt.c_str(), args...);
+    return oss.str();
+}
+
+>>>>>>> tc-28.1
 } // namespace tinyformat
 
-// Added for Bitcoin Core:
+// Added for Freicoin:
 /** Format arguments and return the string or write to given std::ostream (see tinyformat::format doc for details) */
 #define strprintf tfm::format
 

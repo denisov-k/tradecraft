@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2019-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """Test tx status in case of reorgs while wallet being shutdown.
 
@@ -16,13 +27,13 @@ disconnected.
 from decimal import Decimal
 import shutil
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
         assert_equal,
         assert_raises_rpc_error
 )
 
-class ReorgsRestoreTest(BitcoinTestFramework):
+class ReorgsRestoreTest(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -111,7 +122,8 @@ class ReorgsRestoreTest(BitcoinTestFramework):
 
         # Disconnect node0 from node2 to broadcast a conflict on their respective chains
         self.disconnect_nodes(0, 2)
-        nA = next(tx_out["vout"] for tx_out in self.nodes[0].gettransaction(txid_conflict_from)["details"] if tx_out["amount"] == Decimal("10"))
+        tx_conflict_from = self.nodes[0].gettransaction(txid_conflict_from)
+        nA = next(tx_out["vout"] for tx_out in tx_conflict_from["details"] if tx_out["amount"] == Decimal("10"))
         inputs = []
         inputs.append({"txid": txid_conflict_from, "vout": nA})
         outputs_1 = {}
@@ -120,8 +132,8 @@ class ReorgsRestoreTest(BitcoinTestFramework):
         # Create a conflicted tx broadcast on node0 chain and conflicting tx broadcast on node1 chain. Both spend from txid_conflict_from
         outputs_1[self.nodes[0].getnewaddress()] = Decimal("9.99998")
         outputs_2[self.nodes[0].getnewaddress()] = Decimal("9.99998")
-        conflicted = self.nodes[0].signrawtransactionwithwallet(self.nodes[0].createrawtransaction(inputs, outputs_1))
-        conflicting = self.nodes[0].signrawtransactionwithwallet(self.nodes[0].createrawtransaction(inputs, outputs_2))
+        conflicted = self.nodes[0].signrawtransactionwithwallet(self.nodes[0].createrawtransaction(inputs, outputs_1, 0, tx_conflict_from["refheight"]))
+        conflicting = self.nodes[0].signrawtransactionwithwallet(self.nodes[0].createrawtransaction(inputs, outputs_2, 0, tx_conflict_from["refheight"]))
 
         conflicted_txid = self.nodes[0].sendrawtransaction(conflicted["hex"])
         self.generate(self.nodes[0], 1, sync_fun=self.no_op)

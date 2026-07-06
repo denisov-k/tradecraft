@@ -1,3 +1,4 @@
+<<<<<<< v29.0
 [fc10:efa7:ca6:1548:f8c:6bb9:1cc4:63ae]:18333
 [fc1f:22c3:95dc:a3af:4a93:8251:beb9:1858]:18333
 [fc2b:f62e:6a76:cdb5:dceb:2fdd:a0f8:3d88]:18333
@@ -217,3 +218,25 @@ zkqddzui5pkrqvjj2zwsf5kln7stlbmw5pmn6ut46fobvzyv2sn2ryid.onion:18333
 zmvizz7fd5hdue6wt3lwqumd6qwt4ijymmmotfzh75curq3mzjm53hyd.onion:18333
 zmxlrzoxg4fmso6l2xuq5tdxmlyakdqellzujh3a23iuzg4zlatnogqd.onion:18333
 zsmxmusdzrcqusk5h6syfq6a3ph6lwx3wpiltun4dmkrt3pa2fp7qaid.onion:18333
+=======
+# List of fixed seed nodes for testnet
+127.0.0.1:18639
+5.78.110.217:18639
+51.81.166.153:18639
+51.81.32.218:18639
+54.38.193.222:18639
+54.39.129.45:18639
+65.21.3.81:18639
+85.15.179.171:18639
+91.206.16.214:18639
+[2001:41d0:602:18de::]:18639
+[2604:2dc0:101:200::32f6]:18639
+[2604:2dc0:200:1799::]:18639
+[2607:5300:203:402d::]:18639
+[2a01:4f9:c012:597b::1]:18639
+[2a01:4ff:1f0:c7d5::1]:18639
+
+# Onion nodes
+ipnx4anwecosnwtpbcijciis44dsaar6yt6oogeibtdlktpdztsauwyd.onion:18639
+fqwzs6j7ckrrlhjryc6bavrqm524os32npvhgunybxpklts5lkgo2uid.onion:18639
+>>>>>>> tc-28.1

@@ -1,6 +1,17 @@
 # Copyright (c) 2013-2016 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # These environment variables are set by the build process and read by
 # test/*/test_runner.py and test/util/rpcauth-test.py
@@ -18,10 +29,10 @@ RPCAUTH=@abs_top_srcdir@/share/rpcauth/rpcauth.py
 @ENABLE_WALLET_TRUE@ENABLE_WALLET=true
 @USE_SQLITE_TRUE@USE_SQLITE=true
 @USE_BDB_TRUE@USE_BDB=true
-@BUILD_BITCOIN_CLI_TRUE@ENABLE_CLI=true
-@BUILD_BITCOIN_UTIL_TRUE@ENABLE_BITCOIN_UTIL=true
-@BUILD_BITCOIN_WALLET_TRUE@ENABLE_WALLET_TOOL=true
-@BUILD_BITCOIND_TRUE@ENABLE_BITCOIND=true
+@BUILD_FREICOIN_CLI_TRUE@ENABLE_CLI=true
+@BUILD_FREICOIN_UTIL_TRUE@ENABLE_FREICOIN_UTIL=true
+@BUILD_FREICOIN_WALLET_TRUE@ENABLE_WALLET_TOOL=true
+@BUILD_FREICOIND_TRUE@ENABLE_FREICOIND=true
 @ENABLE_FUZZ_BINARY_TRUE@ENABLE_FUZZ_BINARY=true
 @ENABLE_ZMQ_TRUE@ENABLE_ZMQ=true
 @ENABLE_EXTERNAL_SIGNER_TRUE@ENABLE_EXTERNAL_SIGNER=true

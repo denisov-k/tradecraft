@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2017-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test that the wallet can send and receive using all combinations of address types.
 
 There are 5 nodes-under-test:
@@ -54,7 +65,7 @@ from decimal import Decimal
 import itertools
 
 from test_framework.blocktools import COINBASE_MATURITY
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.descriptors import (
     descsum_create,
     descsum_check,
@@ -65,7 +76,7 @@ from test_framework.util import (
     assert_raises_rpc_error,
 )
 
-class AddressTypeTest(BitcoinTestFramework):
+class AddressTypeTest(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -111,14 +122,20 @@ class AddressTypeTest(BitcoinTestFramework):
             assert not info['iswitness']
             assert 'pubkey' in info
         elif not multisig and typ == 'p2sh-segwit':
-            # P2SH-P2WPKH
+            # P2SH-P2WPK
             assert info['isscript']
             assert not info['iswitness']
-            assert_equal(info['script'], 'witness_v0_keyhash')
-            assert 'pubkey' in info
+            assert_equal(info['script'], 'witness_v0_shorthash')
+            assert info['embedded']['isscript']
+            assert_equal(info['embedded']['script'], 'pubkey')
+            assert info['embedded']['iswitness']
+            assert_equal(info['embedded']['witness_version'], 0)
+            assert_equal(len(info['embedded']['witness_program']), 40)
+            assert 'pubkey' in info['embedded']
         elif not multisig and typ == 'bech32':
-            # P2WPKH
-            assert not info['isscript']
+            # P2WPK
+            assert info['isscript']
+            assert_equal(info['script'], 'pubkey')
             assert info['iswitness']
             assert_equal(info['witness_version'], 0)
             assert_equal(len(info['witness_program']), 40)
@@ -138,7 +155,7 @@ class AddressTypeTest(BitcoinTestFramework):
         elif typ == 'p2sh-segwit':
             # P2SH-P2WSH-multisig
             assert info['isscript']
-            assert_equal(info['script'], 'witness_v0_scripthash')
+            assert_equal(info['script'], 'witness_v0_longhash')
             assert not info['iswitness']
             assert info['embedded']['isscript']
             assert_equal(info['embedded']['script'], 'multisig')
@@ -166,11 +183,11 @@ class AddressTypeTest(BitcoinTestFramework):
         assert self.nodes[node].validateaddress(address)['isvalid']
 
         # Use a ridiculously roundabout way to find the key origin info through
-        # the PSBT logic. However, this does test consistency between the PSBT reported
+        # the PST logic. However, this does test consistency between the PST reported
         # fingerprints/paths and the descriptor logic.
-        psbt = self.nodes[node].createpsbt([{'txid':utxo['txid'], 'vout':utxo['vout']}],[{address:0.00010000}])
-        psbt = self.nodes[node].walletprocesspsbt(psbt, False, "ALL", True)
-        decode = self.nodes[node].decodepsbt(psbt['psbt'])
+        pst = self.nodes[node].createpst([{'txid':utxo['txid'], 'vout':utxo['vout']}],[{address:0.00010000}])
+        pst = self.nodes[node].walletprocesspst(pst, False, "ALL", True)
+        decode = self.nodes[node].decodepst(pst['pst'])
         key_descs = {}
         for deriv in decode['inputs'][0]['bip32_derivs']:
             assert_equal(len(deriv['master_fingerprint']), 8)
@@ -192,11 +209,11 @@ class AddressTypeTest(BitcoinTestFramework):
             # P2PKH
             assert_equal(info['desc'], descsum_create("pkh(%s)" % key_descs[info['pubkey']]))
         elif not multisig and typ == 'p2sh-segwit':
-            # P2SH-P2WPKH
-            assert_equal(info['desc'], descsum_create("sh(wpkh(%s))" % key_descs[info['pubkey']]))
+            # P2SH-P2WPK
+            assert_equal(info['desc'], descsum_create("sh(wpk(%s))" % key_descs[info['pubkey']]))
         elif not multisig and typ == 'bech32':
-            # P2WPKH
-            assert_equal(info['desc'], descsum_create("wpkh(%s)" % key_descs[info['pubkey']]))
+            # P2WPK
+            assert_equal(info['desc'], descsum_create("wpk(%s)" % key_descs[info['pubkey']]))
         elif typ == 'legacy':
             # P2SH-multisig
             assert_equal(info['desc'], descsum_create("sh(multi(2,%s,%s))" % (key_descs[info['pubkeys'][0]], key_descs[info['pubkeys'][1]])))
@@ -344,7 +361,7 @@ class AddressTypeTest(BitcoinTestFramework):
         self.generate(self.nodes[5], 1)
         assert_equal(self.nodes[4].getbalance(), 1)
 
-        self.log.info("Nodes with addresstype=legacy never use a P2WPKH change output (unless changetype is set otherwise):")
+        self.log.info("Nodes with addresstype=legacy never use a P2WPK change output (unless changetype is set otherwise):")
         self.test_change_output_type(0, [to_address_bech32_1], 'legacy')
 
         self.log.info("Nodes with addresstype=p2sh-segwit match the change output")
@@ -353,7 +370,7 @@ class AddressTypeTest(BitcoinTestFramework):
         self.test_change_output_type(1, [to_address_p2sh, to_address_bech32_1], 'bech32')
         self.test_change_output_type(1, [to_address_bech32_1, to_address_bech32_2], 'bech32')
 
-        self.log.info("Nodes with change_type=bech32 always use a P2WPKH change output:")
+        self.log.info("Nodes with change_type=bech32 always use a P2WPK change output:")
         self.test_change_output_type(2, [to_address_bech32_1], 'bech32')
         self.test_change_output_type(2, [to_address_p2sh], 'bech32')
 
@@ -372,7 +389,7 @@ class AddressTypeTest(BitcoinTestFramework):
         if self.options.descriptors:
             assert_raises_rpc_error(-5, "Unknown address type 'bech23'", self.nodes[3].createwalletdescriptor, "bech23")
 
-        self.log.info("Nodes with changetype=p2sh-segwit never use a P2WPKH change output")
+        self.log.info("Nodes with changetype=p2sh-segwit never use a P2WPK change output")
         self.test_change_output_type(4, [to_address_bech32_1], 'p2sh-segwit')
         self.test_address(4, self.nodes[4].getrawchangeaddress(), multisig=False, typ='p2sh-segwit')
         self.log.info("Except for getrawchangeaddress if specified:")

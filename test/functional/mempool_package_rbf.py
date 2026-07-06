@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2021 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from decimal import Decimal
 
@@ -9,7 +20,7 @@ from test_framework.messages import (
     COIN,
     MAX_BIP125_RBF_SEQUENCE,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.mempool_util import fill_mempool
 from test_framework.util import (
     assert_greater_than_or_equal,
@@ -27,12 +38,13 @@ MAX_REPLACEMENT_CANDIDATES = 100
 # for typical cases
 DEFAULT_CHILD_FEE = DEFAULT_FEE * 4
 
-class PackageRBFTest(BitcoinTestFramework):
+class PackageRBFTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
         self.setup_clean_chain = True
         # Required for fill_mempool()
         self.extra_args = [[
+            '-datacarrier=1',           # data outputs are disabled by default
             "-datacarriersize=100000",
             "-maxmempool=5",
         ]] * self.num_nodes

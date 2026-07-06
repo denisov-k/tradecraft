@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 #
 # Copyright (c) 2018-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 export LC_ALL=C.UTF-8
 
@@ -85,9 +96,9 @@ fi
 
 # Make sure default datadir does not exist and is never read by creating a dummy file
 if [ "$CI_OS_NAME" == "macos" ]; then
-  echo > "${HOME}/Library/Application Support/Bitcoin"
+  echo > "${HOME}/Library/Application Support/Freicoin"
 else
-  echo > "${HOME}/.bitcoin"
+  echo > "${HOME}/.freicoin"
 fi
 
 if [ -z "$NO_DEPENDS" ]; then
@@ -102,23 +113,53 @@ if [ "$DOWNLOAD_PREVIOUS_RELEASES" = "true" ]; then
   test/get_previous_releases.py -b -t "$PREVIOUS_RELEASES_DIR"
 fi
 
+<<<<<<< v29.0
 BITCOIN_CONFIG_ALL="-DBUILD_BENCH=ON -DBUILD_FUZZ_BINARY=ON"
 if [ -z "$NO_DEPENDS" ]; then
   BITCOIN_CONFIG_ALL="${BITCOIN_CONFIG_ALL} -DCMAKE_TOOLCHAIN_FILE=$DEPENDS_DIR/$HOST/toolchain.cmake"
 fi
 if [ -z "$NO_WERROR" ]; then
   BITCOIN_CONFIG_ALL="${BITCOIN_CONFIG_ALL} -DWERROR=ON"
+=======
+FREICOIN_CONFIG_ALL="--disable-dependency-tracking"
+if [ -z "$NO_DEPENDS" ]; then
+  FREICOIN_CONFIG_ALL="${FREICOIN_CONFIG_ALL} CONFIG_SITE=$DEPENDS_DIR/$HOST/share/config.site"
+fi
+if [ -z "$NO_WERROR" ]; then
+  FREICOIN_CONFIG_ALL="${FREICOIN_CONFIG_ALL} --enable-werror"
+>>>>>>> tc-28.1
 fi
 
 ccache --zero-stats
 PRINT_CCACHE_STATISTICS="ccache --version | head -n 1 && ccache --show-stats"
 
+<<<<<<< v29.0
 # Folder where the build is done.
 BASE_BUILD_DIR=${BASE_BUILD_DIR:-$BASE_SCRATCH_DIR/build-$HOST}
 mkdir -p "${BASE_BUILD_DIR}"
 cd "${BASE_BUILD_DIR}"
 
 BITCOIN_CONFIG_ALL="$BITCOIN_CONFIG_ALL -DENABLE_EXTERNAL_SIGNER=ON -DCMAKE_INSTALL_PREFIX=$BASE_OUTDIR"
+=======
+FREICOIN_CONFIG_ALL="${FREICOIN_CONFIG_ALL} --enable-external-signer --prefix=$BASE_OUTDIR"
+
+if [ -n "$CONFIG_SHELL" ]; then
+  "$CONFIG_SHELL" -c "./autogen.sh"
+else
+  ./autogen.sh
+fi
+
+mkdir -p "${BASE_BUILD_DIR}"
+cd "${BASE_BUILD_DIR}"
+
+bash -c "${BASE_ROOT_DIR}/configure --cache-file=config.cache $FREICOIN_CONFIG_ALL $FREICOIN_CONFIG" || ( (cat config.log) && false)
+
+make distdir VERSION="$HOST"
+
+cd "${BASE_BUILD_DIR}/freicoin-$HOST"
+
+bash -c "./configure --cache-file=../config.cache $FREICOIN_CONFIG_ALL $FREICOIN_CONFIG" || ( (cat config.log) && false)
+>>>>>>> tc-28.1
 
 if [[ "${RUN_TIDY}" == "true" ]]; then
   BITCOIN_CONFIG_ALL="$BITCOIN_CONFIG_ALL -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
@@ -149,7 +190,7 @@ if [ "$RUN_UNIT_TESTS" = "true" ]; then
 fi
 
 if [ "$RUN_UNIT_TESTS_SEQUENTIAL" = "true" ]; then
-  DIR_UNIT_TEST_DATA="${DIR_UNIT_TEST_DATA}" LD_LIBRARY_PATH="${DEPENDS_DIR}/${HOST}/lib" "${BASE_OUTDIR}"/bin/test_bitcoin --catch_system_errors=no -l test_suite
+  DIR_UNIT_TEST_DATA="${DIR_UNIT_TEST_DATA}" LD_LIBRARY_PATH="${DEPENDS_DIR}/${HOST}/lib" "${BASE_OUTDIR}"/bin/test_freicoin --catch_system_errors=no -l test_suite
 fi
 
 if [ "$RUN_FUNCTIONAL_TESTS" = "true" ]; then
@@ -159,11 +200,12 @@ if [ "$RUN_FUNCTIONAL_TESTS" = "true" ]; then
 fi
 
 if [ "${RUN_TIDY}" = "true" ]; then
-  cmake -B /tidy-build -DLLVM_DIR=/usr/lib/llvm-"${TIDY_LLVM_V}"/cmake -DCMAKE_BUILD_TYPE=Release -S "${BASE_ROOT_DIR}"/contrib/devtools/bitcoin-tidy
+  cmake -B /tidy-build -DLLVM_DIR=/usr/lib/llvm-"${TIDY_LLVM_V}"/cmake -DCMAKE_BUILD_TYPE=Release -S "${BASE_ROOT_DIR}"/contrib/devtools/freicoin-tidy
   cmake --build /tidy-build "$MAKEJOBS"
-  cmake --build /tidy-build --target bitcoin-tidy-tests "$MAKEJOBS"
+  cmake --build /tidy-build --target freicoin-tidy-tests "$MAKEJOBS"
 
   set -eo pipefail
+<<<<<<< v29.0
   # Filter out:
   # * qt qrc and moc generated files
   jq 'map(select(.file | test("src/qt/.*_autogen/.*\\.cpp$") | not))' "${BASE_BUILD_DIR}/compile_commands.json" > tmp.json
@@ -171,15 +213,32 @@ if [ "${RUN_TIDY}" = "true" ]; then
 
   cd "${BASE_BUILD_DIR}/src/"
   if ! ( run-clang-tidy-"${TIDY_LLVM_V}" -quiet -load="/tidy-build/libbitcoin-tidy.so" "${MAKEJOBS}" | tee tmp.tidy-out.txt ); then
+=======
+  cd "${BASE_BUILD_DIR}/freicoin-$HOST/src/"
+  if ! ( run-clang-tidy-"${TIDY_LLVM_V}" -quiet -load="/tidy-build/libfreicoin-tidy.so" "${MAKEJOBS}" | tee tmp.tidy-out.txt ); then
+>>>>>>> tc-28.1
     grep -C5 "error: " tmp.tidy-out.txt
     echo "^^^ ⚠️ Failure generated from clang-tidy"
     false
   fi
+<<<<<<< v29.0
 
   cd "${BASE_ROOT_DIR}"
   python3 "/include-what-you-use/iwyu_tool.py" \
            -p "${BASE_BUILD_DIR}" "${MAKEJOBS}" \
            -- -Xiwyu --cxx17ns -Xiwyu --mapping_file="${BASE_ROOT_DIR}/contrib/devtools/iwyu/bitcoin.core.imp" \
+=======
+  # Filter out files by regex here, because regex may not be
+  # accepted in src/.bear-tidy-config
+  # Filter out:
+  # * qt qrc and moc generated files
+  jq 'map(select(.file | test("src/qt/qrc_.*\\.cpp$|/moc_.*\\.cpp$") | not))' ../compile_commands.json > tmp.json
+  mv tmp.json ../compile_commands.json
+  cd "${BASE_BUILD_DIR}/freicoin-$HOST/"
+  python3 "/include-what-you-use/iwyu_tool.py" \
+           -p . "${MAKEJOBS}" \
+           -- -Xiwyu --cxx17ns -Xiwyu --mapping_file="${BASE_BUILD_DIR}/freicoin-$HOST/contrib/devtools/iwyu/freicoin.core.imp" \
+>>>>>>> tc-28.1
            -Xiwyu --max_line_length=160 \
            2>&1 | tee /tmp/iwyu_ci.out
   cd "${BASE_ROOT_DIR}/src"

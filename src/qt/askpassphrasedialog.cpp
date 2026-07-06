@@ -1,6 +1,17 @@
 // Copyright (c) 2011-2021 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <qt/askpassphrasedialog.h>
 #include <qt/forms/ui_askpassphrasedialog.h>
@@ -103,7 +114,7 @@ void AskPassphraseDialog::accept()
         }
         QMessageBox msgBoxConfirm(QMessageBox::Question,
                                   tr("Confirm wallet encryption"),
-                                  tr("Warning: If you encrypt your wallet and lose your passphrase, you will <b>LOSE ALL OF YOUR BITCOINS</b>!") + "<br><br>" + tr("Are you sure you wish to encrypt your wallet?"),
+                                  tr("Warning: If you encrypt your wallet and lose your passphrase, you will <b>LOSE ALL OF YOUR FREICOINS</b>!") + "<br><br>" + tr("Are you sure you wish to encrypt your wallet?"),
                                   QMessageBox::Cancel | QMessageBox::Yes, this);
         msgBoxConfirm.button(QMessageBox::Yes)->setText(tr("Continue"));
         msgBoxConfirm.button(QMessageBox::Cancel)->setText(tr("Back"));
@@ -114,7 +125,7 @@ void AskPassphraseDialog::accept()
             if(newpass1 == newpass2)
             {
                 QString encryption_reminder = tr("Remember that encrypting your wallet cannot fully protect "
-                "your bitcoins from being stolen by malware infecting your computer.");
+                "your freicoins from being stolen by malware infecting your computer.");
                 if (m_passphrase_out) {
                     m_passphrase_out->assign(newpass1);
                     QMessageBox msgBoxWarning(QMessageBox::Warning,
@@ -167,7 +178,7 @@ void AskPassphraseDialog::accept()
                     QMessageBox::critical(this, tr("Wallet unlock failed"),
                                           tr("The passphrase entered for the wallet decryption is incorrect. "
                                              "It contains a null character (ie - a zero byte). "
-                                             "If the passphrase was set with a version of this software prior to 25.0, "
+                                             "If the passphrase was set with a version of this software prior to v25, "
                                              "please try again with only the characters up to — but not including — "
                                              "the first null character. If this is successful, please set a new "
                                              "passphrase to avoid this issue in the future."));
@@ -205,7 +216,7 @@ void AskPassphraseDialog::accept()
                     QMessageBox::critical(this, tr("Passphrase change failed"),
                                           tr("The old passphrase entered for the wallet decryption is incorrect. "
                                              "It contains a null character (ie - a zero byte). "
-                                             "If the passphrase was set with a version of this software prior to 25.0, "
+                                             "If the passphrase was set with a version of this software prior to v25, "
                                              "please try again with only the characters up to — but not including — "
                                              "the first null character."));
                 }

@@ -1,6 +1,17 @@
 // Copyright (c) 2019-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <limits>
 #include <vector>
@@ -49,7 +60,7 @@ Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Ty
     // Sanity check on k
     if (fragment == Fragment::OLDER || fragment == Fragment::AFTER) {
         assert(k >= 1 && k < 0x80000000UL);
-    } else if (fragment == Fragment::MULTI || fragment == Fragment::MULTI_A) {
+    } else if (fragment == Fragment::MULTI) {
         assert(k >= 1 && k <= n_keys);
     } else if (fragment == Fragment::THRESH) {
         assert(k >= 1 && k <= n_subs);
@@ -74,10 +85,6 @@ Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Ty
         assert(n_keys == 1);
     } else if (fragment == Fragment::MULTI) {
         assert(n_keys >= 1 && n_keys <= MAX_PUBKEYS_PER_MULTISIG);
-        assert(!IsTapscript(ms_ctx));
-    } else if (fragment == Fragment::MULTI_A) {
-        assert(n_keys >= 1 && n_keys <= MAX_PUBKEYS_PER_MULTI_A);
-        assert(IsTapscript(ms_ctx));
     } else {
         assert(n_keys == 0);
     }
@@ -91,11 +98,11 @@ Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Ty
         case Fragment::OLDER: return
             "g"_mst.If(k & CTxIn::SEQUENCE_LOCKTIME_TYPE_FLAG) |
             "h"_mst.If(!(k & CTxIn::SEQUENCE_LOCKTIME_TYPE_FLAG)) |
-            "Bzfmxk"_mst;
+            "Vzfmk"_mst;
         case Fragment::AFTER: return
             "i"_mst.If(k >= LOCKTIME_THRESHOLD) |
             "j"_mst.If(k < LOCKTIME_THRESHOLD) |
-            "Bzfmxk"_mst;
+            "Vzfmk"_mst;
         case Fragment::SHA256: return "Bonudmk"_mst;
         case Fragment::RIPEMD160: return "Bonudmk"_mst;
         case Fragment::HASH256: return "Bonudmk"_mst;
@@ -122,8 +129,7 @@ Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Ty
             "e"_mst.If(x << "f"_mst) | // e=f_x
             (x & "ghijk"_mst) | // g=g_x, h=h_x, i=i_x, j=j_x, k=k_x
             (x & "ms"_mst) | // m=m_x, s=s_x
-            // NOTE: 'd:' is 'u' under Tapscript but not P2WSH as MINIMALIF is only a policy rule there.
-            "u"_mst.If(IsTapscript(ms_ctx)) |
+            // NOTE: 'd:' is not 'u' under P2WSH as MINIMALIF is only a policy rule there.
             "ndx"_mst; // n, d, x
         case Fragment::WRAP_V: return
             "V"_mst.If(x << "B"_mst) | // V=B_x
@@ -223,9 +229,6 @@ Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Ty
         case Fragment::MULTI: {
             return "Bnudemsk"_mst;
         }
-        case Fragment::MULTI_A: {
-            return "Budemsk"_mst;
-        }
         case Fragment::THRESH: {
             bool all_e = true;
             bool all_m = true;
@@ -267,7 +270,7 @@ size_t ComputeScriptLen(Fragment fragment, Type sub0typ, size_t subsize, uint32_
     switch (fragment) {
         case Fragment::JUST_1:
         case Fragment::JUST_0: return 1;
-        case Fragment::PK_K: return IsTapscript(ms_ctx) ? 33 : 34;
+        case Fragment::PK_K: return 34;
         case Fragment::PK_H: return 3 + 21;
         case Fragment::OLDER:
         case Fragment::AFTER: return 1 + BuildScript(k).size();
@@ -276,7 +279,6 @@ size_t ComputeScriptLen(Fragment fragment, Type sub0typ, size_t subsize, uint32_
         case Fragment::HASH160:
         case Fragment::RIPEMD160: return 4 + 2 + 21;
         case Fragment::MULTI: return 1 + BuildScript(n_keys).size() + BuildScript(k).size() + 34 * n_keys;
-        case Fragment::MULTI_A: return (1 + 32 + 1) * n_keys + BuildScript(k).size() + 1;
         case Fragment::AND_V: return subsize;
         case Fragment::WRAP_V: return subsize + (sub0typ << "x"_mst);
         case Fragment::WRAP_S:

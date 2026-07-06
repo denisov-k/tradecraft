@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 #
 # Copyright (c) 2023-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 export LC_ALL=C.UTF-8
 
@@ -18,6 +29,7 @@ export RUN_FUZZ_TESTS=false
 export RUN_CHECK_DEPS=true
 export RUN_TIDY=true
 export GOAL="install"
+<<<<<<< v29.0
 export BITCOIN_CONFIG="\
  -DWITH_ZMQ=ON -DBUILD_GUI=ON -DBUILD_BENCH=ON -DWITH_USDT=ON -DWITH_BDB=ON -DWARN_INCOMPATIBLE_BDB=OFF \
  -DENABLE_HARDENING=OFF \
@@ -26,3 +38,7 @@ export BITCOIN_CONFIG="\
  -DCMAKE_C_FLAGS_RELWITHDEBINFO='-O0 -g0' \
  -DCMAKE_CXX_FLAGS_RELWITHDEBINFO='-O0 -g0' \
 "
+=======
+export FREICOIN_CONFIG="CC=clang-${TIDY_LLVM_V} CXX=clang++-${TIDY_LLVM_V} --with-incompatible-bdb --disable-hardening CFLAGS='-O0 -g0' CXXFLAGS='-O0 -g0'"
+export CCACHE_MAXSIZE=200M
+>>>>>>> tc-28.1

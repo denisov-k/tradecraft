@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or https://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.address import (
-    ADDRESS_BCRT1_UNSPENDABLE,
-    ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR,
+    ADDRESS_FCRT1_UNSPENDABLE,
+    ADDRESS_FCRT1_UNSPENDABLE_DESCRIPTOR,
 )
 from test_framework.util import (
     assert_equal,
@@ -15,7 +26,7 @@ from test_framework.util import (
 from test_framework.wallet_util import generate_keypair
 
 
-class WalletBlankTest(BitcoinTestFramework):
+class WalletBlankTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -34,7 +45,7 @@ class WalletBlankTest(BitcoinTestFramework):
         info = wallet.getwalletinfo()
         assert_equal(info["descriptors"], False)
         assert_equal(info["blank"], True)
-        wallet.importaddress(ADDRESS_BCRT1_UNSPENDABLE)
+        wallet.importaddress(ADDRESS_FCRT1_UNSPENDABLE)
         assert_equal(wallet.getwalletinfo()["blank"], False)
 
     def test_importpubkey(self):
@@ -77,7 +88,7 @@ class WalletBlankTest(BitcoinTestFramework):
         assert_equal(info["descriptors"], False)
         assert_equal(info["blank"], True)
         wallet.importmulti([{
-            "desc": ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR,
+            "desc": ADDRESS_FCRT1_UNSPENDABLE_DESCRIPTOR,
             "timestamp": "now",
         }])
         assert_equal(wallet.getwalletinfo()["blank"], False)
@@ -92,7 +103,7 @@ class WalletBlankTest(BitcoinTestFramework):
         assert_equal(info["descriptors"], True)
         assert_equal(info["blank"], True)
         wallet.importdescriptors([{
-            "desc": ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR,
+            "desc": ADDRESS_FCRT1_UNSPENDABLE_DESCRIPTOR,
             "timestamp": "now",
         }])
         assert_equal(wallet.getwalletinfo()["blank"], True)

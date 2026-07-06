@@ -1,6 +1,17 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bench/bench.h>
 #include <consensus/amount.h>
@@ -45,7 +56,7 @@ static void MempoolEviction(benchmark::Bench& bench)
     tx1.vin[0].scriptWitness.stack.push_back({1});
     tx1.vout.resize(1);
     tx1.vout[0].scriptPubKey = CScript() << OP_1 << OP_EQUAL;
-    tx1.vout[0].nValue = 10 * COIN;
+    tx1.vout[0].SetReferenceValue(10 * COIN);
 
     CMutableTransaction tx2 = CMutableTransaction();
     tx2.vin.resize(1);
@@ -53,7 +64,7 @@ static void MempoolEviction(benchmark::Bench& bench)
     tx2.vin[0].scriptWitness.stack.push_back({2});
     tx2.vout.resize(1);
     tx2.vout[0].scriptPubKey = CScript() << OP_2 << OP_EQUAL;
-    tx2.vout[0].nValue = 10 * COIN;
+    tx2.vout[0].SetReferenceValue(10 * COIN);
 
     CMutableTransaction tx3 = CMutableTransaction();
     tx3.vin.resize(1);
@@ -62,7 +73,7 @@ static void MempoolEviction(benchmark::Bench& bench)
     tx3.vin[0].scriptWitness.stack.push_back({3});
     tx3.vout.resize(1);
     tx3.vout[0].scriptPubKey = CScript() << OP_3 << OP_EQUAL;
-    tx3.vout[0].nValue = 10 * COIN;
+    tx3.vout[0].SetReferenceValue(10 * COIN);
 
     CMutableTransaction tx4 = CMutableTransaction();
     tx4.vin.resize(2);
@@ -74,9 +85,9 @@ static void MempoolEviction(benchmark::Bench& bench)
     tx4.vin[1].scriptWitness.stack.push_back({4});
     tx4.vout.resize(2);
     tx4.vout[0].scriptPubKey = CScript() << OP_4 << OP_EQUAL;
-    tx4.vout[0].nValue = 10 * COIN;
+    tx4.vout[0].SetReferenceValue(10 * COIN);
     tx4.vout[1].scriptPubKey = CScript() << OP_4 << OP_EQUAL;
-    tx4.vout[1].nValue = 10 * COIN;
+    tx4.vout[1].SetReferenceValue(10 * COIN);
 
     CMutableTransaction tx5 = CMutableTransaction();
     tx5.vin.resize(2);
@@ -88,9 +99,9 @@ static void MempoolEviction(benchmark::Bench& bench)
     tx5.vin[1].scriptWitness.stack.push_back({5});
     tx5.vout.resize(2);
     tx5.vout[0].scriptPubKey = CScript() << OP_5 << OP_EQUAL;
-    tx5.vout[0].nValue = 10 * COIN;
+    tx5.vout[0].SetReferenceValue(10 * COIN);
     tx5.vout[1].scriptPubKey = CScript() << OP_5 << OP_EQUAL;
-    tx5.vout[1].nValue = 10 * COIN;
+    tx5.vout[1].SetReferenceValue(10 * COIN);
 
     CMutableTransaction tx6 = CMutableTransaction();
     tx6.vin.resize(2);
@@ -102,9 +113,9 @@ static void MempoolEviction(benchmark::Bench& bench)
     tx6.vin[1].scriptWitness.stack.push_back({6});
     tx6.vout.resize(2);
     tx6.vout[0].scriptPubKey = CScript() << OP_6 << OP_EQUAL;
-    tx6.vout[0].nValue = 10 * COIN;
+    tx6.vout[0].SetReferenceValue(10 * COIN);
     tx6.vout[1].scriptPubKey = CScript() << OP_6 << OP_EQUAL;
-    tx6.vout[1].nValue = 10 * COIN;
+    tx6.vout[1].SetReferenceValue(10 * COIN);
 
     CMutableTransaction tx7 = CMutableTransaction();
     tx7.vin.resize(2);
@@ -116,9 +127,9 @@ static void MempoolEviction(benchmark::Bench& bench)
     tx7.vin[1].scriptWitness.stack.push_back({6});
     tx7.vout.resize(2);
     tx7.vout[0].scriptPubKey = CScript() << OP_7 << OP_EQUAL;
-    tx7.vout[0].nValue = 10 * COIN;
+    tx7.vout[0].SetReferenceValue(10 * COIN);
     tx7.vout[1].scriptPubKey = CScript() << OP_7 << OP_EQUAL;
-    tx7.vout[1].nValue = 10 * COIN;
+    tx7.vout[1].SetReferenceValue(10 * COIN);
 
     CTxMemPool& pool = *Assert(testing_setup->m_node.mempool);
     LOCK2(cs_main, pool.cs);

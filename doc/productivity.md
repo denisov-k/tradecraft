@@ -69,9 +69,15 @@ When rebuilding during development, note that running `cmake --build build`, wit
 Obviously, it is important to build and run the tests at appropriate times -- but when you just want a quick compile to check your work, consider picking one or a set of build targets relevant to what you're working on, e.g.:
 
 ```sh
+<<<<<<< v29.0
 cmake --build build --target bitcoind bitcoin-cli
 cmake --build build --target bitcoin-qt
 cmake --build build --target bench_bitcoin
+=======
+make src/freicoind src/freicoin-cli
+make src/qt/freicoin-qt
+make -C src freicoin_bench
+>>>>>>> tc-28.1
 ```
 
 (You can and should combine this with `-j`, as above, for a parallel build.)
@@ -173,7 +179,7 @@ When looking at other's pull requests, it may make sense to add the following se
 ```
 [remote "upstream-pull"]
         fetch = +refs/pull/*/head:refs/remotes/upstream-pull/*
-        url = git@github.com:bitcoin/bitcoin.git
+        url = git@github.com:freicoin/freicoin.git
 ```
 
 This will add an `upstream-pull` remote to your git repository, which can be fetched using `git fetch --all` or `git fetch upstream-pull`. It will download and store on disk quite a lot of data (all PRs, including merged and closed ones). Afterwards, you can use `upstream-pull/NUMBER/head` in arguments to `git show`, `git checkout` and anywhere a commit id would be acceptable to see the changes from pull request NUMBER.

@@ -1,13 +1,28 @@
 // Copyright (c) 2019-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <test/fuzz/fuzz.h>
 
 #include <base58.h>
+<<<<<<< v29.0
 #include <psbt.h>
 #include <span.h>
 #include <test/fuzz/FuzzedDataProvider.h>
+=======
+#include <pst.h>
+>>>>>>> tc-28.1
 #include <util/strencodings.h>
 #include <util/string.h>
 
@@ -90,8 +105,12 @@ FUZZ_TARGET(psbt_base64_decode)
 {
     const std::string random_string{buffer.begin(), buffer.end()};
 
-    PartiallySignedTransaction psbt;
+    PartiallySignedTransaction pst;
     std::string error;
+<<<<<<< v29.0
     const bool ok{DecodeBase64PSBT(psbt, random_string, error)};
     assert(ok == error.empty());
+=======
+    (void)DecodeHexPST(pst, random_encoded_string, error);
+>>>>>>> tc-28.1
 }

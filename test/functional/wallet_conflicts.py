@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2023 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 Test that wallet correctly tracks transactions that have been conflicted by blocks, particularly during reorgs.
@@ -9,12 +20,12 @@ Test that wallet correctly tracks transactions that have been conflicted by bloc
 
 from decimal import Decimal
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
         assert_equal,
 )
 
-class TxConflicts(BitcoinTestFramework):
+class TxConflicts(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -301,7 +312,7 @@ class TxConflicts(BitcoinTestFramework):
         assert_equal(bob.getbalances()["mine"]["untrusted_pending"], Decimal("24.99990000"))
 
         # create a conflict to previous tx (also spends unspents[2]), but don't broadcast, sends funds back to alice
-        raw_tx = alice.createrawtransaction(inputs=[unspents[2]], outputs=[{alice.getnewaddress() : 24.99}])
+        raw_tx = alice.createrawtransaction(inputs=[unspents[2]], outputs=[{alice.getnewaddress() : 24.99}], lockheight=bob.getblockcount())
         tx1_conflict_conflict = alice.signrawtransactionwithwallet(raw_tx)['hex']
 
         bob.sendrawtransaction(tx1_conflict_conflict) # kick tx1_conflict out of the mempool

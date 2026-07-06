@@ -1,7 +1,24 @@
 #!/usr/bin/env python3
+<<<<<<< v29.0
 # Copyright (c) 2020-present The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
+=======
+# Copyright (c) 2020-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+>>>>>>> tc-28.1
 """Test Migrating a wallet from legacy to descriptor."""
 
 import random
@@ -11,14 +28,18 @@ import time
 
 from test_framework.address import (
     key_to_p2pkh,
+<<<<<<< v29.0
     key_to_p2wpkh,
     script_to_p2sh,
     script_to_p2wsh,
+=======
+    key_to_p2wpk,
+>>>>>>> tc-28.1
 )
 from test_framework.bdb import BTREE_MAGIC
 from test_framework.descriptors import descsum_create
 from test_framework.key import ECPubKey
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.messages import COIN, CTransaction, CTxOut
 from test_framework.script import hash160
 from test_framework.script_util import key_to_p2pkh_script, key_to_p2pk_script, script_to_p2sh_script, script_to_p2wsh_script
@@ -34,7 +55,7 @@ from test_framework.wallet_util import (
 )
 
 
-class WalletMigrationTest(BitcoinTestFramework):
+class WalletMigrationTest(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -141,12 +162,10 @@ class WalletMigrationTest(BitcoinTestFramework):
         # The wallet should create the following descriptors:
         # * BIP32 descriptors in the form of "0h/0h/*" and "0h/1h/*" (2 descriptors)
         # * BIP44 descriptors in the form of "44h/1h/0h/0/*" and "44h/1h/0h/1/*" (2 descriptors)
-        # * BIP49 descriptors, P2SH(P2WPKH), in the form of "86h/1h/0h/0/*" and "86h/1h/0h/1/*" (2 descriptors)
-        # * BIP84 descriptors, P2WPKH, in the form of "84h/1h/0h/1/*" and "84h/1h/0h/1/*" (2 descriptors)
-        # * BIP86 descriptors, P2TR, in the form of "86h/1h/0h/0/*" and "86h/1h/0h/1/*" (2 descriptors)
+        # * BIP84 descriptors, P2WPK, in the form of "84h/1h/0h/1/*" and "84h/1h/0h/1/*" (2 descriptors)
         # * A combo(PK) descriptor for the wallet master key.
-        # So, should have a total of 11 descriptors on it.
-        assert_equal(len(basic0.listdescriptors()["descriptors"]), 11)
+        # So, should have a total of 7 descriptors on it.
+        assert_equal(len(basic0.listdescriptors()["descriptors"]), 7)
 
         # Compare addresses info
         addr_info = basic0.getaddressinfo(addr)
@@ -202,7 +221,7 @@ class WalletMigrationTest(BitcoinTestFramework):
 
         # Receive coins on different output types for the same seed
         basic2_balance = 0
-        for addr in [basic2_seed.p2pkh_addr, basic2_seed.p2wpkh_addr, basic2_seed.p2sh_p2wpkh_addr]:
+        for addr in [basic2_seed.p2pkh_addr, basic2_seed.p2wpk_addr]:
             send_value = random.randint(1, 4)
             default.sendtoaddress(addr, send_value)
             basic2_balance += send_value
@@ -835,9 +854,9 @@ class WalletMigrationTest(BitcoinTestFramework):
         assert_equal(p2pkh_addr_info["iswatchonly"], True)
         assert_equal(p2pkh_addr_info["ismine"], False) # Things involving hybrid pubkeys are not spendable
 
-        # Also import the p2wpkh for the pubkey to make sure we don't migrate it
-        p2wpkh_addr = key_to_p2wpkh(hybrid_pubkey)
-        wallet.importaddress(p2wpkh_addr)
+        # Also import the p2wpk for the pubkey to make sure we don't migrate it
+        p2wpk_addr = key_to_p2wpk(hybrid_pubkey)
+        wallet.importaddress(p2wpk_addr)
 
         migrate_info, wallet = self.migrate_and_get_rpc("hybrid_keys")
 
@@ -845,17 +864,17 @@ class WalletMigrationTest(BitcoinTestFramework):
         p2pkh_addr_info = wallet.getaddressinfo(p2pkh_addr)
         assert_equal(p2pkh_addr_info["iswatchonly"], False)
         assert_equal(p2pkh_addr_info["ismine"], False)
-        p2wpkh_addr_info = wallet.getaddressinfo(p2wpkh_addr)
-        assert_equal(p2wpkh_addr_info["iswatchonly"], False)
-        assert_equal(p2wpkh_addr_info["ismine"], False)
+        p2wpk_addr_info = wallet.getaddressinfo(p2wpk_addr)
+        assert_equal(p2wpk_addr_info["iswatchonly"], False)
+        assert_equal(p2wpk_addr_info["ismine"], False)
 
         watchonly_wallet = self.master_node.get_wallet_rpc(migrate_info["watchonly_name"])
         watchonly_p2pkh_addr_info = watchonly_wallet.getaddressinfo(p2pkh_addr)
         assert_equal(watchonly_p2pkh_addr_info["iswatchonly"], False)
         assert_equal(watchonly_p2pkh_addr_info["ismine"], True)
-        watchonly_p2wpkh_addr_info = watchonly_wallet.getaddressinfo(p2wpkh_addr)
-        assert_equal(watchonly_p2wpkh_addr_info["iswatchonly"], False)
-        assert_equal(watchonly_p2wpkh_addr_info["ismine"], True)
+        watchonly_p2wpk_addr_info = watchonly_wallet.getaddressinfo(p2wpk_addr)
+        assert_equal(watchonly_p2wpk_addr_info["iswatchonly"], False)
+        assert_equal(watchonly_p2wpk_addr_info["ismine"], True)
 
         # There should only be raw or addr descriptors
         for desc in watchonly_wallet.listdescriptors()["descriptors"]:

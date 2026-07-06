@@ -1,6 +1,17 @@
 // Copyright (c) 2018-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <script/descriptor.h>
 
@@ -571,7 +582,7 @@ public:
 class DescriptorImpl : public Descriptor
 {
 protected:
-    //! Public key arguments for this descriptor (size 1 for PK, PKH, WPKH; any size for WSH and Multisig).
+    //! Public key arguments for this descriptor (size 1 for PK, PKH, WPK; any size for WSH and Multisig).
     const std::vector<std::unique_ptr<PubkeyProvider>> m_pubkey_args;
     //! The string name of the descriptor function.
     const std::string m_name;
@@ -600,7 +611,6 @@ protected:
 public:
     DescriptorImpl(std::vector<std::unique_ptr<PubkeyProvider>> pubkeys, const std::string& name) : m_pubkey_args(std::move(pubkeys)), m_name(name), m_subdescriptor_args() {}
     DescriptorImpl(std::vector<std::unique_ptr<PubkeyProvider>> pubkeys, std::unique_ptr<DescriptorImpl> script, const std::string& name) : m_pubkey_args(std::move(pubkeys)), m_name(name), m_subdescriptor_args(Vector(std::move(script))) {}
-    DescriptorImpl(std::vector<std::unique_ptr<PubkeyProvider>> pubkeys, std::vector<std::unique_ptr<DescriptorImpl>> scripts, const std::string& name) : m_pubkey_args(std::move(pubkeys)), m_name(name), m_subdescriptor_args(std::move(scripts)) {}
 
     enum class StringType
     {
@@ -911,18 +921,21 @@ public:
     }
 };
 
-/** A parsed wpkh(P) descriptor. */
-class WPKHDescriptor final : public DescriptorImpl
+/** A parsed wpk(P) descriptor. */
+class WPKDescriptor final : public DescriptorImpl
 {
 protected:
     std::vector<CScript> MakeScripts(const std::vector<CPubKey>& keys, Span<const CScript>, FlatSigningProvider& out) const override
     {
         CKeyID id = keys[0].GetID();
         out.pubkeys.emplace(id, keys[0]);
-        return Vector(GetScriptForDestination(WitnessV0KeyHash(id)));
+        WitnessV0ScriptEntry entry(0 /* version */, GetScriptForRawPubKey(keys[0]));
+        WitnessV0ShortHash shortid = entry.GetShortHash();
+        out.witscripts.emplace(shortid, entry);
+        return Vector(GetScriptForDestination(shortid));
     }
 public:
-    WPKHDescriptor(std::unique_ptr<PubkeyProvider> prov) : DescriptorImpl(Vector(std::move(prov)), "wpkh") {}
+    WPKDescriptor(std::unique_ptr<PubkeyProvider> prov) : DescriptorImpl(Vector(std::move(prov)), "wpk") {}
     std::optional<OutputType> GetOutputType() const override { return OutputType::BECH32; }
     bool IsSingleType() const final { return true; }
 
@@ -930,19 +943,23 @@ public:
 
     std::optional<int64_t> MaxSatSize(bool use_max_sig) const override {
         const auto sig_size = use_max_sig ? 72 : 71;
-        return (1 + sig_size + 1 + 33);
+        return (1 + sig_size + 1 + (1 + (1 + 33) + 1) + 1);
     }
 
     std::optional<int64_t> MaxSatisfactionWeight(bool use_max_sig) const override {
         return MaxSatSize(use_max_sig);
     }
 
+<<<<<<< v29.0
     std::optional<int64_t> MaxSatisfactionElems() const override { return 2; }
 
     std::unique_ptr<DescriptorImpl> Clone() const override
     {
         return std::make_unique<WPKHDescriptor>(m_pubkey_args.at(0)->Clone());
     }
+=======
+    std::optional<int64_t> MaxSatisfactionElems() const override { return 3; }
+>>>>>>> tc-28.1
 };
 
 /** A parsed combo(P) descriptor. */
@@ -954,13 +971,14 @@ protected:
         std::vector<CScript> ret;
         CKeyID id = keys[0].GetID();
         out.pubkeys.emplace(id, keys[0]);
-        ret.emplace_back(GetScriptForRawPubKey(keys[0])); // P2PK
+        CScript p2pk = GetScriptForRawPubKey(keys[0]);
+        ret.emplace_back(p2pk);
         ret.emplace_back(GetScriptForDestination(PKHash(id))); // P2PKH
         if (keys[0].IsCompressed()) {
-            CScript p2wpkh = GetScriptForDestination(WitnessV0KeyHash(id));
-            out.scripts.emplace(CScriptID(p2wpkh), p2wpkh);
-            ret.emplace_back(p2wpkh);
-            ret.emplace_back(GetScriptForDestination(ScriptHash(p2wpkh))); // P2SH-P2WPKH
+            WitnessV0ScriptEntry entry(0 /* version */, p2pk);
+            WitnessV0ShortHash shortid = entry.GetShortHash();
+            out.witscripts.emplace(shortid, entry);
+            ret.emplace_back(GetScriptForDestination(shortid));
         }
         return ret;
     }
@@ -1084,7 +1102,6 @@ public:
     std::optional<OutputType> GetOutputType() const override
     {
         assert(m_subdescriptor_args.size() == 1);
-        if (IsSegwit()) return OutputType::P2SH_SEGWIT;
         return OutputType::LEGACY;
     }
     bool IsSingleType() const final { return true; }
@@ -1121,8 +1138,9 @@ class WSHDescriptor final : public DescriptorImpl
 protected:
     std::vector<CScript> MakeScripts(const std::vector<CPubKey>&, Span<const CScript> scripts, FlatSigningProvider& out) const override
     {
-        auto ret = Vector(GetScriptForDestination(WitnessV0ScriptHash(scripts[0])));
-        if (ret.size()) out.scripts.emplace(CScriptID(scripts[0]), scripts[0]);
+        WitnessV0ScriptEntry entry(0 /* version */, scripts[0]);
+        auto ret = Vector(GetScriptForDestination(entry.GetLongHash()));
+        if (ret.size()) out.witscripts.emplace(entry.GetShortHash(), entry);
         return ret;
     }
 public:
@@ -1135,7 +1153,7 @@ public:
     std::optional<int64_t> MaxSatSize(bool use_max_sig) const override {
         if (const auto sat_size = m_subdescriptor_args[0]->MaxSatSize(use_max_sig)) {
             if (const auto subscript_size = m_subdescriptor_args[0]->ScriptSize()) {
-                return GetSizeOfCompactSize(*subscript_size) + *subscript_size + *sat_size;
+                return GetSizeOfCompactSize(*subscript_size + 1) + 1 + *subscript_size + *sat_size;
             }
         }
         return {};
@@ -1156,6 +1174,7 @@ public:
     }
 };
 
+<<<<<<< v29.0
 /** A parsed tr(...) descriptor. */
 class TRDescriptor final : public DescriptorImpl
 {
@@ -1229,6 +1248,8 @@ public:
     }
 };
 
+=======
+>>>>>>> tc-28.1
 /* We instantiate Miniscript here with a simple integer as key type.
  * The value of these key integers are an index in the
  * DescriptorImpl::m_pubkey_args vector.
@@ -1240,29 +1261,17 @@ public:
 class ScriptMaker {
     //! Keys contained in the Miniscript (the evaluation of DescriptorImpl::m_pubkey_args).
     const std::vector<CPubKey>& m_keys;
-    //! The script context we're operating within (Tapscript or P2WSH).
-    const miniscript::MiniscriptContext m_script_ctx;
 
     //! Get the ripemd160(sha256()) hash of this key.
-    //! Any key that is valid in a descriptor serializes as 32 bytes within a Tapscript context. So we
-    //! must not hash the sign-bit byte in this case.
     uint160 GetHash160(uint32_t key) const {
-        if (miniscript::IsTapscript(m_script_ctx)) {
-            return Hash160(XOnlyPubKey{m_keys[key]});
-        }
         return m_keys[key].GetID();
     }
 
 public:
-    ScriptMaker(const std::vector<CPubKey>& keys LIFETIMEBOUND, const miniscript::MiniscriptContext script_ctx) : m_keys(keys), m_script_ctx{script_ctx} {}
+    ScriptMaker(const std::vector<CPubKey>& keys LIFETIMEBOUND, const miniscript::MiniscriptContext script_ctx) : m_keys(keys) {}
 
     std::vector<unsigned char> ToPKBytes(uint32_t key) const {
-        // In Tapscript keys always serialize as x-only, whether an x-only key was used in the descriptor or not.
-        if (!miniscript::IsTapscript(m_script_ctx)) {
-            return {m_keys[key].begin(), m_keys[key].end()};
-        }
-        const XOnlyPubKey xonly_pubkey{m_keys[key]};
-        return {xonly_pubkey.begin(), xonly_pubkey.end()};
+        return {m_keys[key].begin(), m_keys[key].end()};
     }
 
     std::vector<unsigned char> ToPKHBytes(uint32_t key) const {
@@ -1309,11 +1318,7 @@ protected:
     {
         const auto script_ctx{m_node->GetMsCtx()};
         for (const auto& key : keys) {
-            if (miniscript::IsTapscript(script_ctx)) {
-                provider.pubkeys.emplace(Hash160(XOnlyPubKey{key}), key);
-            } else {
-                provider.pubkeys.emplace(key.GetID(), key);
-            }
+            provider.pubkeys.emplace(key.GetID(), key);
         }
         return Vector(m_node->ToScript(ScriptMaker(keys, script_ctx)));
     }
@@ -1357,6 +1362,7 @@ public:
     }
 };
 
+<<<<<<< v29.0
 /** A parsed rawtr(...) descriptor. */
 class RawTRDescriptor final : public DescriptorImpl
 {
@@ -1392,6 +1398,8 @@ public:
     }
 };
 
+=======
+>>>>>>> tc-28.1
 ////////////////////////////////////////////////////////////////////////////
 // Parser                                                                 //
 ////////////////////////////////////////////////////////////////////////////
@@ -1399,9 +1407,8 @@ public:
 enum class ParseScriptContext {
     TOP,     //!< Top-level context (script goes directly in scriptPubKey)
     P2SH,    //!< Inside sh() (script becomes P2SH redeemScript)
-    P2WPKH,  //!< Inside wpkh() (no script, pubkey only)
+    P2WPK,   //!< Inside wpk() (no script, pubkey only)
     P2WSH,   //!< Inside wsh() (script becomes v0 witness script)
-    P2TR,    //!< Inside tr() (either internal key, or BIP342 script leaf)
 };
 
 std::optional<uint32_t> ParseKeyPathNum(Span<const char> elem, bool& apostrophe, std::string& error)
@@ -1525,6 +1532,7 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkeyInner(uint32_t key_exp_i
                     error = "Uncompressed keys are not allowed";
                     return {};
                 }
+<<<<<<< v29.0
             } else if (data.size() == 32 && ctx == ParseScriptContext::P2TR) {
                 unsigned char fullkey[33] = {0x02};
                 std::copy(data.begin(), data.end(), fullkey + 1);
@@ -1533,6 +1541,8 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkeyInner(uint32_t key_exp_i
                     ret.emplace_back(std::make_unique<ConstPubkeyProvider>(key_exp_index, pubkey, true));
                     return ret;
                 }
+=======
+>>>>>>> tc-28.1
             }
             error = strprintf("Pubkey '%s' is invalid", str);
             return {};
@@ -1542,8 +1552,12 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkeyInner(uint32_t key_exp_i
             if (permit_uncompressed || key.IsCompressed()) {
                 CPubKey pubkey = key.GetPubKey();
                 out.keys.emplace(pubkey.GetID(), key);
+<<<<<<< v29.0
                 ret.emplace_back(std::make_unique<ConstPubkeyProvider>(key_exp_index, pubkey, ctx == ParseScriptContext::P2TR));
                 return ret;
+=======
+                return std::make_unique<ConstPubkeyProvider>(key_exp_index, pubkey, false);
+>>>>>>> tc-28.1
             } else {
                 error = "Uncompressed keys are not allowed";
                 return {};
@@ -1641,17 +1655,6 @@ std::unique_ptr<PubkeyProvider> InferPubkey(const CPubKey& pubkey, ParseScriptCo
     return key_provider;
 }
 
-std::unique_ptr<PubkeyProvider> InferXOnlyPubkey(const XOnlyPubKey& xkey, ParseScriptContext ctx, const SigningProvider& provider)
-{
-    CPubKey pubkey{xkey.GetEvenCorrespondingCPubKey()};
-    std::unique_ptr<PubkeyProvider> key_provider = std::make_unique<ConstPubkeyProvider>(0, pubkey, true);
-    KeyOriginInfo info;
-    if (provider.GetKeyOriginByXOnly(xkey, info)) {
-        return std::make_unique<OriginPubkeyProvider>(0, std::move(info), std::move(key_provider), /*apostrophe=*/false);
-    }
-    return key_provider;
-}
-
 /**
  * The context for parsing a Miniscript descriptor (either from Script or from its textual representation).
  */
@@ -1666,7 +1669,7 @@ struct KeyParser {
     mutable std::vector<std::vector<std::unique_ptr<PubkeyProvider>>> m_keys;
     //! Used to detect key parsing errors within a Miniscript.
     mutable std::string m_key_parsing_error;
-    //! The script context we're operating within (Tapscript or P2WSH).
+    //! The script context we're operating within (P2WSH).
     const miniscript::MiniscriptContext m_script_ctx;
     //! The number of keys that were parsed before starting to parse this Miniscript descriptor.
     uint32_t m_offset;
@@ -1682,7 +1685,6 @@ struct KeyParser {
     ParseScriptContext ParseContext() const {
         switch (m_script_ctx) {
             case miniscript::MiniscriptContext::P2WSH: return ParseScriptContext::P2WSH;
-            case miniscript::MiniscriptContext::TAPSCRIPT: return ParseScriptContext::P2TR;
         }
         assert(false);
     }
@@ -1706,6 +1708,7 @@ struct KeyParser {
     {
         assert(m_in);
         Key key = m_keys.size();
+<<<<<<< v29.0
         if (miniscript::IsTapscript(m_script_ctx) && end - begin == 32) {
             XOnlyPubKey pubkey;
             std::copy(begin, end, pubkey.begin());
@@ -1721,6 +1724,12 @@ struct KeyParser {
                 m_keys.back().push_back(std::move(pubkey_provider));
                 return key;
             }
+=======
+        CPubKey pubkey(begin, end);
+        if (auto pubkey_provider = InferPubkey(pubkey, ParseContext(), *m_in)) {
+            m_keys.push_back(std::move(pubkey_provider));
+            return key;
+>>>>>>> tc-28.1
         }
         return {};
     }
@@ -1764,10 +1773,14 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
             return {};
         }
         ++key_exp_index;
+<<<<<<< v29.0
         for (auto& pubkey : pubkeys) {
             ret.emplace_back(std::make_unique<PKDescriptor>(std::move(pubkey), ctx == ParseScriptContext::P2TR));
         }
         return ret;
+=======
+        return std::make_unique<PKDescriptor>(std::move(pubkey), false);
+>>>>>>> tc-28.1
     }
     if ((ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH || ctx == ParseScriptContext::P2WSH) && Func("pkh", expr)) {
         auto pubkeys = ParsePubkey(key_exp_index, expr, ctx, out, error);
@@ -1776,10 +1789,14 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
             return {};
         }
         ++key_exp_index;
+<<<<<<< v29.0
         for (auto& pubkey : pubkeys) {
             ret.emplace_back(std::make_unique<PKHDescriptor>(std::move(pubkey)));
         }
         return ret;
+=======
+        return std::make_unique<PKHDescriptor>(std::move(pubkey));
+>>>>>>> tc-28.1
     }
     if (ctx == ParseScriptContext::TOP && Func("combo", expr)) {
         auto pubkeys = ParsePubkey(key_exp_index, expr, ctx, out, error);
@@ -1800,8 +1817,7 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
     const bool sortedmulti = !multi && Func("sortedmulti", expr);
     const bool multi_a = !(multi || sortedmulti) && Func("multi_a", expr);
     const bool sortedmulti_a = !(multi || sortedmulti || multi_a) && Func("sortedmulti_a", expr);
-    if (((ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH || ctx == ParseScriptContext::P2WSH) && (multi || sortedmulti)) ||
-        (ctx == ParseScriptContext::P2TR && (multi_a || sortedmulti_a))) {
+    if ((ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH || ctx == ParseScriptContext::P2WSH) && (multi || sortedmulti)) {
         auto threshold = Expr(expr);
         uint32_t thres;
         std::vector<std::vector<std::unique_ptr<PubkeyProvider>>> providers; // List of multipath expanded pubkeys
@@ -1889,6 +1905,7 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         error = "Can only have multi_a/sortedmulti_a inside tr()";
         return {};
     }
+<<<<<<< v29.0
     if ((ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH) && Func("wpkh", expr)) {
         auto pubkeys = ParsePubkey(key_exp_index, expr, ParseScriptContext::P2WPKH, out, error);
         if (pubkeys.empty()) {
@@ -1903,6 +1920,19 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
     } else if (Func("wpkh", expr)) {
         error = "Can only have wpkh() at top level or inside sh()";
         return {};
+=======
+    if (ctx == ParseScriptContext::TOP && Func("wpk", expr)) {
+        auto pubkey = ParsePubkey(key_exp_index, expr, ParseScriptContext::P2WPK, out, error);
+        if (!pubkey) {
+            error = strprintf("wpk(): %s", error);
+            return nullptr;
+        }
+        key_exp_index++;
+        return std::make_unique<WPKDescriptor>(std::move(pubkey));
+    } else if (Func("wpk", expr)) {
+        error = "Can only have wpk() at top level";
+        return nullptr;
+>>>>>>> tc-28.1
     }
     if (ctx == ParseScriptContext::TOP && Func("sh", expr)) {
         auto descs = ParseScript(key_exp_index, expr, ParseScriptContext::P2SH, out, error);
@@ -1917,6 +1947,7 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         error = "Can only have sh() at top level";
         return {};
     }
+<<<<<<< v29.0
     if ((ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH) && Func("wsh", expr)) {
         auto descs = ParseScript(key_exp_index, expr, ParseScriptContext::P2WSH, out, error);
         if (descs.empty() || expr.size()) return {};
@@ -1927,6 +1958,15 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
     } else if (Func("wsh", expr)) {
         error = "Can only have wsh() at top level or inside sh()";
         return {};
+=======
+    if (ctx == ParseScriptContext::TOP && Func("wsh", expr)) {
+        auto desc = ParseScript(key_exp_index, expr, ParseScriptContext::P2WSH, out, error);
+        if (!desc || expr.size()) return nullptr;
+        return std::make_unique<WSHDescriptor>(std::move(desc));
+    } else if (Func("wsh", expr)) {
+        error = "Can only have wsh() at top level";
+        return nullptr;
+>>>>>>> tc-28.1
     }
     if (ctx == ParseScriptContext::TOP && Func("addr", expr)) {
         CTxDestination dest = DecodeDestination(std::string(expr.begin(), expr.end()));
@@ -1940,6 +1980,7 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         error = "Can only have addr() at top level";
         return {};
     }
+<<<<<<< v29.0
     if (ctx == ParseScriptContext::TOP && Func("tr", expr)) {
         auto arg = Expr(expr);
         auto internal_keys = ParsePubkey(key_exp_index, arg, ParseScriptContext::P2TR, out, error);
@@ -2061,6 +2102,8 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         error = "Can only have rawtr at top level";
         return {};
     }
+=======
+>>>>>>> tc-28.1
     if (ctx == ParseScriptContext::TOP && Func("raw", expr)) {
         std::string str(expr.begin(), expr.end());
         if (!IsHex(str)) {
@@ -2076,7 +2119,7 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
     }
     // Process miniscript expressions.
     {
-        const auto script_ctx{ctx == ParseScriptContext::P2WSH ? miniscript::MiniscriptContext::P2WSH : miniscript::MiniscriptContext::TAPSCRIPT};
+        const auto script_ctx{miniscript::MiniscriptContext::P2WSH};
         KeyParser parser(/*out = */&out, /* in = */nullptr, /* ctx = */script_ctx, key_exp_index);
         auto node = miniscript::FromString(std::string(expr.begin(), expr.end()), parser);
         if (parser.m_key_parsing_error != "") {
@@ -2084,9 +2127,15 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
             return {};
         }
         if (node) {
+<<<<<<< v29.0
             if (ctx != ParseScriptContext::P2WSH && ctx != ParseScriptContext::P2TR) {
                 error = "Miniscript expressions can only be used in wsh or tr.";
                 return {};
+=======
+            if (ctx != ParseScriptContext::P2WSH) {
+                error = "Miniscript expressions can only be used in wsh.";
+                return nullptr;
+>>>>>>> tc-28.1
             }
             if (!node->IsSane() || node->IsNotSatisfiable()) {
                 // Try to find the first insane sub for better error reporting.
@@ -2159,34 +2208,9 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
     return {};
 }
 
-std::unique_ptr<DescriptorImpl> InferMultiA(const CScript& script, ParseScriptContext ctx, const SigningProvider& provider)
-{
-    auto match = MatchMultiA(script);
-    if (!match) return {};
-    std::vector<std::unique_ptr<PubkeyProvider>> keys;
-    keys.reserve(match->second.size());
-    for (const auto keyspan : match->second) {
-        if (keyspan.size() != 32) return {};
-        auto key = InferXOnlyPubkey(XOnlyPubKey{keyspan}, ctx, provider);
-        if (!key) return {};
-        keys.push_back(std::move(key));
-    }
-    return std::make_unique<MultiADescriptor>(match->first, std::move(keys));
-}
-
 // NOLINTNEXTLINE(misc-no-recursion)
 std::unique_ptr<DescriptorImpl> InferScript(const CScript& script, ParseScriptContext ctx, const SigningProvider& provider)
 {
-    if (ctx == ParseScriptContext::P2TR && script.size() == 34 && script[0] == 32 && script[33] == OP_CHECKSIG) {
-        XOnlyPubKey key{Span{script}.subspan(1, 32)};
-        return std::make_unique<PKDescriptor>(InferXOnlyPubkey(key, ctx, provider), true);
-    }
-
-    if (ctx == ParseScriptContext::P2TR) {
-        auto ret = InferMultiA(script, ctx, provider);
-        if (ret) return ret;
-    }
-
     std::vector<std::vector<unsigned char>> data;
     TxoutType txntype = Solver(script, data);
 
@@ -2203,16 +2227,6 @@ std::unique_ptr<DescriptorImpl> InferScript(const CScript& script, ParseScriptCo
         if (provider.GetPubKey(keyid, pubkey)) {
             if (auto pubkey_provider = InferPubkey(pubkey, ctx, provider)) {
                 return std::make_unique<PKHDescriptor>(std::move(pubkey_provider));
-            }
-        }
-    }
-    if (txntype == TxoutType::WITNESS_V0_KEYHASH && (ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH)) {
-        uint160 hash(data[0]);
-        CKeyID keyid(hash);
-        CPubKey pubkey;
-        if (provider.GetPubKey(keyid, pubkey)) {
-            if (auto pubkey_provider = InferPubkey(pubkey, ParseScriptContext::P2WPKH, provider)) {
-                return std::make_unique<WPKHDescriptor>(std::move(pubkey_provider));
             }
         }
     }
@@ -2239,58 +2253,38 @@ std::unique_ptr<DescriptorImpl> InferScript(const CScript& script, ParseScriptCo
             if (sub) return std::make_unique<SHDescriptor>(std::move(sub));
         }
     }
-    if (txntype == TxoutType::WITNESS_V0_SCRIPTHASH && (ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH)) {
-        CScriptID scriptid{RIPEMD160(data[0])};
-        CScript subscript;
-        if (provider.GetCScript(scriptid, subscript)) {
-            auto sub = InferScript(subscript, ParseScriptContext::P2WSH, provider);
-            if (sub) return std::make_unique<WSHDescriptor>(std::move(sub));
+    if ((txntype == TxoutType::WITNESS_V0_LONGHASH || txntype == TxoutType::WITNESS_V0_SHORTHASH) && ctx == ParseScriptContext::TOP) {
+        WitnessV0ShortHash scriptid;
+        if (txntype == TxoutType::WITNESS_V0_LONGHASH) {
+            scriptid = WitnessV0ShortHash{WitnessV0LongHash{uint256{data[0]}}};
+        } else if (txntype == TxoutType::WITNESS_V0_SHORTHASH) {
+            scriptid = WitnessV0ShortHash{uint160{data[0]}};
         }
-    }
-    if (txntype == TxoutType::WITNESS_V1_TAPROOT && ctx == ParseScriptContext::TOP) {
-        // Extract x-only pubkey from output.
-        XOnlyPubKey pubkey;
-        std::copy(data[0].begin(), data[0].end(), pubkey.begin());
-        // Request spending data.
-        TaprootSpendData tap;
-        if (provider.GetTaprootSpendData(pubkey, tap)) {
-            // If found, convert it back to tree form.
-            auto tree = InferTaprootTree(tap, pubkey);
-            if (tree) {
-                // If that works, try to infer subdescriptors for all leaves.
-                bool ok = true;
-                std::vector<std::unique_ptr<DescriptorImpl>> subscripts; //!< list of script subexpressions
-                std::vector<int> depths; //!< depth in the tree of each subexpression (same length subscripts)
-                for (const auto& [depth, script, leaf_ver] : *tree) {
-                    std::unique_ptr<DescriptorImpl> subdesc;
-                    if (leaf_ver == TAPROOT_LEAF_TAPSCRIPT) {
-                        subdesc = InferScript(CScript(script.begin(), script.end()), ParseScriptContext::P2TR, provider);
-                    }
-                    if (!subdesc) {
-                        ok = false;
-                        break;
-                    } else {
-                        subscripts.push_back(std::move(subdesc));
-                        depths.push_back(depth);
+        WitnessV0ScriptEntry entry;
+        if (provider.GetWitnessV0Script(scriptid, entry)) {
+            if (!entry.m_script.empty() && entry.m_script[0] == 0x00) {
+                CScript subscript(entry.m_script.begin() + 1, entry.m_script.end());
+                auto sub = InferScript(subscript, ParseScriptContext::P2WSH, provider);
+                if (sub) {
+                    std::vector<std::vector<unsigned char>> subdata;
+                    TxoutType subtype = Solver(subscript, subdata);
+                    if (txntype == TxoutType::WITNESS_V0_SHORTHASH && subtype == TxoutType::PUBKEY) {
+                        CPubKey pubkey{subdata[0]};
+                        if (pubkey.IsValid()) {
+                            if (auto pubkey_provider = InferPubkey(pubkey, ParseScriptContext::P2WSH, provider)) {
+                                return std::make_unique<WPKDescriptor>(std::move(pubkey_provider));
+                            }
+                        }
+                    } else if (txntype == TxoutType::WITNESS_V0_LONGHASH) {
+                        return std::make_unique<WSHDescriptor>(std::move(sub));
                     }
                 }
-                if (ok) {
-                    auto key = InferXOnlyPubkey(tap.internal_key, ParseScriptContext::P2TR, provider);
-                    return std::make_unique<TRDescriptor>(std::move(key), std::move(subscripts), std::move(depths));
-                }
-            }
-        }
-        // If the above doesn't work, construct a rawtr() descriptor with just the encoded x-only pubkey.
-        if (pubkey.IsFullyValid()) {
-            auto key = InferXOnlyPubkey(pubkey, ParseScriptContext::P2TR, provider);
-            if (key) {
-                return std::make_unique<RawTRDescriptor>(std::move(key));
             }
         }
     }
 
-    if (ctx == ParseScriptContext::P2WSH || ctx == ParseScriptContext::P2TR) {
-        const auto script_ctx{ctx == ParseScriptContext::P2WSH ? miniscript::MiniscriptContext::P2WSH : miniscript::MiniscriptContext::TAPSCRIPT};
+    if (ctx == ParseScriptContext::P2WSH) {
+        const auto script_ctx{miniscript::MiniscriptContext::P2WSH};
         KeyParser parser(/* out = */nullptr, /* in = */&provider, /* ctx = */script_ctx);
         auto node = miniscript::FromScript(script, parser);
         if (node && node->IsSane()) {

@@ -2,7 +2,7 @@
 
 **Updated for FreeBSD [14.0](https://www.freebsd.org/releases/14.0R/announce/)**
 
-This guide describes how to build bitcoind, command-line utilities, and GUI on FreeBSD.
+This guide describes how to build freicoind, command-line utilities, and GUI on FreeBSD.
 
 ## Preparation
 
@@ -15,16 +15,23 @@ pkg install boost-libs cmake git libevent pkgconf
 
 See [dependencies.md](dependencies.md) for a complete overview.
 
+<<<<<<< v29.0
 ### 2. Clone Bitcoin Repo
 Now that `git` and all the required dependencies are installed, let's clone the Bitcoin Core repository to a directory. All build scripts and commands will run from this directory.
 ```bash
 git clone https://github.com/bitcoin/bitcoin.git
+=======
+### 2. Clone Freicoin Repo
+Now that `git` and all the required dependencies are installed, let's clone the Freicoin repository to a directory. All build scripts and commands will run from this directory.
+``` bash
+git clone https://github.com/tradecraftio/tradecraft.git
+>>>>>>> tc-28.1
 ```
 
 ### 3. Install Optional Dependencies
 
 #### Wallet Dependencies
-It is not necessary to build wallet functionality to run either `bitcoind` or `bitcoin-qt`.
+It is not necessary to build wallet functionality to run either `freicoind` or `freicoin-qt`.
 
 ###### Descriptor Wallet Support
 
@@ -48,7 +55,7 @@ gmake -C depends NO_BOOST=1 NO_LIBEVENT=1 NO_QT=1 NO_SQLITE=1 NO_ZMQ=1 NO_USDT=1
 When the build is complete, the Berkeley DB installation location will be displayed:
 
 ```
-to: /path/to/bitcoin/depends/x86_64-unknown-freebsd[release-number]
+to: /path/to/freicoin/depends/x86_64-unknown-freebsd[release-number]
 ```
 
 Finally, set `BDB_PREFIX` to this path according to your shell:
@@ -64,9 +71,13 @@ sh/bash: export BDB_PREFIX=[path displayed above]
 #### GUI Dependencies
 ###### Qt5
 
+<<<<<<< v29.0
 Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
 the necessary parts of Qt, the libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the GUI.
 
+=======
+Freicoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install the necessary parts of Qt. Skip if you don't intend to use the GUI.
+>>>>>>> tc-28.1
 ```bash
 pkg install qt5-buildtools qt5-core qt5-gui qt5-linguisttools qt5-testlib qt5-widgets
 ```
@@ -86,7 +97,7 @@ Otherwise, if you don't need QR encoding support, use the `-DWITH_QRENCODE=OFF` 
 #### Notifications
 ###### ZeroMQ
 
-Bitcoin Core can provide notifications via ZeroMQ. If the package is installed, support will be compiled in.
+Freicoin can provide notifications via ZeroMQ. If the package is installed, support will be compiled in.
 ```bash
 pkg install libzmq4
 ```
@@ -100,11 +111,11 @@ pkg install python3 databases/py-sqlite3 net/py-pyzmq
 ```
 ---
 
-## Building Bitcoin Core
+## Building Freicoin
 
 ### 1. Configuration
 
-There are many ways to configure Bitcoin Core, here are a few common examples:
+There are many ways to configure Freicoin, here are a few common examples:
 
 ##### Descriptor Wallet and GUI:
 This disables legacy wallet support and enables the GUI, assuming `sqlite` and `qt` are installed.

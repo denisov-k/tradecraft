@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """A limited-functionality wallet, which may replace a real wallet in tests"""
 
 from copy import deepcopy
@@ -12,11 +23,10 @@ from typing import (
     Optional,
 )
 from test_framework.address import (
+    ADDRESS_FCRT1_P2WSH_OP_TRUE,
     address_to_scriptpubkey,
-    create_deterministic_address_bcrt1_p2tr_op_true,
     key_to_p2pkh,
-    key_to_p2sh_p2wpkh,
-    key_to_p2wpkh,
+    key_to_p2wpk,
     output_key_to_p2tr,
 )
 from test_framework.blocktools import COINBASE_MATURITY
@@ -47,8 +57,7 @@ from test_framework.script import (
 from test_framework.script_util import (
     key_to_p2pk_script,
     key_to_p2pkh_script,
-    key_to_p2sh_p2wpkh_script,
-    key_to_p2wpkh_script,
+    key_to_p2wpk_script,
 )
 from test_framework.util import (
     assert_equal,
@@ -63,7 +72,7 @@ class MiniWalletMode(Enum):
     """Determines the transaction type the MiniWallet is creating and spending.
 
     For most purposes, the default mode ADDRESS_OP_TRUE should be sufficient;
-    it simply uses a fixed bech32m P2TR address whose coins are spent with a
+    it simply uses a fixed bech32 P2WSH address whose coins are spent with a
     witness stack of OP_TRUE, i.e. following an anyone-can-spend policy.
     However, if the transactions need to be modified by the user (e.g. prepending
     scriptSig for testing opcodes that are activated by a soft-fork), or the txs
@@ -76,7 +85,7 @@ class MiniWalletMode(Enum):
                     |      output       |           |  tx is   | can modify |  needs
          mode       |    description    |  address  | standard | scriptSig  | signing
     ----------------+-------------------+-----------+----------+------------+----------
-    ADDRESS_OP_TRUE | anyone-can-spend  |  bech32m  |   yes    |    no      |   no
+    ADDRESS_OP_TRUE | anyone-can-spend  |  bech32   |   yes    |    no      |   no
     RAW_OP_TRUE     | anyone-can-spend  |  - (raw)  |   no     |    yes     |   no
     RAW_P2PK        | pay-to-public-key |  - (raw)  |   yes    |    yes     |   yes
     """
@@ -103,19 +112,18 @@ class MiniWallet:
             pub_key = self._priv_key.get_pubkey()
             self._scriptPubKey = key_to_p2pk_script(pub_key.get_bytes())
         elif mode == MiniWalletMode.ADDRESS_OP_TRUE:
-            internal_key = None if tag_name is None else compute_xonly_pubkey(hash256(tag_name.encode()))[0]
-            self._address, self._taproot_info = create_deterministic_address_bcrt1_p2tr_op_true(internal_key)
+            self._address = ADDRESS_FCRT1_P2WSH_OP_TRUE
             self._scriptPubKey = address_to_scriptpubkey(self._address)
 
         # When the pre-mined test framework chain is used, it contains coinbase
         # outputs to the MiniWallet's default address in blocks 76-100
-        # (see method BitcoinTestFramework._initialize_chain())
+        # (see method FreicoinTestFramework._initialize_chain())
         # The MiniWallet needs to rescan_utxos() in order to account
         # for those mature UTXOs, so that all txs spend confirmed coins
         self.rescan_utxos()
 
-    def _create_utxo(self, *, txid, vout, value, height, coinbase, confirmations):
-        return {"txid": txid, "vout": vout, "value": value, "height": height, "coinbase": coinbase, "confirmations": confirmations}
+    def _create_utxo(self, *, txid, vout, value, refheight, height, coinbase, confirmations):
+        return {"txid": txid, "vout": vout, "value": value, "refheight": refheight, "height": height, "coinbase": coinbase, "confirmations": confirmations}
 
     def _bulk_tx(self, tx, target_vsize):
         """Pad a transaction with extra outputs until it reaches a target vsize.
@@ -145,7 +153,8 @@ class MiniWallet:
             self._utxos.append(
                 self._create_utxo(txid=utxo["txid"],
                                   vout=utxo["vout"],
-                                  value=utxo["amount"],
+                                  value=utxo["value"],
+                                  refheight=utxo["refheight"],
                                   height=utxo["height"],
                                   coinbase=utxo["coinbase"],
                                   confirmations=res["height"] - utxo["height"] + 1))
@@ -169,7 +178,7 @@ class MiniWallet:
                 pass
         for out in tx['vout']:
             if out['scriptPubKey']['hex'] == self._scriptPubKey.hex():
-                self._utxos.append(self._create_utxo(txid=tx["txid"], vout=out["n"], value=out["value"], height=0, coinbase=False, confirmations=0))
+                self._utxos.append(self._create_utxo(txid=tx["txid"], vout=out["n"], value=out["value"], refheight=tx["lockheight"], height=0, coinbase=False, confirmations=0))
 
     def scan_txs(self, txs):
         for tx in txs:
@@ -193,12 +202,7 @@ class MiniWallet:
         elif self._mode == MiniWalletMode.ADDRESS_OP_TRUE:
             tx.wit.vtxinwit = [CTxInWitness()] * len(tx.vin)
             for i in tx.wit.vtxinwit:
-                assert_equal(len(self._taproot_info.leaves), 1)
-                leaf_info = list(self._taproot_info.leaves.values())[0]
-                i.scriptWitness.stack = [
-                    leaf_info.script,
-                    bytes([leaf_info.version | self._taproot_info.negflag]) + self._taproot_info.internal_pubkey,
-                ]
+                i.scriptWitness.stack = [b"\x00" + CScript([OP_TRUE]), b""]
         else:
             assert False
 
@@ -306,6 +310,7 @@ class MiniWallet:
         amount_per_output=0,
         version=2,
         locktime=0,
+        lockheight=0,
         sequence=0,
         fee_per_output=1000,
         target_vsize=0,
@@ -319,6 +324,10 @@ class MiniWallet:
         utxos_to_spend = utxos_to_spend or [self.get_utxo(confirmed_only=confirmed_only)]
         sequence = [sequence] * len(utxos_to_spend) if type(sequence) is int else sequence
         assert_equal(len(utxos_to_spend), len(sequence))
+
+        # calculate max input refheight
+        if lockheight <= 0:
+            lockheight = max([utxo['refheight'] for utxo in utxos_to_spend])
 
         # calculate output amount
         inputs_value_total = sum([int(COIN * utxo['value']) for utxo in utxos_to_spend])
@@ -334,6 +343,7 @@ class MiniWallet:
         tx.vout = [CTxOut(amount_per_output, bytearray(self._scriptPubKey)) for _ in range(num_outputs)]
         tx.version = version
         tx.nLockTime = locktime
+        tx.lock_height = lockheight
 
         self.sign_tx(tx)
 
@@ -346,6 +356,7 @@ class MiniWallet:
                 txid=txid,
                 vout=i,
                 value=Decimal(tx.vout[i].nValue) / COIN,
+                refheight=tx.lock_height,
                 height=0,
                 coinbase=False,
                 confirmations=0,
@@ -367,22 +378,28 @@ class MiniWallet:
             confirmed_only=False,
             **kwargs,
     ):
-        """Create and return a tx with the specified fee. If fee is 0, use fee_rate, where the resulting fee may be exact or at most one satoshi higher than needed."""
+        """Create and return a tx with the specified fee. If fee is 0, use fee_rate, where the resulting fee may be exact or at most one kria higher than needed."""
         utxo_to_spend = utxo_to_spend or self.get_utxo(confirmed_only=confirmed_only)
         assert fee_rate >= 0
         assert fee >= 0
         # calculate fee
         if self._mode in (MiniWalletMode.RAW_OP_TRUE, MiniWalletMode.ADDRESS_OP_TRUE):
-            vsize = Decimal(104)  # anyone-can-spend
+            vsize = Decimal(100)  # anyone-can-spend
         elif self._mode == MiniWalletMode.RAW_P2PK:
-            vsize = Decimal(168)  # P2PK (73 bytes scriptSig + 35 bytes scriptPubKey + 60 bytes other)
+            vsize = Decimal(172)  # P2PK (73 bytes scriptSig + 35 bytes scriptPubKey + 64 bytes other)
         else:
             assert False
         if target_vsize and not fee:  # respect fee_rate if target vsize is passed
             fee = get_fee(target_vsize, fee_rate)
         send_value = utxo_to_spend["value"] - (fee or (fee_rate * vsize / 1000))
+<<<<<<< v29.0
         if send_value <= 0:
             raise RuntimeError(f"UTXO value {utxo_to_spend['value']} is too small to cover fees {(fee or (fee_rate * vsize / 1000))}")
+=======
+        if kwargs.get('lockheight', 0) <= 0:
+            kwargs['lockheight'] = utxo_to_spend['refheight']
+
+>>>>>>> tc-28.1
         # create tx
         tx = self.create_self_transfer_multi(
             utxos_to_spend=[utxo_to_spend],
@@ -428,27 +445,19 @@ class MiniWallet:
         return chain
 
 
-def getnewdestination(address_type='bech32m'):
+def getnewdestination(address_type='bech32'):
     """Generate a random destination of the specified type and return the
        corresponding public key, scriptPubKey and address. Supported types are
-       'legacy', 'p2sh-segwit', 'bech32' and 'bech32m'. Can be used when a random
+       'legacy' or 'bech32'. Can be used when a random
        destination is needed, but no compiled wallet is available (e.g. as
        replacement to the getnewaddress/getaddressinfo RPCs)."""
     key, pubkey = generate_keypair()
     if address_type == 'legacy':
         scriptpubkey = key_to_p2pkh_script(pubkey)
         address = key_to_p2pkh(pubkey)
-    elif address_type == 'p2sh-segwit':
-        scriptpubkey = key_to_p2sh_p2wpkh_script(pubkey)
-        address = key_to_p2sh_p2wpkh(pubkey)
     elif address_type == 'bech32':
-        scriptpubkey = key_to_p2wpkh_script(pubkey)
-        address = key_to_p2wpkh(pubkey)
-    elif address_type == 'bech32m':
-        tap = taproot_construct(compute_xonly_pubkey(key.get_bytes())[0])
-        pubkey = tap.output_pubkey
-        scriptpubkey = tap.scriptPubKey
-        address = output_key_to_p2tr(pubkey)
+        scriptpubkey = key_to_p2wpk_script(pubkey)
+        address = key_to_p2wpk(pubkey)
     else:
         assert False
     return pubkey, scriptpubkey, address

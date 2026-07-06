@@ -1,6 +1,19 @@
 // Copyright (c) 2013-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#include <test/util/setup_common.h>
 
 #include <common/system.h>
 #include <consensus/tx_check.h>
@@ -13,7 +26,6 @@
 #include <test/data/sighash.json.h>
 #include <test/util/json.h>
 #include <test/util/random.h>
-#include <test/util/setup_common.h>
 #include <util/strencodings.h>
 
 #include <iostream>
@@ -96,9 +108,16 @@ void RandomTransaction(CMutableTransaction& tx, bool fSingle)
     tx.version = m_rng.rand32();
     tx.vin.clear();
     tx.vout.clear();
+<<<<<<< v29.0
     tx.nLockTime = (m_rng.randbool()) ? m_rng.rand32() : 0;
     int ins = (m_rng.randbits(2)) + 1;
     int outs = fSingle ? ins : (m_rng.randbits(2)) + 1;
+=======
+    tx.nLockTime = (InsecureRandBool()) ? InsecureRand32() : 0;
+    tx.lock_height = (InsecureRandBool()) ? InsecureRand32() : 0;
+    int ins = (InsecureRandBits(2)) + 1;
+    int outs = fSingle ? ins : (InsecureRandBits(2)) + 1;
+>>>>>>> tc-28.1
     for (int in = 0; in < ins; in++) {
         tx.vin.emplace_back();
         CTxIn &txin = tx.vin.back();
@@ -128,7 +147,11 @@ BOOST_AUTO_TEST_CASE(sighash_test)
     int nRandomTests = 50000;
     #endif
     for (int i=0; i<nRandomTests; i++) {
+<<<<<<< v29.0
         int nHashType{int(m_rng.rand32())};
+=======
+        int nHashType{int(InsecureRand32()) & ~SIGHASH_NO_LOCK_HEIGHT};
+>>>>>>> tc-28.1
         CMutableTransaction txTo;
         RandomTransaction(txTo, (nHashType & 0x1f) == SIGHASH_SINGLE);
         CScript scriptCode;
@@ -137,7 +160,7 @@ BOOST_AUTO_TEST_CASE(sighash_test)
 
         uint256 sh, sho;
         sho = SignatureHashOld(scriptCode, CTransaction(txTo), nIn, nHashType);
-        sh = SignatureHash(scriptCode, txTo, nIn, nHashType, 0, SigVersion::BASE);
+        sh = SignatureHash(scriptCode, txTo, nIn, nHashType, 0, 0, SigVersion::BASE);
         #if defined(PRINT_SIGHASH_JSON)
         DataStream ss;
         ss << TX_WITH_WITNESS(txTo);
@@ -193,7 +216,7 @@ BOOST_AUTO_TEST_CASE(sighash_from_data)
           stream >> TX_WITH_WITNESS(tx);
 
           TxValidationState state;
-          BOOST_CHECK_MESSAGE(CheckTransaction(*tx, state), strTest);
+          BOOST_CHECK_MESSAGE(CheckTransaction(*tx, state, Consensus::NONE), strTest);
           BOOST_CHECK(state.IsValid());
 
           std::vector<unsigned char> raw = ParseHex(raw_script);
@@ -203,7 +226,7 @@ BOOST_AUTO_TEST_CASE(sighash_from_data)
           continue;
         }
 
-        sh = SignatureHash(scriptCode, *tx, nIn, nHashType, 0, SigVersion::BASE);
+        sh = SignatureHash(scriptCode, *tx, nIn, nHashType, 0, 0, SigVersion::BASE);
         BOOST_CHECK_MESSAGE(sh.GetHex() == sigHashHex, strTest);
     }
 }

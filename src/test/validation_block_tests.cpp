@@ -1,8 +1,27 @@
+<<<<<<< v29.0
 // Copyright (c) 2018-present The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
+=======
+// Copyright (c) 2018-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+>>>>>>> tc-28.1
 
 #include <boost/test/unit_test.hpp>
+
+#include <test/util/setup_common.h>
 
 #include <chainparams.h>
 #include <consensus/merkle.h>
@@ -23,11 +42,11 @@ using node::BlockAssembler;
 
 namespace validation_block_tests {
 struct MinerTestingSetup : public RegTestingSetup {
-    std::shared_ptr<CBlock> Block(const uint256& prev_hash);
-    std::shared_ptr<const CBlock> GoodBlock(const uint256& prev_hash);
-    std::shared_ptr<const CBlock> BadBlock(const uint256& prev_hash);
-    std::shared_ptr<CBlock> FinalizeBlock(std::shared_ptr<CBlock> pblock);
-    void BuildChain(const uint256& root, int height, const unsigned int invalid_rate, const unsigned int branch_rate, const unsigned int max_size, std::vector<std::shared_ptr<const CBlock>>& blocks);
+    std::shared_ptr<CBlock> Block(const uint256& prev_hash, int height, BlockFinalTxEntry& entry);
+    std::shared_ptr<const CBlock> GoodBlock(const uint256& prev_hash, int height, BlockFinalTxEntry& entry);
+    std::shared_ptr<const CBlock> BadBlock(const uint256& prev_hash, int height, BlockFinalTxEntry& entry);
+    std::shared_ptr<CBlock> FinalizeBlock(std::shared_ptr<CBlock> pblock, BlockFinalTxEntry& entry);
+    void BuildChain(const uint256& root, int root_height, const BlockFinalTxEntry& entry, int remaining, const unsigned int invalid_rate, const unsigned int branch_rate, const unsigned int max_size, std::vector<std::pair<std::shared_ptr<const CBlock>, bool>>& blocks);
 };
 } // namespace validation_block_tests
 
@@ -60,7 +79,7 @@ struct TestSubscriber final : public CValidationInterface {
     }
 };
 
-std::shared_ptr<CBlock> MinerTestingSetup::Block(const uint256& prev_hash)
+std::shared_ptr<CBlock> MinerTestingSetup::Block(const uint256& prev_hash, int height, BlockFinalTxEntry& entry)
 {
     static int i = 0;
     static uint64_t time = Params().GenesisBlock().nTime;
@@ -76,26 +95,55 @@ std::shared_ptr<CBlock> MinerTestingSetup::Block(const uint256& prev_hash)
     // One zero-value one that has a unique pubkey to make sure that blocks at the same height can have a different hash
     // Another one that has the coinbase reward in a P2WSH with OP_TRUE as witness program to make it easy to spend
     CMutableTransaction txCoinbase(*pblock->vtx[0]);
-    txCoinbase.vout.resize(2);
-    txCoinbase.vout[1].scriptPubKey = P2WSH_OP_TRUE;
-    txCoinbase.vout[1].nValue = txCoinbase.vout[0].nValue;
-    txCoinbase.vout[0].nValue = 0;
+    const CScript op_true = CScript() << OP_TRUE;
+    bool initial_block_final = (txCoinbase.vout[0].scriptPubKey == op_true);
+    txCoinbase.vout.resize(2 + initial_block_final + entry.IsNull());
+    txCoinbase.vout[1 + initial_block_final].scriptPubKey = P2WSH_OP_TRUE;
+    txCoinbase.vout[1 + initial_block_final].nValue = txCoinbase.vout[0 + initial_block_final].nValue;
+    txCoinbase.vout[0 + initial_block_final].nValue = 0;
+    if (entry.IsNull()) {
+        txCoinbase.vout.back().nValue = 0;
+        txCoinbase.vout.back().scriptPubKey = CScript() << OP_TRUE;
+    }
     txCoinbase.vin[0].scriptWitness.SetNull();
     // Always pad with OP_0 at the end to avoid bad-cb-length error
     txCoinbase.vin[0].scriptSig = CScript{} << WITH_LOCK(::cs_main, return m_node.chainman->m_blockman.LookupBlockIndex(prev_hash)->nHeight + 1) << OP_0;
+    txCoinbase.lock_height = (uint32_t)height;
     pblock->vtx[0] = MakeTransactionRef(std::move(txCoinbase));
+
+    // Add block-final transaction
+    if (ptemplate->has_block_final_tx) {
+        pblock->vtx.pop_back();
+    }
+    if (!entry.IsNull()) {
+        // Create transaction
+        CMutableTransaction final_tx;
+        final_tx.version = 2;
+        for (uint32_t n = 0; n < entry.size; ++n) {
+            final_tx.vin.emplace_back(COutPoint(entry.hash, n));
+        }
+        final_tx.vout.emplace_back(0, CScript() << OP_TRUE);
+        final_tx.lock_height = (uint32_t)height;
+        // Add it to the block
+        pblock->vtx.push_back(MakeTransactionRef(std::move(final_tx)));
+    }
 
     return pblock;
 }
 
-std::shared_ptr<CBlock> MinerTestingSetup::FinalizeBlock(std::shared_ptr<CBlock> pblock)
+std::shared_ptr<CBlock> MinerTestingSetup::FinalizeBlock(std::shared_ptr<CBlock> pblock, BlockFinalTxEntry& entry)
 {
     const CBlockIndex* prev_block{WITH_LOCK(::cs_main, return m_node.chainman->m_blockman.LookupBlockIndex(pblock->hashPrevBlock))};
     m_node.chainman->GenerateCoinbaseCommitment(*pblock, prev_block);
+    // Store block-final info for next block
+    if (!entry.IsNull()) {
+        entry.hash = pblock->vtx.back()->GetHash();
+        entry.size = 1;
+    }
 
     pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
 
-    while (!CheckProofOfWork(pblock->GetHash(), pblock->nBits, Params().GetConsensus())) {
+    while (!CheckProofOfWork(*pblock, Params().GetConsensus())) {
         ++(pblock->nNonce);
     }
 
@@ -108,54 +156,75 @@ std::shared_ptr<CBlock> MinerTestingSetup::FinalizeBlock(std::shared_ptr<CBlock>
 }
 
 // construct a valid block
-std::shared_ptr<const CBlock> MinerTestingSetup::GoodBlock(const uint256& prev_hash)
+std::shared_ptr<const CBlock> MinerTestingSetup::GoodBlock(const uint256& prev_hash, int height, BlockFinalTxEntry& entry)
 {
-    return FinalizeBlock(Block(prev_hash));
+    return FinalizeBlock(Block(prev_hash, height, entry), entry);
 }
 
 // construct an invalid block (but with a valid header)
-std::shared_ptr<const CBlock> MinerTestingSetup::BadBlock(const uint256& prev_hash)
+std::shared_ptr<const CBlock> MinerTestingSetup::BadBlock(const uint256& prev_hash, int height, BlockFinalTxEntry& entry)
 {
-    auto pblock = Block(prev_hash);
+    auto pblock = Block(prev_hash, height, entry);
 
     CMutableTransaction coinbase_spend;
     coinbase_spend.vin.emplace_back(COutPoint(pblock->vtx[0]->GetHash(), 0), CScript(), 0);
     coinbase_spend.vout.push_back(pblock->vtx[0]->vout[0]);
+    coinbase_spend.lock_height = pblock->vtx[0]->lock_height;
 
     CTransactionRef tx = MakeTransactionRef(coinbase_spend);
-    pblock->vtx.push_back(tx);
+    pblock->vtx.insert(pblock->vtx.end() - !entry.IsNull(), tx);
 
-    auto ret = FinalizeBlock(pblock);
+    auto ret = FinalizeBlock(pblock, entry);
     return ret;
 }
 
+static BlockFinalTxEntry InitialBlockFinalTxEntry(const CBlock& block) {
+    BlockFinalTxEntry entry;
+    entry.hash = block.vtx[0]->GetHash();
+    for (entry.size = 1; entry.size <= block.vtx[0]->vout.size(); ++entry.size) {
+        if (!IsTriviallySpendable(*block.vtx[0], entry.size - 1, MANDATORY_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_CLEANSTACK)) {
+            break;
+        }
+    }
+    return entry;
+}
+
 // NOLINTNEXTLINE(misc-no-recursion)
-void MinerTestingSetup::BuildChain(const uint256& root, int height, const unsigned int invalid_rate, const unsigned int branch_rate, const unsigned int max_size, std::vector<std::shared_ptr<const CBlock>>& blocks)
+void MinerTestingSetup::BuildChain(const uint256& root, int root_height, const BlockFinalTxEntry& entry, int remaining, const unsigned int invalid_rate, const unsigned int branch_rate, const unsigned int max_size, std::vector<std::pair<std::shared_ptr<const CBlock>, bool>>& blocks)
 {
-    if (height <= 0 || blocks.size() >= max_size) return;
+    if (remaining <= 0 || blocks.size() >= max_size) return;
+    int height = root_height + 1;
 
     bool gen_invalid = m_rng.randrange(100U) < invalid_rate;
     bool gen_fork = m_rng.randrange(100U) < branch_rate;
 
-    const std::shared_ptr<const CBlock> pblock = gen_invalid ? BadBlock(root) : GoodBlock(root);
-    blocks.push_back(pblock);
+    BlockFinalTxEntry dummy, next_entry = entry;
+    const std::shared_ptr<const CBlock> pblock = gen_invalid ? BadBlock(root, height, height > 100 ? next_entry : dummy) : GoodBlock(root, height, height > 100 ? next_entry : dummy);
+    blocks.push_back(std::make_pair(pblock, !gen_invalid));
     if (!gen_invalid) {
-        BuildChain(pblock->GetHash(), height - 1, invalid_rate, branch_rate, max_size, blocks);
+        if (height == 1) {
+            next_entry = InitialBlockFinalTxEntry(*pblock);
+        }
+        BuildChain(pblock->GetHash(), height, next_entry, remaining - 1, invalid_rate, branch_rate, max_size, blocks);
     }
 
     if (gen_fork) {
-        blocks.push_back(GoodBlock(root));
-        BuildChain(blocks.back()->GetHash(), height - 1, invalid_rate, branch_rate, max_size, blocks);
+        next_entry = entry;
+        blocks.push_back(std::make_pair(GoodBlock(root, height, height > 100 ? next_entry : dummy), true));
+        if (height == 1) {
+            next_entry = InitialBlockFinalTxEntry(*pblock);
+        }
+        BuildChain(blocks.back().first->GetHash(), height, next_entry, remaining - 1, invalid_rate, branch_rate, max_size, blocks);
     }
 }
 
 BOOST_AUTO_TEST_CASE(processnewblock_signals_ordering)
 {
     // build a large-ish chain that's likely to have some forks
-    std::vector<std::shared_ptr<const CBlock>> blocks;
+    std::vector<std::pair<std::shared_ptr<const CBlock>, bool>> blocks;
     while (blocks.size() < 50) {
         blocks.clear();
-        BuildChain(Params().GenesisBlock().GetHash(), 100, 15, 10, 500, blocks);
+        BuildChain(Params().GenesisBlock().GetHash(), 0, BlockFinalTxEntry(), 100, 15, 10, 500, blocks);
     }
 
     bool ignored;
@@ -182,14 +251,18 @@ BOOST_AUTO_TEST_CASE(processnewblock_signals_ordering)
             bool ignored;
             FastRandomContext insecure;
             for (int i = 0; i < 1000; i++) {
+<<<<<<< v29.0
                 const auto& block = blocks[insecure.randrange(blocks.size() - 1)];
+=======
+                auto block = blocks[insecure.randrange(blocks.size() - 1)].first;
+>>>>>>> tc-28.1
                 Assert(m_node.chainman)->ProcessNewBlock(block, true, true, &ignored);
             }
 
             // to make sure that eventually we process the full chain - do it here
             for (const auto& block : blocks) {
-                if (block->vtx.size() == 1) {
-                    bool processed = Assert(m_node.chainman)->ProcessNewBlock(block, true, true, &ignored);
+                if (block.second) {
+                    bool processed = Assert(m_node.chainman)->ProcessNewBlock(block.first, true, true, &ignored);
                     assert(processed);
                 }
             }
@@ -233,15 +306,32 @@ BOOST_AUTO_TEST_CASE(mempool_locks_reorg)
 
     // Process all mined blocks
     BOOST_REQUIRE(ProcessBlock(std::make_shared<CBlock>(Params().GenesisBlock())));
-    auto last_mined = GoodBlock(Params().GenesisBlock().GetHash());
+    int height = 1;
+    BlockFinalTxEntry dummy;
+    auto last_mined = GoodBlock(Params().GenesisBlock().GetHash(), height, dummy);
     BOOST_REQUIRE(ProcessBlock(last_mined));
+    ++height;
+    // Record the initial block-final output.
+    BlockFinalTxEntry entry;
+    entry.hash = last_mined->vtx[0]->GetHash();
+    entry.size = 1;
 
     // Run the test multiple times
     for (int test_runs = 3; test_runs > 0; --test_runs) {
         BOOST_CHECK_EQUAL(last_mined->GetHash(), WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Tip()->GetBlockHash()));
+        BOOST_CHECK_EQUAL(height, WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Tip()->nHeight + 1));
 
         // Later on split from here
-        const uint256 split_hash{last_mined->hashPrevBlock};
+        const uint256 split_hash{last_mined->GetHash()};
+        const BlockFinalTxEntry split_entry = entry;
+        const int split_height = height;
+
+        // The first block contains the initial block-final output, which
+        // makes the coinbase outputs offset.  Let's mine another block to
+        // use as our "first" block instead.
+        last_mined = GoodBlock(last_mined->GetHash(), height, height > 100 ? entry : dummy);
+        BOOST_REQUIRE(ProcessBlock(last_mined));
+        ++height;
 
         // Create a bunch of transactions to spend the miner rewards of the
         // most recent blocks
@@ -250,29 +340,37 @@ BOOST_AUTO_TEST_CASE(mempool_locks_reorg)
             CMutableTransaction mtx;
             mtx.vin.emplace_back(COutPoint{last_mined->vtx[0]->GetHash(), 1}, CScript{});
             mtx.vin[0].scriptWitness.stack.push_back(WITNESS_STACK_ELEM_OP_TRUE);
+            mtx.vin[0].scriptWitness.stack.emplace_back();
             mtx.vout.push_back(last_mined->vtx[0]->vout[1]);
             mtx.vout[0].nValue -= 1000;
+            mtx.lock_height = last_mined->vtx[0]->lock_height;
             txs.push_back(MakeTransactionRef(mtx));
 
-            last_mined = GoodBlock(last_mined->GetHash());
+            last_mined = GoodBlock(last_mined->GetHash(), height, height > 100 ? entry : dummy);
             BOOST_REQUIRE(ProcessBlock(last_mined));
+            ++height;
         }
 
         // Mature the inputs of the txs
         for (int j = COINBASE_MATURITY; j > 0; --j) {
-            last_mined = GoodBlock(last_mined->GetHash());
+            last_mined = GoodBlock(last_mined->GetHash(), height, height > 100 ? entry : dummy);
             BOOST_REQUIRE(ProcessBlock(last_mined));
+            ++height;
         }
 
         // Mine a reorg (and hold it back) before adding the txs to the mempool
         const uint256 tip_init{last_mined->GetHash()};
 
         std::vector<std::shared_ptr<const CBlock>> reorg;
-        last_mined = GoodBlock(split_hash);
+        entry = split_entry;
+        height = split_height;
+        last_mined = GoodBlock(split_hash, height, height > 100 ? entry : dummy);
         reorg.push_back(last_mined);
+        ++height;
         for (size_t j = COINBASE_MATURITY + txs.size() + 1; j > 0; --j) {
-            last_mined = GoodBlock(last_mined->GetHash());
+            last_mined = GoodBlock(last_mined->GetHash(), height, height > 100 ? entry : dummy);
             reorg.push_back(last_mined);
+            ++height;
         }
 
         // Add the txs to the tx pool
@@ -335,31 +433,44 @@ BOOST_AUTO_TEST_CASE(witness_commitment_index)
     options.coinbase_output_script = pubKey;
     auto ptemplate = BlockAssembler{m_node.chainman->ActiveChainstate(), m_node.mempool.get(), options}.CreateNewBlock();
     CBlock pblock = ptemplate->block;
+    // Add a blank transaction as our block-final tx, since the mining test
+    // chain hasn't been extended far enough to activate block-final
+    // transactions.
+    CMutableTransaction final_tx;
+    pblock.vtx.push_back(MakeTransactionRef(final_tx));
 
     CTxOut witness;
     witness.scriptPubKey.resize(MINIMUM_WITNESS_COMMITMENT);
-    witness.scriptPubKey[0] = OP_RETURN;
-    witness.scriptPubKey[1] = 0x24;
-    witness.scriptPubKey[2] = 0xaa;
-    witness.scriptPubKey[3] = 0x21;
-    witness.scriptPubKey[4] = 0xa9;
-    witness.scriptPubKey[5] = 0xed;
+    witness.scriptPubKey[0] = 0x25;
+    witness.scriptPubKey[1] = 0x01;
+    witness.scriptPubKey[witness.scriptPubKey.size()-4] = 0x4b;
+    witness.scriptPubKey[witness.scriptPubKey.size()-3] = 0x4a;
+    witness.scriptPubKey[witness.scriptPubKey.size()-2] = 0x49;
+    witness.scriptPubKey[witness.scriptPubKey.size()-1] = 0x48;
 
     // A witness larger than the minimum size is still valid
     CTxOut min_plus_one = witness;
-    min_plus_one.scriptPubKey.resize(MINIMUM_WITNESS_COMMITMENT + 1);
+    min_plus_one.scriptPubKey.insert(min_plus_one.scriptPubKey.begin() + 1, 0);
+    ++min_plus_one.scriptPubKey[0];
 
     CTxOut invalid = witness;
-    invalid.scriptPubKey[0] = OP_VERIFY;
+    invalid.scriptPubKey.back() ^= 1;
 
-    CMutableTransaction txCoinbase(*pblock.vtx[0]);
-    txCoinbase.vout.resize(4);
-    txCoinbase.vout[0] = witness;
-    txCoinbase.vout[1] = witness;
-    txCoinbase.vout[2] = min_plus_one;
-    txCoinbase.vout[3] = invalid;
-    pblock.vtx[0] = MakeTransactionRef(std::move(txCoinbase));
+    CMutableTransaction txFinal(*pblock.vtx.back());
+    txFinal.vout.resize(4);
+    txFinal.vout[0] = witness;
+    txFinal.vout[1] = witness;
+    txFinal.vout[2] = min_plus_one;
+    txFinal.vout[3] = invalid;
+    pblock.vtx.back() = MakeTransactionRef(std::move(txFinal));
 
-    BOOST_CHECK_EQUAL(GetWitnessCommitmentIndex(pblock), 2);
+    // The last output is invalid
+    BOOST_CHECK(!GetWitnessCommitment(pblock, nullptr, nullptr));
+
+    // Remove the invalid output and it should work
+    CMutableTransaction txFinal2(*pblock.vtx.back());
+    txFinal2.vout.pop_back();
+    pblock.vtx.back() = MakeTransactionRef(std::move(txFinal2));
+    BOOST_CHECK(GetWitnessCommitment(pblock, nullptr, nullptr));
 }
 BOOST_AUTO_TEST_SUITE_END()

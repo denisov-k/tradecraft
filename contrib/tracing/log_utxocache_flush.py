@@ -1,16 +1,27 @@
 #!/usr/bin/env python3
 # Copyright (c) 2021-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import sys
 import ctypes
 from bcc import BPF, USDT
 
-"""Example logging Bitcoin Core utxo set cache flushes utilizing
+"""Example logging Freicoin utxo set cache flushes utilizing
     the utxocache:flush tracepoint."""
 
-# USAGE:  ./contrib/tracing/log_utxocache_flush.py path/to/bitcoind
+# USAGE:  ./contrib/tracing/log_utxocache_flush.py path/to/freicoind
 
 # BCC: The C program to be compiled to an eBPF program (by BCC) and loaded into
 # a sandboxed Linux kernel VM.
@@ -70,15 +81,20 @@ def print_event(event):
     ))
 
 
+<<<<<<< v29.0
 def main(pid):
     print(f"Hooking into bitcoind with pid {pid}")
     bitcoind_with_usdts = USDT(pid=int(pid))
+=======
+def main(freicoind_path):
+    freicoind_with_usdts = USDT(path=str(freicoind_path))
+>>>>>>> tc-28.1
 
     # attaching the trace functions defined in the BPF program
     # to the tracepoints
-    bitcoind_with_usdts.enable_probe(
+    freicoind_with_usdts.enable_probe(
         probe="flush", fn_name="trace_flush")
-    b = BPF(text=program, usdt_contexts=[bitcoind_with_usdts])
+    b = BPF(text=program, usdt_contexts=[freicoind_with_usdts])
 
     def handle_flush(_, data, size):
         """ Coins Flush handler.
@@ -100,8 +116,13 @@ def main(pid):
 
 
 if __name__ == "__main__":
+<<<<<<< v29.0
     if len(sys.argv) != 2:
         print("USAGE: ", sys.argv[0], "<pid of bitcoind>")
+=======
+    if len(sys.argv) < 2:
+        print("USAGE: ", sys.argv[0], "path/to/freicoind")
+>>>>>>> tc-28.1
         exit(1)
 
     pid = sys.argv[1]

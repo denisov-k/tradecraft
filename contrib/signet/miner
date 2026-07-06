@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import argparse
 import json
@@ -20,8 +31,13 @@ sys.path.insert(0, PATH_BASE_TEST_FUNCTIONAL)
 
 from test_framework.blocktools import get_witness_script, script_BIP34_coinbase_height # noqa: E402
 from test_framework.messages import CBlock, CBlockHeader, COutPoint, CTransaction, CTxIn, CTxInWitness, CTxOut, from_binary, from_hex, ser_string, ser_uint256, tx_from_hex # noqa: E402
+<<<<<<< v29.0
 from test_framework.psbt import PSBT, PSBTMap, PSBT_GLOBAL_UNSIGNED_TX, PSBT_IN_FINAL_SCRIPTSIG, PSBT_IN_FINAL_SCRIPTWITNESS, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_SIGHASH_TYPE # noqa: E402
 from test_framework.script import CScript, CScriptOp # noqa: E402
+=======
+from test_framework.pst import PST, PSTMap, PST_GLOBAL_UNSIGNED_TX, PST_IN_FINAL_SCRIPTSIG, PST_IN_FINAL_SCRIPTWITNESS, PST_IN_NON_WITNESS_UTXO, PST_IN_SIGHASH_TYPE # noqa: E402
+from test_framework.script import CScriptOp # noqa: E402
+>>>>>>> tc-28.1
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)s %(message)s',
@@ -29,7 +45,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S')
 
 SIGNET_HEADER = b"\xec\xc7\xda\xa2"
-PSBT_SIGNET_BLOCK = b"\xfc\x06signetb"    # proprietary PSBT global field holding the block being signed
+PST_SIGNET_BLOCK = b"\xfc\x06signetb"    # proprietary PST global field holding the block being signed
 RE_MULTIMINER = re.compile(r"^(\d+)(-(\d+))?/(\d+)$")
 
 def signet_txs(block, challenge):
@@ -66,17 +82,33 @@ def signet_txs(block, challenge):
 
     return spend, to_spend
 
+<<<<<<< v29.0
 def decode_psbt(b64psbt):
     psbt = PSBT.from_base64(b64psbt)
+=======
+def do_createpst(block, signme, spendme):
+    pst = PST()
+    pst.g = PSTMap( {PST_GLOBAL_UNSIGNED_TX: signme.serialize(),
+                       PST_SIGNET_BLOCK: block.serialize()
+                     } )
+    pst.i = [ PSTMap( {PST_IN_NON_WITNESS_UTXO: spendme.serialize(),
+                         PST_IN_SIGHASH_TYPE: bytes([1,0,0,0])})
+             ]
+    pst.o = [ PSTMap() ]
+    return pst.hex()
 
-    assert len(psbt.tx.vin) == 1
-    assert len(psbt.tx.vout) == 1
-    assert PSBT_SIGNET_BLOCK in psbt.g.map
+def do_decode_pst(hexpst):
+    pst = PST.fromhex(hexpst)
+>>>>>>> tc-28.1
 
-    scriptSig = psbt.i[0].map.get(PSBT_IN_FINAL_SCRIPTSIG, b"")
-    scriptWitness = psbt.i[0].map.get(PSBT_IN_FINAL_SCRIPTWITNESS, b"\x00")
+    assert len(pst.tx.vin) == 1
+    assert len(pst.tx.vout) == 1
+    assert PST_SIGNET_BLOCK in pst.g.map
 
-    return from_binary(CBlock, psbt.g.map[PSBT_SIGNET_BLOCK]), ser_string(scriptSig) + scriptWitness
+    scriptSig = pst.i[0].map.get(PST_IN_FINAL_SCRIPTSIG, b"")
+    scriptWitness = pst.i[0].map.get(PST_IN_FINAL_SCRIPTWITNESS, b"\x00")
+
+    return from_binary(CBlock, pst.g.map[PST_SIGNET_BLOCK]), ser_string(scriptSig) + scriptWitness
 
 def finish_block(block, signet_solution, grind_cmd):
     block.vtx[0].vout[-1].scriptPubKey += CScriptOp.encode_op_pushdata(SIGNET_HEADER + signet_solution)
@@ -93,7 +125,11 @@ def finish_block(block, signet_solution, grind_cmd):
         block.rehash()
     return block
 
+<<<<<<< v29.0
 def generate_psbt(tmpl, reward_spk, *, blocktime=None, poolid=None):
+=======
+def generate_pst(tmpl, reward_spk, *, blocktime=None):
+>>>>>>> tc-28.1
     signet_spk = tmpl["signet_challenge"]
     signet_spk_bin = bytes.fromhex(signet_spk)
 
@@ -126,6 +162,7 @@ def generate_psbt(tmpl, reward_spk, *, blocktime=None, poolid=None):
 
     signme, spendme = signet_txs(block, signet_spk_bin)
 
+<<<<<<< v29.0
     psbt = PSBT()
     psbt.g = PSBTMap( {PSBT_GLOBAL_UNSIGNED_TX: signme.serialize(),
                        PSBT_SIGNET_BLOCK: block.serialize()
@@ -135,6 +172,9 @@ def generate_psbt(tmpl, reward_spk, *, blocktime=None, poolid=None):
              ]
     psbt.o = [ PSBTMap() ]
     return psbt.to_base64()
+=======
+    return do_createpst(block, signme, spendme)
+>>>>>>> tc-28.1
 
 def get_poolid(args):
     if args.poolid is not None:
@@ -171,6 +211,7 @@ def get_reward_addr_spk(args, height):
 
     return reward_addr, reward_spk
 
+<<<<<<< v29.0
 def do_genpsbt(args):
     poolid = get_poolid(args)
     tmpl = json.load(sys.stdin)
@@ -180,6 +221,16 @@ def do_genpsbt(args):
 
 def do_solvepsbt(args):
     block, signet_solution = decode_psbt(sys.stdin.read())
+=======
+def do_genpst(args):
+    tmpl = json.load(sys.stdin)
+    _, reward_spk = get_reward_addr_spk(args, tmpl["height"])
+    pst = generate_pst(tmpl, reward_spk)
+    print(pst)
+
+def do_solvepst(args):
+    block, signet_solution = do_decode_pst(sys.stdin.read())
+>>>>>>> tc-28.1
     block = finish_block(block, signet_solution, args.grind_cmd)
     print(block.serialize().hex())
 
@@ -438,9 +489,21 @@ def do_generate(args):
         # mine block
         logging.debug("Mining block delta=%s start=%s mine=%s", seconds_to_hms(gen.mine_time-bestheader["time"]), gen.mine_time, gen.is_mine)
         mined_blocks += 1
+<<<<<<< v29.0
         block = gen.mine(args.bcli, args.grind_cmd, tmpl, reward_spk)
         if block is None:
             return 1
+=======
+        pst = generate_pst(tmpl, reward_spk, blocktime=mine_time)
+        input_stream = os.linesep.join([pst, "true", "ALL"]).encode('utf8')
+        pst_signed = json.loads(args.bcli("-stdin", "walletprocesspst", input=input_stream))
+        if not pst_signed.get("complete",False):
+            logging.debug("Generated PST: %s" % (pst,))
+            sys.stderr.write("PST signing failed\n")
+            return 1
+        block, signet_solution = do_decode_pst(pst_signed["pst"])
+        block = finish_block(block, signet_solution, args.grind_cmd)
+>>>>>>> tc-28.1
 
         # submit block
         r = args.bcli("-stdin", "submitblock", input=block.serialize().hex().encode('utf8'))
@@ -494,9 +557,9 @@ def do_calibrate(args):
     print("nbits=%08x for %ds average mining time" % (target_to_nbits(want_targ), want_time))
     return 0
 
-def bitcoin_cli(basecmd, args, **kwargs):
+def freicoin_cli(basecmd, args, **kwargs):
     cmd = basecmd + ["-signet"] + args
-    logging.debug("Calling bitcoin-cli: %r", cmd)
+    logging.debug("Calling freicoin-cli: %r", cmd)
     out = subprocess.run(cmd, stdout=subprocess.PIPE, **kwargs, check=True).stdout
     if isinstance(out, bytes):
         out = out.decode('utf8')
@@ -504,16 +567,16 @@ def bitcoin_cli(basecmd, args, **kwargs):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cli", default="bitcoin-cli", type=str, help="bitcoin-cli command")
+    parser.add_argument("--cli", default="freicoin-cli", type=str, help="freicoin-cli command")
     parser.add_argument("--debug", action="store_true", help="Print debugging info")
     parser.add_argument("--quiet", action="store_true", help="Only print warnings/errors")
 
     cmds = parser.add_subparsers(help="sub-commands")
-    genpsbt = cmds.add_parser("genpsbt", help="Generate a block PSBT for signing")
-    genpsbt.set_defaults(fn=do_genpsbt)
+    genpst = cmds.add_parser("genpst", help="Generate a block PST for signing")
+    genpst.set_defaults(fn=do_genpst)
 
-    solvepsbt = cmds.add_parser("solvepsbt", help="Solve a signed block PSBT")
-    solvepsbt.set_defaults(fn=do_solvepsbt)
+    solvepst = cmds.add_parser("solvepst", help="Solve a signed block PST")
+    solvepst.set_defaults(fn=do_solvepst)
 
     generate = cmds.add_parser("generate", help="Mine blocks")
     generate.set_defaults(fn=do_generate)
@@ -536,6 +599,7 @@ def main():
     calibrate_by.add_argument("--nbits", type=str, default=None)
     calibrate_by.add_argument("--seconds", type=int, default=None)
 
+<<<<<<< v29.0
     for sp in [genpsbt, generate]:
         payto = sp.add_mutually_exclusive_group(required=True)
         payto.add_argument("--address", default=None, type=str, help="Address for block reward payment")
@@ -543,13 +607,18 @@ def main():
         pool = sp.add_mutually_exclusive_group()
         pool.add_argument("--poolnum", default=None, type=int, help="Identify blocks that you mine")
         pool.add_argument("--poolid", default=None, type=str, help="Identify blocks that you mine (eg: /signet:1/)")
+=======
+    for sp in [genpst, generate]:
+        sp.add_argument("--address", default=None, type=str, help="Address for block reward payment")
+        sp.add_argument("--descriptor", default=None, type=str, help="Descriptor for block reward payment")
+>>>>>>> tc-28.1
 
-    for sp in [solvepsbt, generate, calibrate]:
+    for sp in [solvepst, generate, calibrate]:
         sp.add_argument("--grind-cmd", default=None, type=str, required=(sp==calibrate), help="Command to grind a block header for proof-of-work")
 
     args = parser.parse_args(sys.argv[1:])
 
-    args.bcli = lambda *a, input=b"", **kwargs: bitcoin_cli(args.cli.split(" "), list(a), input=input, **kwargs)
+    args.bcli = lambda *a, input=b"", **kwargs: freicoin_cli(args.cli.split(" "), list(a), input=input, **kwargs)
 
     if hasattr(args, "address") and hasattr(args, "descriptor"):
         args.derived_addresses = {}

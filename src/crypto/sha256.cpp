@@ -1,8 +1,23 @@
 // Copyright (c) 2014-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+<<<<<<< v29.0
 #include <bitcoin-build-config.h> // IWYU pragma: keep
+=======
+#include <config/freicoin-config.h> // IWYU pragma: keep
+>>>>>>> tc-28.1
 
 #include <crypto/sha256.h>
 #include <crypto/common.h>
@@ -698,6 +713,28 @@ CSHA256::CSHA256()
     sha256::Initialize(s);
 }
 
+CSHA256::CSHA256(const unsigned char iv[OUTPUT_SIZE]) : bytes(0)
+{
+    s[0] = ReadBE32(iv);
+    s[1] = ReadBE32(iv + 4);
+    s[2] = ReadBE32(iv + 8);
+    s[3] = ReadBE32(iv + 12);
+    s[4] = ReadBE32(iv + 16);
+    s[5] = ReadBE32(iv + 20);
+    s[6] = ReadBE32(iv + 24);
+    s[7] = ReadBE32(iv + 28);
+}
+
+CSHA256::CSHA256(const unsigned char hash[OUTPUT_SIZE], const unsigned char* buffer, uint64_t length) : CSHA256(hash)
+{
+    assert(length % 8 == 0);
+    bytes = length >> 3;
+    if (bytes % 64) {
+        assert(buffer);
+        memcpy(buf, buffer, bytes % 64);
+    }
+}
+
 CSHA256& CSHA256::Write(const unsigned char* data, size_t len)
 {
     const unsigned char* end = data + len;
@@ -731,6 +768,11 @@ void CSHA256::Finalize(unsigned char hash[OUTPUT_SIZE])
     WriteBE64(sizedesc, bytes << 3);
     Write(pad, 1 + ((119 - (bytes % 64)) % 64));
     Write(sizedesc, 8);
+    Midstate(hash, NULL, NULL);
+}
+
+void CSHA256::Midstate(unsigned char hash[OUTPUT_SIZE], unsigned char* buffer, uint64_t* length)
+{
     WriteBE32(hash, s[0]);
     WriteBE32(hash + 4, s[1]);
     WriteBE32(hash + 8, s[2]);
@@ -739,6 +781,12 @@ void CSHA256::Finalize(unsigned char hash[OUTPUT_SIZE])
     WriteBE32(hash + 20, s[5]);
     WriteBE32(hash + 24, s[6]);
     WriteBE32(hash + 28, s[7]);
+    if (length) {
+        *length = bytes << 3;
+    }
+    if (buffer) {
+        memcpy(buffer, buf, bytes % 64);
+    }
 }
 
 CSHA256& CSHA256::Reset()

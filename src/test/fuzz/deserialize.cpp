@@ -1,6 +1,17 @@
 // Copyright (c) 2009-2021 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <addrdb.h>
 #include <addrman.h>
@@ -20,7 +31,7 @@
 #include <node/utxo_snapshot.h>
 #include <primitives/block.h>
 #include <protocol.h>
-#include <psbt.h>
+#include <pst.h>
 #include <pubkey.h>
 #include <script/keyorigin.h>
 #include <streams.h>
@@ -196,13 +207,13 @@ FUZZ_TARGET_DESERIALIZE(prefilled_transaction_deserialize, {
     PrefilledTransaction prefilled_transaction;
     DeserializeFromFuzzingInput(buffer, prefilled_transaction);
 })
-FUZZ_TARGET_DESERIALIZE(psbt_input_deserialize, {
-    PSBTInput psbt_input;
-    DeserializeFromFuzzingInput(buffer, psbt_input);
+FUZZ_TARGET_DESERIALIZE(pst_input_deserialize, {
+    PSTInput pst_input;
+    DeserializeFromFuzzingInput(buffer, pst_input);
 })
-FUZZ_TARGET_DESERIALIZE(psbt_output_deserialize, {
-    PSBTOutput psbt_output;
-    DeserializeFromFuzzingInput(buffer, psbt_output);
+FUZZ_TARGET_DESERIALIZE(pst_output_deserialize, {
+    PSTOutput pst_output;
+    DeserializeFromFuzzingInput(buffer, pst_output);
 })
 FUZZ_TARGET_DESERIALIZE(block_deserialize, {
     CBlock block;

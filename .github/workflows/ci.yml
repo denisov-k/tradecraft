@@ -1,6 +1,23 @@
+<<<<<<< v29.0
 # Copyright (c) 2023-present The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
+=======
+# Copyright (c) 2023 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+>>>>>>> tc-28.1
 
 name: CI
 on:
@@ -80,12 +97,17 @@ jobs:
     # See: https://github.com/actions/runner-images#available-images.
     runs-on: macos-14
 
+<<<<<<< v29.0
     # When a contributor maintains a fork of the repo, any pull request they make
     # to their own fork, or to the main repository, will trigger two CI runs:
     # one for the branch push and one for the pull request.
     # This can be avoided by setting SKIP_BRANCH_PUSH=true as a custom env variable
     # in Github repository settings.
     if: ${{ vars.SKIP_BRANCH_PUSH != 'true' || github.event_name == 'pull_request' }}
+=======
+    # No need to run on the read-only mirror, unless it is a PR.
+    if: github.repository != 'freicoin/gui' || github.event_name == 'pull_request'
+>>>>>>> tc-28.1
 
     timeout-minutes: 120
 
@@ -156,7 +178,12 @@ jobs:
     # See: https://github.com/actions/runner-images#available-images.
     runs-on: windows-2022
 
+<<<<<<< v29.0
     if: ${{ vars.SKIP_BRANCH_PUSH != 'true' || github.event_name == 'pull_request' }}
+=======
+    # No need to run on the read-only mirror, unless it is a PR.
+    if: github.repository != 'freicoin/gui' || github.event_name == 'pull_request'
+>>>>>>> tc-28.1
 
     env:
       PYTHONUTF8: 1
@@ -226,6 +253,7 @@ jobs:
       - name: Build
         working-directory: build
         run: |
+<<<<<<< v29.0
           cmake --build . -j $env:NUMBER_OF_PROCESSORS --config Release
 
       - name: Run test suite
@@ -233,6 +261,33 @@ jobs:
         working-directory: build
         run: |
           ctest --output-on-failure --stop-on-failure -j $env:NUMBER_OF_PROCESSORS -C Release
+=======
+          ccache --zero-stats
+          msbuild build_msvc\freicoin.sln -property:CLToolPath=C:\ccache;CLToolExe=cl.exe;UseMultiToolTask=true;Configuration=Release -maxCpuCount -verbosity:minimal -noLogo
+
+      - name: Ccache stats
+        run: ccache --show-stats
+
+      - name: Save Ccache cache
+        uses: actions/cache/save@v4
+        if: github.event_name != 'pull_request' && steps.ccache-cache.outputs.cache-hit != 'true'
+        with:
+          path: ~/AppData/Local/ccache
+          # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
+          key: ${{ github.job }}-ccache-${{ github.run_id }}
+
+      - name: Run unit tests
+        run: src\test_freicoin.exe -l test_suite
+
+      - name: Run benchmarks
+        run: src\bench_freicoin.exe -sanity-check
+
+      - name: Run util tests
+        run: py -3 test\util\test_runner.py
+
+      - name: Run rpcauth test
+        run: py -3 test\util\rpcauth-test.py
+>>>>>>> tc-28.1
 
       - name: Run functional tests
         if: matrix.job-type == 'standard'
@@ -258,7 +313,11 @@ jobs:
         if: matrix.job-type == 'fuzz'
         working-directory: build
         env:
+<<<<<<< v29.0
           BITCOINFUZZ: '${{ github.workspace }}\build\bin\Release\fuzz.exe'
+=======
+          FREICOINFUZZ: "${{ github.workspace}}\\src\\fuzz.exe"
+>>>>>>> tc-28.1
         shell: cmd
         run: |
           py -3 test\fuzz\test_runner.py --par %NUMBER_OF_PROCESSORS% --loglevel DEBUG %RUNNER_TEMP%\qa-assets\fuzz_corpora
@@ -266,7 +325,12 @@ jobs:
   asan-lsan-ubsan-integer-no-depends-usdt:
     name: 'ASan + LSan + UBSan + integer, no depends, USDT'
     runs-on: ubuntu-24.04 # has to match container in ci/test/00_setup_env_native_asan.sh for tracing tools
+<<<<<<< v29.0
     if: ${{ vars.SKIP_BRANCH_PUSH != 'true' || github.event_name == 'pull_request' }}
+=======
+    # No need to run on the read-only mirror, unless it is a PR.
+    if: github.repository != 'freicoin/gui' || github.event_name == 'pull_request'
+>>>>>>> tc-28.1
     timeout-minutes: 120
     env:
       FILE_ENV: "./ci/test/00_setup_env_native_asan.sh"

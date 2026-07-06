@@ -1,21 +1,36 @@
 #!/usr/bin/env python3
 # Copyright (c) 2017-2021 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test various command line arguments and configuration file parameters."""
 
 import json
 
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.test_node import ErrorMatch
 from test_framework.util import assert_equal
 
 
+<<<<<<< v29.0
 class SettingsTest(BitcoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
+=======
+class SettingsTest(FreicoinTestFramework):
+>>>>>>> tc-28.1
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -42,7 +57,7 @@ class SettingsTest(BitcoinTestFramework):
     def run_test(self):
         node, = self.nodes
         settings = node.chain_path / "settings.json"
-        conf = node.datadir_path / "bitcoin.conf"
+        conf = node.datadir_path / "freicoin.conf"
 
         # Assert default settings file was created
         self.stop_node(0)

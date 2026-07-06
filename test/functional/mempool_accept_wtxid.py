@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2021 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Test mempool acceptance in case of an already known transaction
 with identical non-witness data but different witness.
@@ -28,13 +39,15 @@ from test_framework.script import (
     OP_IF,
     OP_TRUE,
     hash160,
+    hash256,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.script_util import script_to_witness
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
 
-class MempoolWtxidTest(BitcoinTestFramework):
+class MempoolWtxidTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
@@ -44,19 +57,20 @@ class MempoolWtxidTest(BitcoinTestFramework):
 
         self.log.info('Start with empty mempool and 101 blocks')
         # The last 100 coinbase transactions are premature
-        blockhash = self.generate(node, 101)[0]
-        txid = node.getblock(blockhash=blockhash, verbosity=2)["tx"][0]["txid"]
+        blockhash = self.generate(node, 101)[1]
+        tx = node.getblock(blockhash=blockhash, verbosity=2)["tx"][0]
         assert_equal(node.getmempoolinfo()['size'], 0)
 
         self.log.info("Submit parent with multiple script branches to mempool")
         hashlock = hash160(b'Preimage')
-        witness_script = CScript([OP_IF, OP_HASH160, hashlock, OP_EQUAL, OP_ELSE, OP_TRUE, OP_ENDIF])
-        witness_program = sha256(witness_script)
+        witness_script = script_to_witness(CScript([OP_IF, OP_HASH160, hashlock, OP_EQUAL, OP_ELSE, OP_TRUE, OP_ENDIF]))
+        witness_program = hash256(witness_script)
         script_pubkey = CScript([OP_0, witness_program])
 
         parent = CTransaction()
-        parent.vin.append(CTxIn(COutPoint(int(txid, 16), 0), b""))
+        parent.vin.append(CTxIn(COutPoint(int(tx["txid"], 16), 0), b""))
         parent.vout.append(CTxOut(int(9.99998 * COIN), script_pubkey))
+        parent.lock_height = tx["lockheight"]
         parent.rehash()
 
         privkeys = [node.get_deterministic_priv_key().key]
@@ -67,21 +81,22 @@ class MempoolWtxidTest(BitcoinTestFramework):
         peer_wtxid_relay = node.add_p2p_connection(P2PTxInvStore())
 
         # Create a new transaction with witness solving first branch
-        child_witness_script = CScript([OP_TRUE])
+        child_witness_script = script_to_witness(CScript([OP_TRUE]))
         child_witness_program = sha256(child_witness_script)
         child_script_pubkey = CScript([OP_0, child_witness_program])
 
         child_one = CTransaction()
         child_one.vin.append(CTxIn(COutPoint(int(parent_txid, 16), 0), b""))
         child_one.vout.append(CTxOut(int(9.99996 * COIN), child_script_pubkey))
+        child_one.lock_height = parent.lock_height
         child_one.wit.vtxinwit.append(CTxInWitness())
-        child_one.wit.vtxinwit[0].scriptWitness.stack = [b'Preimage', b'\x01', witness_script]
+        child_one.wit.vtxinwit[0].scriptWitness.stack = [b'Preimage', b'\x01', witness_script, b'']
         child_one_wtxid = child_one.getwtxid()
         child_one_txid = child_one.rehash()
 
         # Create another identical transaction with witness solving second branch
         child_two = deepcopy(child_one)
-        child_two.wit.vtxinwit[0].scriptWitness.stack = [b'', witness_script]
+        child_two.wit.vtxinwit[0].scriptWitness.stack = [b'', witness_script, b'']
         child_two_wtxid = child_two.getwtxid()
         child_two_txid = child_two.rehash()
 

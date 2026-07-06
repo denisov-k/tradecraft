@@ -1,3 +1,4 @@
+<<<<<<< v29.0
 [fc10:efa7:ca6:1548:f8c:6bb9:1cc4:63ae]:8333
 [fc1f:22c3:95dc:a3af:4a93:8251:beb9:1858]:8333
 [fc32:2c16:d0d0:f1fb:3b27:c187:8cb5:9201]:8333
@@ -2029,3 +2030,25 @@ zwyshlkggvehzqs26clcvuskdxen2ry5zbl5axe36x4brzsk7b55ypyd.onion:8333
 zyetfkanxicfp6tt5tegkxlkoz5rl2i3zsc6hyyqizahywbktezfuwid.onion:8333
 zyku4bk6pdifla26hympigytlwsx4htajcn43hhobdbrv4tfojv3snqd.onion:8333
 zyphknlr4ogrknj5t64qya246kdaasgirn4iercvesggqplzzxsisbid.onion:8333
+=======
+# List of fixed seed nodes for mainnet
+127.0.0.1:8639
+5.78.110.217:8639
+51.81.166.153:8639
+51.81.32.218:8639
+54.38.193.222:8639
+54.39.129.45:8639
+65.21.3.81:8639
+85.15.179.171:8639
+91.206.16.214:8639
+[2001:41d0:602:18de::]:8639
+[2604:2dc0:101:200::32f6]:8639
+[2604:2dc0:200:1799::]:8639
+[2607:5300:203:402d::]:8639
+[2a01:4f9:c012:597b::1]:8639
+[2a01:4ff:1f0:c7d5::1]:8639
+
+# Onion nodes
+ny2dxff45d6b3logugorh33k7s45mndxkqtgaof6kuz5uegjulmvphad.onion:8639
+i4hornrxsmyxdrplzpogtx4casxwcpla4kkubyo35acajghdnrblxbid.onion:8639
+>>>>>>> tc-28.1

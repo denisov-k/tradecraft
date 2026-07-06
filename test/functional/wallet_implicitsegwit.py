@@ -1,22 +1,31 @@
 #!/usr/bin/env python3
 # Copyright (c) 2019-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the wallet implicit segwit feature."""
 
 import test_framework.address as address
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 
 # TODO: Might be nice to test p2pk here too
-address_types = ('legacy', 'bech32', 'p2sh-segwit')
+address_types = ('legacy', 'bech32')
 
 def key_to_address(key, address_type):
     if address_type == 'legacy':
         return address.key_to_p2pkh(key)
-    elif address_type == 'p2sh-segwit':
-        return address.key_to_p2sh_p2wpkh(key)
     elif address_type == 'bech32':
-        return address.key_to_p2wpkh(key)
+        return address.key_to_p2wpk(key)
 
 def send_a_to_b(receive_node, send_node):
     keys = {}
@@ -38,7 +47,7 @@ def check_implicit_transactions(implicit_keys, implicit_node):
             b_address = key_to_address(pubkey, b)
             assert ('receive', b_address) in tuple((tx['category'], tx['address']) for tx in txs)
 
-class ImplicitSegwitTest(BitcoinTestFramework):
+class ImplicitSegwitTest(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser, descriptors=False)
 

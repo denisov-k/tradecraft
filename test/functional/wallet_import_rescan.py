@@ -1,28 +1,39 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test wallet import RPCs.
 
 Test rescan behavior of importaddress, importpubkey, importprivkey, and
 importmulti RPCs with different types of keys and rescan options.
 
 In the first part of the test, node 0 creates an address for each type of
-import RPC call and sends BTC to it. Then other nodes import the addresses,
+import RPC call and sends FRC to it. Then other nodes import the addresses,
 and the test makes listtransactions and getbalance calls to confirm that the
 importing node either did or did not execute rescans picking up the send
 transactions.
 
-In the second part of the test, node 0 sends more BTC to each address, and the
+In the second part of the test, node 0 sends more FRC to each address, and the
 test makes more listtransactions and getbalance calls to confirm that the
 importing nodes pick up the new transactions regardless of whether rescans
 happened previously.
 """
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.address import (
     AddressType,
-    ADDRESS_BCRT1_UNSPENDABLE,
+    ADDRESS_FCRT1_UNSPENDABLE,
 )
 from test_framework.messages import COIN
 from test_framework.util import (
@@ -48,11 +59,11 @@ class Variant(collections.namedtuple("Variant", "call data address_type rescan p
         rescan = self.rescan == Rescan.yes
 
         assert_equal(self.address["solvable"], True)
-        assert_equal(self.address["isscript"], self.address_type == AddressType.p2sh_segwit)
+        assert_equal(self.address["isscript"], self.address_type == AddressType.bech32)
         assert_equal(self.address["iswitness"], self.address_type == AddressType.bech32)
-        if self.address["isscript"]:
+        if self.address["isscript"] and self.address_type == AddressType.bech32:
             assert_equal(self.address["embedded"]["isscript"], False)
-            assert_equal(self.address["embedded"]["iswitness"], True)
+            assert_equal(self.address["embedded"]["iswitness"], False)
 
         if self.call == Call.single:
             if self.data == Data.address:
@@ -74,9 +85,6 @@ class Variant(collections.namedtuple("Variant", "call data address_type rescan p
                 "label": self.label,
                 "watchonly": self.data != Data.priv
             }
-            if self.address_type == AddressType.p2sh_segwit and self.data != Data.address:
-                # We need solving data when providing a pubkey or privkey as data
-                request.update({"redeemscript": self.address['embedded']['scriptPubKey']})
             response = self.node.importmulti(
                 requests=[request],
                 rescan=self.rescan in (Rescan.yes, Rescan.late_timestamp),
@@ -152,7 +160,7 @@ def get_rand_amount(min_amount=AMOUNT_DUST):
     return Decimal(str(round(r, 8)))
 
 
-class ImportRescanTest(BitcoinTestFramework):
+class ImportRescanTest(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser, descriptors=False)
 
@@ -299,7 +307,8 @@ class ImportRescanTest(BitcoinTestFramework):
             child = self.nodes[1].send(
                 add_to_wallet=False,
                 inputs=[unspent_txid_map[variant.initial_txid]],
-                outputs=[{ADDRESS_BCRT1_UNSPENDABLE : variant.initial_amount}],
+                outputs=[{ADDRESS_FCRT1_UNSPENDABLE : variant.initial_amount}],
+                lockheight=unspent_txid_map[variant.initial_txid]["refheight"],
                 subtract_fee_from_outputs=[0]
             )
             variant.child_txid = child["txid"]

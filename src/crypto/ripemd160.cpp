@@ -1,6 +1,17 @@
 // Copyright (c) 2014-2019 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <crypto/ripemd160.h>
 
@@ -244,6 +255,15 @@ CRIPEMD160::CRIPEMD160()
     ripemd160::Initialize(s);
 }
 
+CRIPEMD160::CRIPEMD160(const unsigned char iv[OUTPUT_SIZE]) : bytes(0)
+{
+    s[0] = ReadLE32(iv);
+    s[1] = ReadLE32(iv + 4);
+    s[2] = ReadLE32(iv + 8);
+    s[3] = ReadLE32(iv + 12);
+    s[4] = ReadLE32(iv + 16);
+}
+
 CRIPEMD160& CRIPEMD160::Write(const unsigned char* data, size_t len)
 {
     const unsigned char* end = data + len;
@@ -277,11 +297,22 @@ void CRIPEMD160::Finalize(unsigned char hash[OUTPUT_SIZE])
     WriteLE64(sizedesc, bytes << 3);
     Write(pad, 1 + ((119 - (bytes % 64)) % 64));
     Write(sizedesc, 8);
+    Midstate(hash, NULL, NULL);
+}
+
+void CRIPEMD160::Midstate(unsigned char hash[OUTPUT_SIZE], unsigned char* buffer, size_t* length)
+{
     WriteLE32(hash, s[0]);
     WriteLE32(hash + 4, s[1]);
     WriteLE32(hash + 8, s[2]);
     WriteLE32(hash + 12, s[3]);
     WriteLE32(hash + 16, s[4]);
+    if (length) {
+        *length = bytes << 3;
+    }
+    if (buffer) {
+        memcpy(buffer, buf, bytes % 64);
+    }
 }
 
 CRIPEMD160& CRIPEMD160::Reset()

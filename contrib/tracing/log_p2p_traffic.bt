@@ -5,7 +5,11 @@ BEGIN
   printf("Logging P2P traffic\n")
 }
 
+<<<<<<< v29.0
 usdt:./build/bin/bitcoind:net:inbound_message
+=======
+usdt:./src/freicoind:net:inbound_message
+>>>>>>> tc-28.1
 {
   $peer_id = (int64) arg0;
   $peer_addr = str(arg1);
@@ -15,7 +19,11 @@ usdt:./build/bin/bitcoind:net:inbound_message
   printf("inbound '%s' msg from peer %d (%s, %s) with %d bytes\n", $msg_type, $peer_id, $peer_type, $peer_addr, $msg_len);
 }
 
+<<<<<<< v29.0
 usdt:./build/bin/bitcoind:net:outbound_message
+=======
+usdt:./src/freicoind:net:outbound_message
+>>>>>>> tc-28.1
 {
   $peer_id = (int64) arg0;
   $peer_addr = str(arg1);

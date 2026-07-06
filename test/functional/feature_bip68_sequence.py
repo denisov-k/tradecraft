@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test BIP68 implementation."""
 
 import time
@@ -24,8 +35,9 @@ from test_framework.messages import (
 from test_framework.script import (
     CScript,
     OP_TRUE,
+    OP_0NOTEQUAL,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -34,7 +46,10 @@ from test_framework.util import (
 )
 from test_framework.wallet import MiniWallet
 
-SCRIPT_W0_SH_OP_TRUE = script_to_p2wsh_script(CScript([OP_TRUE]))
+# Effectively the same as OP_TRUE, but needs to be something that the test
+# wallet doesn't recognize as its own.
+SCRIPT_OP_TRUE = CScript([OP_TRUE, OP_0NOTEQUAL])
+SCRIPT_W0_SH_OP_TRUE = script_to_p2wsh_script(SCRIPT_OP_TRUE)
 
 SEQUENCE_LOCKTIME_DISABLE_FLAG = (1<<31)
 SEQUENCE_LOCKTIME_TYPE_FLAG = (1<<22) # this means use time (0 means height)
@@ -44,7 +59,7 @@ SEQUENCE_LOCKTIME_MASK = 0x0000ffff
 # RPC error for non-BIP68 final transactions
 NOT_FINAL_ERROR = "non-BIP68-final"
 
-class BIP68Test(BitcoinTestFramework):
+class BIP68Test(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -52,10 +67,10 @@ class BIP68Test(BitcoinTestFramework):
         self.num_nodes = 2
         self.extra_args = [
             [
-                '-testactivationheight=csv@432',
+                '-testactivationheight=locktime@432',
             ],
             [
-                '-testactivationheight=csv@432',
+                '-testactivationheight=locktime@432',
             ],
         ]
 
@@ -76,7 +91,7 @@ class BIP68Test(BitcoinTestFramework):
         self.test_bip68_not_consensus()
 
         self.log.info("Activating BIP68 (and 112/113)")
-        self.activateCSV()
+        self.activateMTP()
 
         self.log.info("Verifying version=2 transactions are standard.")
         self.log.info("Note that version=2 transactions are always standard (independent of BIP68 activation status).")
@@ -111,17 +126,17 @@ class BIP68Test(BitcoinTestFramework):
         sequence_value = sequence_value & 0x7fffffff
         tx2.vin = [CTxIn(COutPoint(tx1_id, 0), nSequence=sequence_value)]
         tx2.wit.vtxinwit = [CTxInWitness()]
-        tx2.wit.vtxinwit[0].scriptWitness.stack = [CScript([OP_TRUE])]
+        tx2.wit.vtxinwit[0].scriptWitness.stack = [b"\x00" + SCRIPT_OP_TRUE, b""]
         tx2.vout = [CTxOut(int(value - self.relayfee * COIN), SCRIPT_W0_SH_OP_TRUE)]
         tx2.rehash()
 
         assert_raises_rpc_error(-26, NOT_FINAL_ERROR, self.wallet.sendrawtransaction, from_node=self.nodes[0], tx_hex=tx2.serialize().hex())
 
-        # Setting the version back down to 1 should disable the sequence lock,
-        # so this should be accepted.
+        # Setting the version back down to 1 does not disable the
+        # sequence lock, unlike bitcoin, so this is still rejected.
         tx2.version = 1
 
-        self.wallet.sendrawtransaction(from_node=self.nodes[0], tx_hex=tx2.serialize().hex())
+        assert_raises_rpc_error(-26, "non-BIP68-final", self.wallet.sendrawtransaction, from_node=self.nodes[0], tx_hex=tx2.serialize().hex())
 
     # Calculate the median time past of a prior block ("confirmations" before
     # the current tip).
@@ -249,7 +264,7 @@ class BIP68Test(BitcoinTestFramework):
             tx.version = 2
             tx.vin = [CTxIn(COutPoint(orig_tx.sha256, 0), nSequence=sequence_value)]
             tx.wit.vtxinwit = [CTxInWitness()]
-            tx.wit.vtxinwit[0].scriptWitness.stack = [CScript([OP_TRUE])]
+            tx.wit.vtxinwit[0].scriptWitness.stack = [b"\x00" + SCRIPT_OP_TRUE, b""]
             tx.vout = [CTxOut(int(orig_tx.vout[0].nValue - relayfee * COIN), SCRIPT_W0_SH_OP_TRUE)]
             tx.rehash()
 
@@ -337,6 +352,11 @@ class BIP68Test(BitcoinTestFramework):
             tmpl = self.nodes[0].getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)
             tmpl['previousblockhash'] = '%x' % tip
             tmpl['transactions'] = []
+            tmpl['finaltx'] = {'prevout': [{
+                'txid': block.vtx[-1].hash,
+                'vout': n,
+                'amount': block.vtx[-1].vout[n].nValue,
+            } for n in range(len(block.vtx[-1].vout))]}
             cur_time += 1
 
         mempool = self.nodes[0].getrawmempool()
@@ -353,7 +373,7 @@ class BIP68Test(BitcoinTestFramework):
     # being run, then it's possible the test has activated the soft fork, and
     # this test should be moved to run earlier, or deleted.
     def test_bip68_not_consensus(self):
-        assert not softfork_active(self.nodes[0], 'csv')
+        assert not softfork_active(self.nodes[0], 'locktime')
 
         tx1 = self.wallet.send_self_transfer(from_node=self.nodes[0])["tx"]
         tx1.rehash()
@@ -379,7 +399,7 @@ class BIP68Test(BitcoinTestFramework):
         tx3.version = 2
         tx3.vin = [CTxIn(COutPoint(tx2.sha256, 0), nSequence=sequence_value)]
         tx3.wit.vtxinwit = [CTxInWitness()]
-        tx3.wit.vtxinwit[0].scriptWitness.stack = [CScript([OP_TRUE])]
+        tx3.wit.vtxinwit[0].scriptWitness.stack = [b"\x00" + SCRIPT_OP_TRUE, b""]
         tx3.vout = [CTxOut(int(tx2.vout[0].nValue - self.relayfee * COIN), SCRIPT_W0_SH_OP_TRUE)]
         tx3.rehash()
 
@@ -393,16 +413,16 @@ class BIP68Test(BitcoinTestFramework):
         assert_equal(None, self.nodes[0].submitblock(block.serialize().hex()))
         assert_equal(self.nodes[0].getbestblockhash(), block.hash)
 
-    def activateCSV(self):
+    def activateMTP(self):
         # activation should happen at block height 432 (3 periods)
-        # getblockchaininfo will show CSV as active at block 431 (144 * 3 -1) since it's returning whether CSV is active for the next block.
+        # getblockchaininfo will show MTP as active at block 431 (144 * 3 -1) since it's returning whether MTP is active for the next block.
         min_activation_height = 432
         height = self.nodes[0].getblockcount()
         assert_greater_than(min_activation_height - height, 2)
         self.generate(self.wallet, min_activation_height - height - 2, sync_fun=self.no_op)
-        assert not softfork_active(self.nodes[0], 'csv')
+        assert not softfork_active(self.nodes[0], 'locktime')
         self.generate(self.wallet, 1, sync_fun=self.no_op)
-        assert softfork_active(self.nodes[0], 'csv')
+        assert softfork_active(self.nodes[0], 'locktime')
         self.sync_blocks()
 
     # Use self.nodes[1] to test that version 2 transactions are standard.

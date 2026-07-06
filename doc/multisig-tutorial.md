@@ -1,59 +1,73 @@
 # 1. Multisig Tutorial
 
-Currently, it is possible to create a multisig wallet using Bitcoin Core only.
+Currently, it is possible to create a multisig wallet using Freicoin only.
 
-Although there is already a brief explanation about the multisig in the [Descriptors documentation](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#multisig), this tutorial proposes to use the signet (instead of regtest), bringing the reader closer to a real environment and explaining some functions in more detail.
+Although there is already a brief explanation about the multisig in the [Descriptors documentation](https://github.com/tradecraftio/tradecraft/blob/master/doc/descriptors.md#multisig), this tutorial proposes to use the signet (instead of regtest), bringing the reader closer to a real environment and explaining some functions in more detail.
 
 This tutorial uses [jq](https://github.com/stedolan/jq) JSON processor to process the results from RPC and stores the relevant values in bash variables. This makes the tutorial reproducible and easier to follow step by step.
 
-Before starting this tutorial, start the bitcoin node on the signet network.
+Before starting this tutorial, start the freicoin node on the signet network.
 
 ```bash
+<<<<<<< v29.0
 ./build/bin/bitcoind -signet -daemon
+=======
+./src/freicoind -signet -daemon
+>>>>>>> tc-28.1
 ```
 
-This tutorial also uses the default WPKH derivation path to get the xpubs and does not conform to [BIP 45](https://github.com/bitcoin/bips/blob/master/bip-0045.mediawiki) or [BIP 87](https://github.com/bitcoin/bips/blob/master/bip-0087.mediawiki).
+This tutorial also uses the default WPK derivation path to get the xpubs and does not conform to [BIP 45](https://github.com/bitcoin/bips/blob/master/bip-0045.mediawiki) or [BIP 87](https://github.com/bitcoin/bips/blob/master/bip-0087.mediawiki).
 
-At the time of writing, there is no way to extract a specific path from wallets in Bitcoin Core. For this, an external signer/xpub can be used.
+At the time of writing, there is no way to extract a specific path from wallets in Freicoin. For this, an external signer/xpub can be used.
 
 ## 1.1 Basic Multisig Workflow
 
 ### 1.1 Create the Descriptor Wallets
 
-For a 2-of-3 multisig, create 3 descriptor wallets. It is important that they are of the descriptor type in order to retrieve the wallet descriptors. These wallets contain HD seed and private keys, which will be used to sign the PSBTs and derive the xpub.
+For a 2-of-3 multisig, create 3 descriptor wallets. It is important that they are of the descriptor type in order to retrieve the wallet descriptors. These wallets contain HD seed and private keys, which will be used to sign the PSTs and derive the xpub.
 
 These three wallets should not be used directly for privacy reasons (public key reuse). They should only be used to sign transactions for the (watch-only) multisig wallet.
 
 ```bash
 for ((n=1;n<=3;n++))
 do
+<<<<<<< v29.0
  ./build/bin/bitcoin-cli -signet createwallet "participant_${n}"
+=======
+ ./src/freicoin-cli -signet createwallet "participant_${n}"
+>>>>>>> tc-28.1
 done
 ```
 
-Extract the xpub of each wallet. To do this, the `listdescriptors` RPC is used. By default, Bitcoin Core single-sig wallets are created using path `m/44'/1'/0'` for PKH, `m/84'/1'/0'` for WPKH, `m/49'/1'/0'` for P2WPKH-nested-in-P2SH and `m/86'/1'/0'` for P2TR based accounts. Each of them uses the chain 0 for external addresses and chain 1 for internal ones, as shown in the example below.
+Extract the xpub of each wallet. To do this, the `listdescriptors` RPC is used. By default, Freicoin single-sig wallets are created using path `m/44'/1'/0'` for PKH, `m/84'/1'/0'` for WPK, `m/49'/1'/0'` for P2WPK-nested-in-P2SH and `m/86'/1'/0'` for P2TR based accounts. Each of them uses the chain 0 for external addresses and chain 1 for internal ones, as shown in the example below.
 
 ```
-wpkh([1004658e/84'/1'/0']tpubDCBEcmVKbfC9KfdydyLbJ2gfNL88grZu1XcWSW9ytTM6fitvaRmVyr8Ddf7SjZ2ZfMx9RicjYAXhuh3fmLiVLPodPEqnQQURUfrBKiiVZc8/0/*)#g8l47ngv
+wpk([1004658e/84'/1'/0']tpubDCBEcmVKbfC9KfdydyLbJ2gfNL88grZu1XcWSW9ytTM6fitvaRmVyr8Ddf7SjZ2ZfMx9RicjYAXhuh3fmLiVLPodPEqnQQURUfrBKiiVZc8/0/*)#g8l47ngv
 
-wpkh([1004658e/84'/1'/0']tpubDCBEcmVKbfC9KfdydyLbJ2gfNL88grZu1XcWSW9ytTM6fitvaRmVyr8Ddf7SjZ2ZfMx9RicjYAXhuh3fmLiVLPodPEqnQQURUfrBKiiVZc8/1/*)#en65rxc5
+wpk([1004658e/84'/1'/0']tpubDCBEcmVKbfC9KfdydyLbJ2gfNL88grZu1XcWSW9ytTM6fitvaRmVyr8Ddf7SjZ2ZfMx9RicjYAXhuh3fmLiVLPodPEqnQQURUfrBKiiVZc8/1/*)#en65rxc5
 ```
 
 The suffix (after #) is the checksum. Descriptors can optionally be suffixed with a checksum to protect against typos or copy-paste errors.
-All RPCs in Bitcoin Core will include the checksum in their output.
+All RPCs in Freicoin will include the checksum in their output.
 
 ```bash
 declare -A xpubs
 
 for ((n=1;n<=3;n++))
 do
+<<<<<<< v29.0
  xpubs["internal_xpub_${n}"]=$(./build/bin/bitcoin-cli -signet -rpcwallet="participant_${n}" listdescriptors | jq '.descriptors | [.[] | select(.desc | startswith("wpkh") and contains("/1/*"))][0] | .desc' | grep -Po '(?<=\().*(?=\))')
 
  xpubs["external_xpub_${n}"]=$(./build/bin/bitcoin-cli -signet -rpcwallet="participant_${n}" listdescriptors | jq '.descriptors | [.[] | select(.desc | startswith("wpkh") and contains("/0/*") )][0] | .desc' | grep -Po '(?<=\().*(?=\))')
+=======
+ xpubs["internal_xpub_${n}"]=$(./src/freicoin-cli -signet -rpcwallet="participant_${n}" listdescriptors | jq '.descriptors | [.[] | select(.desc | startswith("wpk") and contains("/1/*"))][0] | .desc' | grep -Po '(?<=\().*(?=\))')
+
+ xpubs["external_xpub_${n}"]=$(./src/freicoin-cli -signet -rpcwallet="participant_${n}" listdescriptors | jq '.descriptors | [.[] | select(.desc | startswith("wpk") and contains("/0/*") )][0] | .desc' | grep -Po '(?<=\().*(?=\))')
+>>>>>>> tc-28.1
 done
 ```
 
-`jq` is used to extract the xpub from the `wpkh` descriptor.
+`jq` is used to extract the xpub from the `wpk` descriptor.
 
 The following command can be used to verify if the xpub was generated correctly.
 
@@ -61,7 +75,7 @@ The following command can be used to verify if the xpub was generated correctly.
 for x in "${!xpubs[@]}"; do printf "[%s]=%s\n" "$x" "${xpubs[$x]}" ; done
 ```
 
-As previously mentioned, this step extracts the `m/84'/1'/0'` account instead of the path defined in [BIP 45](https://github.com/bitcoin/bips/blob/master/bip-0045.mediawiki) or [BIP 87](https://github.com/bitcoin/bips/blob/master/bip-0087.mediawiki), since there is no way to extract a specific path in Bitcoin Core at the time of writing.
+As previously mentioned, this step extracts the `m/84'/1'/0'` account instead of the path defined in [BIP 45](https://github.com/bitcoin/bips/blob/master/bip-0045.mediawiki) or [BIP 87](https://github.com/bitcoin/bips/blob/master/bip-0087.mediawiki), since there is no way to extract a specific path in Freicoin at the time of writing.
 
 ### 1.2 Define the Multisig Descriptors
 
@@ -71,8 +85,13 @@ Define the external and internal multisig descriptors, add the checksum and then
 external_desc="wsh(sortedmulti(2,${xpubs["external_xpub_1"]},${xpubs["external_xpub_2"]},${xpubs["external_xpub_3"]}))"
 internal_desc="wsh(sortedmulti(2,${xpubs["internal_xpub_1"]},${xpubs["internal_xpub_2"]},${xpubs["internal_xpub_3"]}))"
 
+<<<<<<< v29.0
 external_desc_sum=$(./build/bin/bitcoin-cli -signet getdescriptorinfo $external_desc | jq '.descriptor')
 internal_desc_sum=$(./build/bin/bitcoin-cli -signet getdescriptorinfo $internal_desc | jq '.descriptor')
+=======
+external_desc_sum=$(./src/freicoin-cli -signet getdescriptorinfo $external_desc | jq '.descriptor')
+internal_desc_sum=$(./src/freicoin-cli -signet getdescriptorinfo $internal_desc | jq '.descriptor')
+>>>>>>> tc-28.1
 
 multisig_ext_desc="{\"desc\": $external_desc_sum, \"active\": true, \"internal\": false, \"timestamp\": \"now\"}"
 multisig_int_desc="{\"desc\": $internal_desc_sum, \"active\": true, \"internal\": true, \"timestamp\": \"now\"}"
@@ -94,7 +113,11 @@ There are other fields that can be added to the descriptors:
 * `internal`: Indicates whether matching outputs should be treated as something other than incoming payments (e.g. change).
 * `timestamp`: Sets the time from which to start rescanning the blockchain for the descriptor, in UNIX epoch time.
 
+<<<<<<< v29.0
 Documentation for these and other parameters can be found by typing `./build/bin/bitcoin-cli help importdescriptors`.
+=======
+Documentation for these and other parameters can be found by typing `./src/freicoin-cli help importdescriptors`.
+>>>>>>> tc-28.1
 
 `multisig_desc` concatenates external and internal descriptors in a JSON array and then it will be used to create the multisig wallet.
 
@@ -107,17 +130,29 @@ Then import the descriptors created in the previous step using the `importdescri
 After that, `getwalletinfo` can be used to check if the wallet was created successfully.
 
 ```bash
+<<<<<<< v29.0
 ./build/bin/bitcoin-cli -signet -named createwallet wallet_name="multisig_wallet_01" disable_private_keys=true blank=true
 
 ./build/bin/bitcoin-cli  -signet -rpcwallet="multisig_wallet_01" importdescriptors "$multisig_desc"
 
 ./build/bin/bitcoin-cli  -signet -rpcwallet="multisig_wallet_01" getwalletinfo
+=======
+./src/freicoin-cli -signet -named createwallet wallet_name="multisig_wallet_01" disable_private_keys=true blank=true
+
+./src/freicoin-cli  -signet -rpcwallet="multisig_wallet_01" importdescriptors "$multisig_desc"
+
+./src/freicoin-cli  -signet -rpcwallet="multisig_wallet_01" getwalletinfo
+>>>>>>> tc-28.1
 ```
 
 Once the wallets have already been created and this tutorial needs to be repeated or resumed, it is not necessary to recreate them, just load them with the command below:
 
 ```bash
+<<<<<<< v29.0
 for ((n=1;n<=3;n++)); do ./build/bin/bitcoin-cli -signet loadwallet "participant_${n}"; done
+=======
+for ((n=1;n<=3;n++)); do ./src/freicoin-cli -signet loadwallet "participant_${n}"; done
+>>>>>>> tc-28.1
 ```
 
 ### 1.4 Fund the wallet
@@ -131,9 +166,15 @@ The url used by the script can also be accessed directly. At time of writing, th
 Coins received by the wallet must have at least 1 confirmation before they can be spent. It is necessary to wait for a new block to be mined before continuing.
 
 ```bash
+<<<<<<< v29.0
 receiving_address=$(./build/bin/bitcoin-cli -signet -rpcwallet="multisig_wallet_01" getnewaddress)
 
 ./contrib/signet/getcoins.py -c ./build/bin/bitcoin-cli -a $receiving_address
+=======
+receiving_address=$(./src/freicoin-cli -signet -rpcwallet="multisig_wallet_01" getnewaddress)
+
+./contrib/signet/getcoins.py -c ./src/freicoin-cli -a $receiving_address
+>>>>>>> tc-28.1
 ```
 
 To copy the receiving address onto the clipboard, use the following command. This can be useful when getting coins via the signet faucet mentioned above.
@@ -145,22 +186,27 @@ echo -n "$receiving_address" | xclip -sel clip
 The `getbalances` RPC may be used to check the balance. Coins with `trusted` status can be spent.
 
 ```bash
+<<<<<<< v29.0
 ./build/bin/bitcoin-cli -signet -rpcwallet="multisig_wallet_01" getbalances
+=======
+./src/freicoin-cli -signet -rpcwallet="multisig_wallet_01" getbalances
+>>>>>>> tc-28.1
 ```
 
-### 1.5 Create a PSBT
+### 1.5 Create a PST
 
-Unlike singlesig wallets, multisig wallets cannot create and sign transactions directly because they require the signatures of the co-signers. Instead they create a Partially Signed Bitcoin Transaction (PSBT).
+Unlike singlesig wallets, multisig wallets cannot create and sign transactions directly because they require the signatures of the co-signers. Instead they create a Partially Signed Freicoin Transaction (PST).
 
-PSBT is a data format that allows wallets and other tools to exchange information about a Bitcoin transaction and the signatures necessary to complete it. [[source](https://bitcoinops.org/en/topics/psbt/)]
+PST is a data format that allows wallets and other tools to exchange information about a Freicoin transaction and the signatures necessary to complete it. [[source](https://freicoinops.org/en/topics/pst/)]
 
-The current PSBT version (v0) is defined in [BIP 174](https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki).
+The current PST version (v0) is defined in [BIP 174](https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki).
 
-For simplicity, the destination address is taken from the `participant_1` wallet in the code above, but it can be any valid bitcoin address.
+For simplicity, the destination address is taken from the `participant_1` wallet in the code above, but it can be any valid freicoin address.
 
-The `walletcreatefundedpsbt` RPC is used to create and fund a transaction in the PSBT format. It is the first step in creating the PSBT.
+The `walletcreatefundedpst` RPC is used to create and fund a transaction in the PST format. It is the first step in creating the PST.
 
 ```bash
+<<<<<<< v29.0
 balance=$(./build/bin/bitcoin-cli -signet -rpcwallet="multisig_wallet_01" getbalance)
 
 amount=$(echo "$balance * 0.8" | bc -l | sed -e 's/^\./0./' -e 's/^-\./-0./')
@@ -168,67 +214,99 @@ amount=$(echo "$balance * 0.8" | bc -l | sed -e 's/^\./0./' -e 's/^-\./-0./')
 destination_addr=$(./build/bin/bitcoin-cli -signet -rpcwallet="participant_1" getnewaddress)
 
 funded_psbt=$(./build/bin/bitcoin-cli -signet -named -rpcwallet="multisig_wallet_01" walletcreatefundedpsbt outputs="{\"$destination_addr\": $amount}" | jq -r '.psbt')
+=======
+balance=$(./src/freicoin-cli -signet -rpcwallet="multisig_wallet_01" getbalance)
+
+amount=$(echo "$balance * 0.8" | bc -l | sed -e 's/^\./0./' -e 's/^-\./-0./')
+
+destination_addr=$(./src/freicoin-cli -signet -rpcwallet="participant_1" getnewaddress)
+
+funded_pst=$(./src/freicoin-cli -signet -named -rpcwallet="multisig_wallet_01" walletcreatefundedpst outputs="{\"$destination_addr\": $amount}" | jq -r '.pst')
+>>>>>>> tc-28.1
 ```
 
-There is also the `createpsbt` RPC, which serves the same purpose, but it has no access to the wallet or to the UTXO set. It is functionally the same as `createrawtransaction` and just drops the raw transaction into an otherwise blank PSBT. [[source](https://bitcointalk.org/index.php?topic=5131043.msg50573609#msg50573609)] In most cases, `walletcreatefundedpsbt` solves the problem.
+There is also the `createpst` RPC, which serves the same purpose, but it has no access to the wallet or to the UTXO set. It is functionally the same as `createrawtransaction` and just drops the raw transaction into an otherwise blank PST. [[source](https://bitcointalk.org/index.php?topic=5131043.msg50573609#msg50573609)] In most cases, `walletcreatefundedpst` solves the problem.
 
-The `send` RPC can also return a PSBT if more signatures are needed to sign the transaction.
+The `send` RPC can also return a PST if more signatures are needed to sign the transaction.
 
-### 1.6 Decode or Analyze the PSBT
+### 1.6 Decode or Analyze the PST
 
-Optionally, the PSBT can be decoded to a JSON format using `decodepsbt` RPC.
+Optionally, the PST can be decoded to a JSON format using `decodepst` RPC.
 
-The `analyzepsbt` RPC analyzes and provides information about the current status of a PSBT and its inputs, e.g. missing signatures.
+The `analyzepst` RPC analyzes and provides information about the current status of a PST and its inputs, e.g. missing signatures.
 
 ```bash
+<<<<<<< v29.0
 ./build/bin/bitcoin-cli -signet decodepsbt $funded_psbt
 
 ./build/bin/bitcoin-cli -signet analyzepsbt $funded_psbt
+=======
+./src/freicoin-cli -signet decodepst $funded_pst
+
+./src/freicoin-cli -signet analyzepst $funded_pst
+>>>>>>> tc-28.1
 ```
 
-### 1.7 Update the PSBT
+### 1.7 Update the PST
 
-In the code above, two PSBTs are created. One signed by `participant_1` wallet and other, by the `participant_2` wallet.
+In the code above, two PSTs are created. One signed by `participant_1` wallet and other, by the `participant_2` wallet.
 
-The `walletprocesspsbt` is used by the wallet to sign a PSBT.
+The `walletprocesspst` is used by the wallet to sign a PST.
 
 ```bash
+<<<<<<< v29.0
 psbt_1=$(./build/bin/bitcoin-cli -signet -rpcwallet="participant_1" walletprocesspsbt $funded_psbt | jq '.psbt')
 
 psbt_2=$(./build/bin/bitcoin-cli -signet -rpcwallet="participant_2" walletprocesspsbt $funded_psbt | jq '.psbt')
+=======
+pst_1=$(./src/freicoin-cli -signet -rpcwallet="participant_1" walletprocesspst $funded_pst | jq '.pst')
+
+pst_2=$(./src/freicoin-cli -signet -rpcwallet="participant_2" walletprocesspst $funded_pst | jq '.pst')
+>>>>>>> tc-28.1
 ```
 
-### 1.8 Combine the PSBT
+### 1.8 Combine the PST
 
-The PSBT, if signed separately by the co-signers, must be combined into one transaction before being finalized. This is done by `combinepsbt` RPC.
+The PST, if signed separately by the co-signers, must be combined into one transaction before being finalized. This is done by `combinepst` RPC.
 
 ```bash
+<<<<<<< v29.0
 combined_psbt=$(./build/bin/bitcoin-cli -signet combinepsbt "[$psbt_1, $psbt_2]")
+=======
+combined_pst=$(./src/freicoin-cli -signet combinepst "[$pst_1, $pst_2]")
+>>>>>>> tc-28.1
 ```
 
-There is an RPC called `joinpsbts`, but it has a different purpose than `combinepsbt`. `joinpsbts` joins the inputs from multiple distinct PSBTs into one PSBT.
+There is an RPC called `joinpsts`, but it has a different purpose than `combinepst`. `joinpsts` joins the inputs from multiple distinct PSTs into one PST.
 
-In the example above, the PSBTs are the same, but signed by different participants. If the user tries to merge them using `joinpsbts`, the error `Input txid:pos exists in multiple PSBTs` is returned. To be able to merge different PSBTs into one, they must have different inputs and outputs.
+In the example above, the PSTs are the same, but signed by different participants. If the user tries to merge them using `joinpsts`, the error `Input txid:pos exists in multiple PSTs` is returned. To be able to merge different PSTs into one, they must have different inputs and outputs.
 
-### 1.9 Finalize and Broadcast the PSBT
+### 1.9 Finalize and Broadcast the PST
 
-The `finalizepsbt` RPC is used to produce a network serialized transaction which can be broadcast with `sendrawtransaction`.
+The `finalizepst` RPC is used to produce a network serialized transaction which can be broadcast with `sendrawtransaction`.
 
 It checks that all inputs have complete scriptSigs and scriptWitnesses and, if so, encodes them into network serialized transactions.
 
 ```bash
+<<<<<<< v29.0
 finalized_psbt_hex=$(./build/bin/bitcoin-cli -signet finalizepsbt $combined_psbt | jq -r '.hex')
 
 ./build/bin/bitcoin-cli -signet sendrawtransaction $finalized_psbt_hex
+=======
+finalized_pst_hex=$(./src/freicoin-cli -signet finalizepst $combined_pst | jq -r '.hex')
+
+./src/freicoin-cli -signet sendrawtransaction $finalized_pst_hex
+>>>>>>> tc-28.1
 ```
 
-### 1.10 Alternative Workflow (PSBT sequential signatures)
+### 1.10 Alternative Workflow (PST sequential signatures)
 
-Instead of each wallet signing the original PSBT and combining them later, the wallets can also sign the PSBTs sequentially. This is less scalable than the previously presented parallel workflow, but it works.
+Instead of each wallet signing the original PST and combining them later, the wallets can also sign the PSTs sequentially. This is less scalable than the previously presented parallel workflow, but it works.
 
-After that, the rest of the process is the same: the PSBT is finalized and transmitted to the network.
+After that, the rest of the process is the same: the PST is finalized and transmitted to the network.
 
 ```bash
+<<<<<<< v29.0
 psbt_1=$(./build/bin/bitcoin-cli -signet -rpcwallet="participant_1" walletprocesspsbt $funded_psbt | jq -r '.psbt')
 
 psbt_2=$(./build/bin/bitcoin-cli -signet -rpcwallet="participant_2" walletprocesspsbt $psbt_1 | jq -r '.psbt')
@@ -236,4 +314,13 @@ psbt_2=$(./build/bin/bitcoin-cli -signet -rpcwallet="participant_2" walletproces
 finalized_psbt_hex=$(./build/bin/bitcoin-cli -signet finalizepsbt $psbt_2 | jq -r '.hex')
 
 ./build/bin/bitcoin-cli -signet sendrawtransaction $finalized_psbt_hex
+=======
+pst_1=$(./src/freicoin-cli -signet -rpcwallet="participant_1" walletprocesspst $funded_pst | jq -r '.pst')
+
+pst_2=$(./src/freicoin-cli -signet -rpcwallet="participant_2" walletprocesspst $pst_1 | jq -r '.pst')
+
+finalized_pst_hex=$(./src/freicoin-cli -signet finalizepst $pst_2 | jq -r '.hex')
+
+./src/freicoin-cli -signet sendrawtransaction $finalized_pst_hex
+>>>>>>> tc-28.1
 ```

@@ -1,9 +1,20 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_QT_TRANSACTIONRECORD_H
-#define BITCOIN_QT_TRANSACTIONRECORD_H
+#ifndef FREICOIN_QT_TRANSACTIONRECORD_H
+#define FREICOIN_QT_TRANSACTIONRECORD_H
 
 #include <consensus/amount.h>
 #include <uint256.h>
@@ -75,20 +86,20 @@ public:
     static const int RecommendedNumConfirmations = 6;
 
     TransactionRecord():
-            hash(), time(0), type(Other), debit(0), credit(0), idx(0)
+            hash(), time(0), type(Other), debit(0), credit(0), lock_height(0), idx(0)
     {
     }
 
     TransactionRecord(uint256 _hash, qint64 _time):
             hash(_hash), time(_time), type(Other), debit(0),
-            credit(0), idx(0)
+            credit(0), lock_height(0), idx(0)
     {
     }
 
     TransactionRecord(uint256 _hash, qint64 _time,
                 Type _type, const std::string &_address,
-                const CAmount& _debit, const CAmount& _credit):
-            hash(_hash), time(_time), type(_type), address(_address), debit(_debit), credit(_credit),
+                const CAmount& _debit, const CAmount& _credit, quint32 _lock_height):
+            hash(_hash), time(_time), type(_type), address(_address), debit(_debit), credit(_credit), lock_height(_lock_height),
             idx(0)
     {
     }
@@ -106,6 +117,7 @@ public:
     std::string address;
     CAmount debit;
     CAmount credit;
+    quint32 lock_height;
     /**@}*/
 
     /** Subtransaction index, for sort key */
@@ -132,4 +144,4 @@ public:
     bool statusUpdateNeeded(const uint256& block_hash) const;
 };
 
-#endif // BITCOIN_QT_TRANSACTIONRECORD_H
+#endif // FREICOIN_QT_TRANSACTIONRECORD_H

@@ -1,9 +1,20 @@
 // Copyright (c) 2011-2021 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_QT_TRANSACTIONVIEW_H
-#define BITCOIN_QT_TRANSACTIONVIEW_H
+#ifndef FREICOIN_QT_TRANSACTIONVIEW_H
+#define FREICOIN_QT_TRANSACTIONVIEW_H
 
 #include <qt/guiutil.h>
 
@@ -57,7 +68,8 @@ public:
         WATCHONLY_COLUMN_WIDTH = 23,
         DATE_COLUMN_WIDTH = 120,
         TYPE_COLUMN_WIDTH = 113,
-        AMOUNT_MINIMUM_COLUMN_WIDTH = 120,
+        AMOUNT_COLUMN_WIDTH = 120,
+        LOCK_HEIGHT_MINIMUM_COLUMN_WIDTH = 80,
         MINIMUM_COLUMN_WIDTH = 23
     };
 
@@ -74,6 +86,7 @@ private:
     QComboBox *watchOnlyWidget;
     QLineEdit *search_widget;
     QLineEdit *amountWidget;
+    QLineEdit *lockHeightWidget;
 
     QMenu *contextMenu;
 
@@ -101,6 +114,7 @@ private Q_SLOTS:
     void editLabel();
     void copyLabel();
     void copyAmount();
+    void copyLockHeight();
     void copyTxID();
     void copyTxHex();
     void copyTxPlainText();
@@ -122,6 +136,7 @@ public Q_SLOTS:
     void chooseType(int idx);
     void chooseWatchonly(int idx);
     void changedAmount();
+    void changedLockHeight();
     void changedSearch();
     void exportClicked();
     void closeOpenedDialogs();
@@ -129,4 +144,4 @@ public Q_SLOTS:
     void focusTransaction(const uint256& txid);
 };
 
-#endif // BITCOIN_QT_TRANSACTIONVIEW_H
+#endif // FREICOIN_QT_TRANSACTIONVIEW_H

@@ -7,11 +7,11 @@ getcoins.py
 
 A script to call a faucet to get Signet coins.
 
-Syntax: `getcoins.py [-h|--help] [-c|--cmd=<bitcoin-cli path>] [-f|--faucet=<faucet URL>] [-a|--addr=<signet bech32 address>] [-p|--password=<faucet password>] [--] [<bitcoin-cli args>]`
+Syntax: `getcoins.py [-h|--help] [-c|--cmd=<freicoin-cli path>] [-f|--faucet=<faucet URL>] [-a|--addr=<signet bech32 address>] [-p|--password=<faucet password>] [--] [<freicoin-cli args>]`
 
-* `--cmd` lets you customize the bitcoin-cli path. By default it will look for it in the PATH
-* `--faucet` lets you specify which faucet to use; the faucet is assumed to be compatible with https://github.com/kallewoof/bitcoin-faucet
-* `--addr` lets you specify a Signet address; by default, the address must be a bech32 address. This and `--cmd` above complement each other (i.e. you do not need `bitcoin-cli` if you use `--addr`)
+* `--cmd` lets you customize the freicoin-cli path. By default it will look for it in the PATH
+* `--faucet` lets you specify which faucet to use; the faucet is assumed to be compatible with https://github.com/kallewoof/freicoin-faucet
+* `--addr` lets you specify a Signet address; by default, the address must be a bech32 address. This and `--cmd` above complement each other (i.e. you do not need `freicoin-cli` if you use `--addr`)
 * `--password` lets you specify a faucet password; this is handy if you are in a classroom and set up your own faucet for your students; (above faucet does not limit by IP when password is enabled)
 
 If using the default network, invoking the script with no arguments should be sufficient under normal
@@ -23,8 +23,14 @@ miner
 
 You will first need to pick a difficulty target. Since signet chains are primarily protected by a signature rather than proof of work, there is no need to spend as much energy as possible mining, however you may wish to choose to spend more time than the absolute minimum. The calibrate subcommand can be used to pick a target appropriate for your hardware, eg:
 
+<<<<<<< v29.0
     MINER="./contrib/signet/miner"
     GRIND="./build/bin/bitcoin-util grind"
+=======
+    cd src/
+    MINER="../contrib/signet/miner"
+    GRIND="./freicoin-util grind"
+>>>>>>> tc-28.1
     $MINER calibrate --grind-cmd="$GRIND"
     nbits=1e00f403 for 25s average mining time
 
@@ -32,7 +38,11 @@ It defaults to estimating an nbits value resulting in 25s average time to find a
 
 To mine the first block in your custom chain, you can run:
 
+<<<<<<< v29.0
     CLI="./build/bin/bitcoin-cli -conf=mysignet.conf"
+=======
+    CLI="./freicoin-cli -conf=mysignet.conf"
+>>>>>>> tc-28.1
     ADDR=$($CLI -signet getnewaddress)
     NBITS=1e00f403
     $MINER --cli="$CLI" generate --grind-cmd="$GRIND" --address="$ADDR" --nbits=$NBITS
@@ -67,15 +77,15 @@ The --standby-delay parameter can be used to make a backup miner that only mines
 Advanced usage
 --------------
 
-The process generate follows internally is to get a block template, convert that into a PSBT, sign the PSBT, move the signature from the signed PSBT into the block template's coinbase, grind proof of work for the block, and then submit the block to the network.
+The process generate follows internally is to get a block template, convert that into a PST, sign the PST, move the signature from the signed PST into the block template's coinbase, grind proof of work for the block, and then submit the block to the network.
 
 These steps can instead be done explicitly:
 
     $CLI -signet getblocktemplate '{"rules": ["signet","segwit"]}' |
-      $MINER --cli="$CLI" genpsbt --address="$ADDR" |
-      $CLI -signet -stdin walletprocesspsbt |
-      jq -r .psbt |
-      $MINER --cli="$CLI" solvepsbt --grind-cmd="$GRIND" |
+      $MINER --cli="$CLI" genpst --address="$ADDR" |
+      $CLI -signet -stdin walletprocesspst |
+      jq -r .pst |
+      $MINER --cli="$CLI" solvepst --grind-cmd="$GRIND" |
       $CLI -signet -stdin submitblock
 
 This is intended to allow you to replace part of the pipeline for further experimentation (eg, to sign the block with a hardware wallet).

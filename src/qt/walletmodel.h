@@ -1,9 +1,20 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_QT_WALLETMODEL_H
-#define BITCOIN_QT_WALLETMODEL_H
+#ifndef FREICOIN_QT_WALLETMODEL_H
+#define FREICOIN_QT_WALLETMODEL_H
 
 #include <key.h>
 
@@ -43,7 +54,7 @@ QT_BEGIN_NAMESPACE
 class QTimer;
 QT_END_NAMESPACE
 
-/** Interface to Bitcoin wallet from Qt view code. */
+/** Interface to Freicoin wallet from Qt view code. */
 class WalletModel : public QObject
 {
     Q_OBJECT
@@ -153,7 +164,7 @@ public:
 
     // If coin control has selected outputs, searches the total amount inside the wallet.
     // Otherwise, uses the wallet's cached available balance.
-    CAmount getAvailableBalance(const wallet::CCoinControl* control);
+    CAmount getAvailableBalance(uint32_t atheight, const wallet::CCoinControl* control);
 
 private:
     std::unique_ptr<interfaces::Wallet> m_wallet;
@@ -238,4 +249,4 @@ public Q_SLOTS:
     void pollBalanceChanged();
 };
 
-#endif // BITCOIN_QT_WALLETMODEL_H
+#endif // FREICOIN_QT_WALLETMODEL_H

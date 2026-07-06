@@ -12,7 +12,11 @@ For example:
 
     make HOST=x86_64-w64-mingw32 -j4
 
+<<<<<<< v29.0
 **When configuring Bitcoin Core, CMake by default will ignore the depends output.** In
+=======
+**Freicoin's `configure` script by default will ignore the depends output.** In
+>>>>>>> tc-28.1
 order for it to pick up libraries, tools, and settings from the depends build,
 you must specify the toolchain file.
 In the above example, a file named `depends/x86_64-w64-mingw32/toolchain.cmake` will be
@@ -129,8 +133,13 @@ The following can be set when running make: `make FOO=bar`
 - `LTO`: Enable options needed for LTO. Does not add `-flto` related options to *FLAGS.
 - `NO_HARDEN=1`: Don't use hardening options when building packages
 
+<<<<<<< v29.0
 If some packages are not built, for example `make NO_WALLET=1`, the appropriate CMake cache
 variables will be set when generating the Bitcoin Core buildsystem. In this case, `-DENABLE_WALLET=OFF`.
+=======
+If some packages are not built, for example `make NO_WALLET=1`, the appropriate
+options will be passed to freicoin's configure. In this case, `--disable-wallet`.
+>>>>>>> tc-28.1
 
 ### Additional targets
 

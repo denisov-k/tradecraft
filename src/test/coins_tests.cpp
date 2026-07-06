@@ -1,6 +1,19 @@
 // Copyright (c) 2014-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#include <test/util/setup_common.h>
 
 #include <addresstype.h>
 #include <clientversion.h>
@@ -8,7 +21,6 @@
 #include <streams.h>
 #include <test/util/poolresourcetester.h>
 #include <test/util/random.h>
-#include <test/util/setup_common.h>
 #include <txdb.h>
 #include <uint256.h>
 #include <undo.h>
@@ -58,7 +70,7 @@ public:
 
     uint256 GetBestBlock() const override { return hashBestBlock_; }
 
-    bool BatchWrite(CoinsViewCacheCursor& cursor, const uint256& hashBlock) override
+    bool BatchWrite(CoinsViewCacheCursor& cursor, const uint256& hashBlock, const BlockFinalTxEntry& final_tx) override
     {
         for (auto it{cursor.Begin()}; it != cursor.End(); it = cursor.NextAndMaybeErase(*it)){
             if (it->second.IsDirty()) {
@@ -414,7 +426,7 @@ BOOST_FIXTURE_TEST_CASE(updatecoins_simulation_test, UpdateTest)
             // Update the expected result to know about the new output coins
             assert(tx.vout.size() == 1);
             const COutPoint outpoint(tx.GetHash(), 0);
-            result[outpoint] = Coin{tx.vout[0], height, CTransaction{tx}.IsCoinBase()};
+            result[outpoint] = Coin{tx.vout[0], tx.lock_height, height, CTransaction{tx}.IsCoinBase()};
 
             // Call UpdateCoins on the top cache
             CTxUndo undo;
@@ -511,37 +523,67 @@ BOOST_FIXTURE_TEST_CASE(updatecoins_simulation_test, UpdateTest)
 BOOST_AUTO_TEST_CASE(ccoins_serialization)
 {
     // Good example
+<<<<<<< v29.0
     DataStream ss1{"97f23c835800816115944e077fe7c803cfa57f29b36bf87c1d35"_hex};
+=======
+    DataStream ss1{ParseHex("97f23c835800816115944e077fe7c803cfa57f29b36bf87c1d3500")};
+>>>>>>> tc-28.1
     Coin cc1;
     ss1 >> cc1;
+    BOOST_CHECK(ss1.empty());
     BOOST_CHECK_EQUAL(cc1.fCoinBase, false);
     BOOST_CHECK_EQUAL(cc1.nHeight, 203998U);
     BOOST_CHECK_EQUAL(cc1.out.nValue, CAmount{60000000000});
+<<<<<<< v29.0
     BOOST_CHECK_EQUAL(HexStr(cc1.out.scriptPubKey), HexStr(GetScriptForDestination(PKHash(uint160("816115944e077fe7c803cfa57f29b36bf87c1d35"_hex_u8)))));
 
     // Good example
     DataStream ss2{"8ddf77bbd123008c988f1a4a4de2161e0f50aac7f17e7f9555caa4"_hex};
+=======
+    BOOST_CHECK_EQUAL(cc1.refheight, 0);
+    BOOST_CHECK_EQUAL(HexStr(cc1.out.scriptPubKey), HexStr(GetScriptForDestination(PKHash(uint160(ParseHex("816115944e077fe7c803cfa57f29b36bf87c1d35"))))));
+
+    // Good example
+    DataStream ss2{ParseHex("8ddf77bbd123008c988f1a4a4de2161e0f50aac7f17e7f9555caa48000")};
+>>>>>>> tc-28.1
     Coin cc2;
     ss2 >> cc2;
+    BOOST_CHECK(ss2.empty());
     BOOST_CHECK_EQUAL(cc2.fCoinBase, true);
     BOOST_CHECK_EQUAL(cc2.nHeight, 120891U);
     BOOST_CHECK_EQUAL(cc2.out.nValue, 110397);
+<<<<<<< v29.0
     BOOST_CHECK_EQUAL(HexStr(cc2.out.scriptPubKey), HexStr(GetScriptForDestination(PKHash(uint160("8c988f1a4a4de2161e0f50aac7f17e7f9555caa4"_hex_u8)))));
 
     // Smallest possible example
     DataStream ss3{"000006"_hex};
+=======
+    BOOST_CHECK_EQUAL(cc2.refheight, 128);
+    BOOST_CHECK_EQUAL(HexStr(cc2.out.scriptPubKey), HexStr(GetScriptForDestination(PKHash(uint160(ParseHex("8c988f1a4a4de2161e0f50aac7f17e7f9555caa4"))))));
+
+    // Smallest possible example
+    DataStream ss3{ParseHex("00000600")};
+>>>>>>> tc-28.1
     Coin cc3;
+
     ss3 >> cc3;
+    BOOST_CHECK(ss3.empty());
     BOOST_CHECK_EQUAL(cc3.fCoinBase, false);
     BOOST_CHECK_EQUAL(cc3.nHeight, 0U);
     BOOST_CHECK_EQUAL(cc3.out.nValue, 0);
+    BOOST_CHECK_EQUAL(cc3.refheight, 0);
     BOOST_CHECK_EQUAL(cc3.out.scriptPubKey.size(), 0U);
 
     // scriptPubKey that ends beyond the end of the stream
+<<<<<<< v29.0
     DataStream ss4{"000007"_hex};
+=======
+    DataStream ss4{ParseHex("00000700")};
+>>>>>>> tc-28.1
     try {
         Coin cc4;
         ss4 >> cc4;
+        BOOST_CHECK(ss4.empty());
         BOOST_CHECK_MESSAGE(false, "We should have thrown");
     } catch (const std::ios_base::failure&) {
     }
@@ -551,10 +593,15 @@ BOOST_AUTO_TEST_CASE(ccoins_serialization)
     uint64_t x = 3000000000ULL;
     tmp << VARINT(x);
     BOOST_CHECK_EQUAL(HexStr(tmp), "8a95c0bb00");
+<<<<<<< v29.0
     DataStream ss5{"00008a95c0bb00"_hex};
+=======
+    DataStream ss5{ParseHex("00008a95c0bb0000")};
+>>>>>>> tc-28.1
     try {
         Coin cc5;
         ss5 >> cc5;
+        BOOST_CHECK(ss5.empty());
         BOOST_CHECK_MESSAGE(false, "We should have thrown");
     } catch (const std::ios_base::failure&) {
     }
@@ -653,7 +700,7 @@ static void WriteCoinsViewEntry(CCoinsView& view, const MaybeCoin& cache_coin)
     CCoinsMap map{0, CCoinsMap::hasher{}, CCoinsMap::key_equal{}, &resource};
     auto usage{cache_coin ? InsertCoinsMapEntry(map, sentinel, *cache_coin) : 0};
     auto cursor{CoinsViewCacheCursor(usage, sentinel, map, /*will_erase=*/true)};
-    BOOST_CHECK(view.BatchWrite(cursor, {}));
+    BOOST_CHECK(view.BatchWrite(cursor, {}, {}));
 }
 
 class SingleEntryCacheTest
@@ -725,10 +772,24 @@ BOOST_AUTO_TEST_CASE(ccoins_spend)
         CheckSpendCoins(base_value, SPENT_DIRTY,        SPENT_DIRTY);
         CheckSpendCoins(base_value, SPENT_DIRTY_FRESH,  MISSING    );
 
+<<<<<<< v29.0
         CheckSpendCoins(base_value, VALUE2_CLEAN,       SPENT_DIRTY);
         CheckSpendCoins(base_value, VALUE2_FRESH,       MISSING    );
         CheckSpendCoins(base_value, VALUE2_DIRTY,       SPENT_DIRTY);
         CheckSpendCoins(base_value, VALUE2_DIRTY_FRESH, MISSING    );
+=======
+    CAmount result_value;
+    char result_flags;
+    try {
+        CTxOut output;
+        output.nValue = modify_value;
+        test.cache.AddCoin(OUTPOINT, Coin(std::move(output), 1, 1, coinbase), coinbase);
+        test.cache.SelfTest();
+        GetCoinsMapEntry(test.cache.map(), result_value, result_flags);
+    } catch (std::logic_error&) {
+        result_value = FAIL;
+        result_flags = NO_ENTRY;
+>>>>>>> tc-28.1
     }
 }
 

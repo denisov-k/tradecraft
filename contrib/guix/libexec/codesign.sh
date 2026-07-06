@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
 # Copyright (c) 2021-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 export LC_ALL=C
 set -e -o pipefail
 
@@ -103,6 +114,7 @@ mkdir -p "$DISTSRC"
                 || ( rm -f "${OUTDIR}/${DISTNAME}-${HOST//x86_64-w64-mingw32/win64}.zip" && exit 1 )
             ;;
         *darwin*)
+<<<<<<< v29.0
             case "$HOST" in
                 arm64*) ARCH="arm64" ;;
                 x86_64*) ARCH="x86_64" ;;
@@ -114,6 +126,10 @@ mkdir -p "$DISTSRC"
             do
                 signapple apply "${bin}" "codesignatures/osx/${HOST}/${bin}.${ARCH}sign"
             done
+=======
+            # Apply detached codesignatures to dist/ (in-place)
+            signapple apply dist/Freicoin-Qt.app codesignatures/osx/dist
+>>>>>>> tc-28.1
 
             # Make a .zip from dist/
             cd dist/

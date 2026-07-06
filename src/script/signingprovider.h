@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_SCRIPT_SIGNINGPROVIDER_H
-#define BITCOIN_SCRIPT_SIGNINGPROVIDER_H
+#ifndef FREICOIN_SCRIPT_SIGNINGPROVIDER_H
+#define FREICOIN_SCRIPT_SIGNINGPROVIDER_H
 
 #include <addresstype.h>
 #include <attributes.h>
@@ -24,6 +35,7 @@ struct ShortestVectorFirstComparator
     }
 };
 
+<<<<<<< v29.0
 struct TaprootSpendData
 {
     /** The BIP341 internal key. */
@@ -148,6 +160,8 @@ public:
  */
 std::optional<std::vector<std::tuple<int, std::vector<unsigned char>, int>>> InferTaprootTree(const TaprootSpendData& spenddata, const XOnlyPubKey& output);
 
+=======
+>>>>>>> tc-28.1
 /** An interface to be implemented by keystores that support signing. */
 class SigningProvider
 {
@@ -155,12 +169,14 @@ public:
     virtual ~SigningProvider() = default;
     virtual bool GetCScript(const CScriptID &scriptid, CScript& script) const { return false; }
     virtual bool HaveCScript(const CScriptID &scriptid) const { return false; }
+    virtual bool GetWitnessV0Script(const WitnessV0ShortHash& witnesshash, WitnessV0ScriptEntry& entryOut) const { return false; }
+    virtual bool GetWitnessV0Script(const WitnessV0LongHash& witnesshash, WitnessV0ScriptEntry& entryOut) const { return false; }
+    virtual bool HaveWitnessV0Script(const WitnessV0ShortHash& witnesshash) const { return false; }
+    virtual bool HaveWitnessV0Script(const WitnessV0LongHash& witnesshash) const { return false; }
     virtual bool GetPubKey(const CKeyID &address, CPubKey& pubkey) const { return false; }
     virtual bool GetKey(const CKeyID &address, CKey& key) const { return false; }
     virtual bool HaveKey(const CKeyID &address) const { return false; }
     virtual bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const { return false; }
-    virtual bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const { return false; }
-    virtual bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const { return false; }
 
     bool GetKeyByXOnly(const XOnlyPubKey& pubkey, CKey& key) const
     {
@@ -199,28 +215,28 @@ private:
 public:
     HidingSigningProvider(const SigningProvider* provider, bool hide_secret, bool hide_origin) : m_hide_secret(hide_secret), m_hide_origin(hide_origin), m_provider(provider) {}
     bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
+    bool GetWitnessV0Script(const WitnessV0ShortHash& witnessprogram, WitnessV0ScriptEntry& entryOut) const override;
+    bool GetWitnessV0Script(const WitnessV0LongHash& witnessprogram, WitnessV0ScriptEntry& entryOut) const override;
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
     bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
-    bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
-    bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;
 };
 
 struct FlatSigningProvider final : public SigningProvider
 {
     std::map<CScriptID, CScript> scripts;
+    std::map<WitnessV0ShortHash, WitnessV0ScriptEntry> witscripts;
     std::map<CKeyID, CPubKey> pubkeys;
     std::map<CKeyID, std::pair<CPubKey, KeyOriginInfo>> origins;
     std::map<CKeyID, CKey> keys;
-    std::map<XOnlyPubKey, TaprootBuilder> tr_trees; /** Map from output key to Taproot tree (which can then make the TaprootSpendData */
 
     bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
+    bool GetWitnessV0Script(const WitnessV0ShortHash& witnessprogram, WitnessV0ScriptEntry& entryOut) const override;
+    bool GetWitnessV0Script(const WitnessV0LongHash& witnessprogram, WitnessV0ScriptEntry& entryOut) const override;
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
     bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
     bool HaveKey(const CKeyID &keyid) const override;
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
-    bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
-    bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;
 
     FlatSigningProvider& Merge(FlatSigningProvider&& b) LIFETIMEBOUND;
 };
@@ -231,6 +247,7 @@ class FillableSigningProvider : public SigningProvider
 protected:
     using KeyMap = std::map<CKeyID, CKey>;
     using ScriptMap = std::map<CScriptID, CScript>;
+    using WitnessV0ScriptMap = std::map<WitnessV0ShortHash, WitnessV0ScriptEntry>;
 
     /**
      * Map of key id to unencrypted private keys known by the signing provider.
@@ -280,6 +297,7 @@ protected:
      * it can't be solved and signed for.
      */
     ScriptMap mapScripts GUARDED_BY(cs_KeyStore);
+    WitnessV0ScriptMap mapWitnessV0Scripts GUARDED_BY(cs_KeyStore);
 
     void ImplicitlyLearnRelatedKeyScripts(const CPubKey& pubkey) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
 
@@ -296,6 +314,12 @@ public:
     virtual bool HaveCScript(const CScriptID &hash) const override;
     virtual std::set<CScriptID> GetCScripts() const;
     virtual bool GetCScript(const CScriptID &hash, CScript& redeemScriptOut) const override;
+    virtual bool AddWitnessV0Script(const WitnessV0ScriptEntry& entry);
+    virtual bool HaveWitnessV0Script(const WitnessV0ShortHash& witnessprogram) const override;
+    virtual bool HaveWitnessV0Script(const WitnessV0LongHash& witnessprogram) const override;
+    virtual std::set<WitnessV0ShortHash> GetWitnessV0Scripts() const;
+    virtual bool GetWitnessV0Script(const WitnessV0LongHash& witnessprogram, WitnessV0ScriptEntry& entryOut) const override;
+    virtual bool GetWitnessV0Script(const WitnessV0ShortHash& witnessprogram, WitnessV0ScriptEntry& entryOut) const override;
 };
 
 /** Return the CKeyID of the key involved in a script (if there is a unique one). */
@@ -309,11 +333,11 @@ public:
     void AddProvider(std::unique_ptr<SigningProvider> provider);
 
     bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
+    bool GetWitnessV0Script(const WitnessV0ShortHash& witnessprogram, WitnessV0ScriptEntry& entry) const override;
+    bool GetWitnessV0Script(const WitnessV0LongHash& witnessprogram, WitnessV0ScriptEntry& entry) const override;
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
     bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
-    bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
-    bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;
 };
 
-#endif // BITCOIN_SCRIPT_SIGNINGPROVIDER_H
+#endif // FREICOIN_SCRIPT_SIGNINGPROVIDER_H

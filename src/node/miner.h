@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_NODE_MINER_H
-#define BITCOIN_NODE_MINER_H
+#ifndef FREICOIN_NODE_MINER_H
+#define FREICOIN_NODE_MINER_H
 
 #include <node/types.h>
 #include <policy/policy.h>
@@ -39,10 +50,15 @@ struct CBlockTemplate
     CBlock block;
     std::vector<CAmount> vTxFees;
     std::vector<int64_t> vTxSigOpsCost;
+<<<<<<< v29.0
     std::vector<unsigned char> vchCoinbaseCommitment;
     /* A vector of package fee rates, ordered by the sequence in which
      * packages are selected for inclusion in the block template.*/
     std::vector<FeeFrac> m_package_feerates;
+=======
+    bool has_block_final_tx;
+    std::map<COutPoint, Coin> block_final_tx_coin_map;
+>>>>>>> tc-28.1
 };
 
 // Container for tracking updates to ancestor feerate as we include (parent)
@@ -155,11 +171,21 @@ private:
 
     // Chain context for the block
     int nHeight;
+    int64_t m_median_time_past;
     int64_t m_lock_time_cutoff;
 
     const CChainParams& chainparams;
     const CTxMemPool* const m_mempool;
     Chainstate& m_chainstate;
+
+    // The current state of the block-final activation logic
+    enum BlockFinalState {
+        NO_BLOCK_FINAL_TX,
+        INITIAL_BLOCK_FINAL_TXOUT,
+        HAS_BLOCK_FINAL_TX,
+    };
+    BlockFinalState m_block_final_state;
+    std::map<COutPoint, Coin> m_block_final_tx_coin_map;
 
 public:
     struct Options : BlockCreateOptions {
@@ -189,6 +215,10 @@ private:
     void resetBlock();
     /** Add a tx to the block */
     void AddToBlock(CTxMemPool::txiter iter);
+
+    // block-final transaction logic
+    /** Create the block-final transaction, before any other transactions have been added */
+    void initFinalTx(const BlockFinalTxEntry& final_tx);
 
     // Methods for how to add transactions to a block.
     /** Add transactions based on feerate including unconfirmed ancestors
@@ -229,4 +259,4 @@ void RegenerateCommitments(CBlock& block, ChainstateManager& chainman);
 void ApplyArgsManOptions(const ArgsManager& gArgs, BlockAssembler::Options& options);
 } // namespace node
 
-#endif // BITCOIN_NODE_MINER_H
+#endif // FREICOIN_NODE_MINER_H

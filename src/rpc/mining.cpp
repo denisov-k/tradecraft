@@ -1,9 +1,24 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+<<<<<<< v29.0
 #include <bitcoin-build-config.h> // IWYU pragma: keep
+=======
+#include <config/freicoin-config.h> // IWYU pragma: keep
+>>>>>>> tc-28.1
 
 #include <chain.h>
 #include <chainparams.h>
@@ -56,16 +71,11 @@ using node::UpdateTime;
 using util::ToString;
 
 /**
- * Return average network hashes per second based on the last 'lookup' blocks,
- * or from the last difficulty change if 'lookup' is -1.
+ * Return average network hashes per second.
  * If 'height' is -1, compute the estimate from current chain tip.
  * If 'height' is a valid block height, compute the estimate at the time when a given block was found.
  */
-static UniValue GetNetworkHashPS(int lookup, int height, const CChain& active_chain) {
-    if (lookup < -1 || lookup == 0) {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid nblocks. Must be a positive number or -1.");
-    }
-
+static UniValue GetNetworkHashPS(int height, const CChain& active_chain) {
     if (height < -1 || height > active_chain.Height()) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Block does not exist at specified height");
     }
@@ -79,42 +89,23 @@ static UniValue GetNetworkHashPS(int lookup, int height, const CChain& active_ch
     if (pb == nullptr || !pb->nHeight)
         return 0;
 
-    // If lookup is -1, then use blocks since last difficulty change.
-    if (lookup == -1)
-        lookup = pb->nHeight % Params().GetConsensus().DifficultyAdjustmentInterval() + 1;
+    const int64_t filtered_time = GetFilteredTime(pb, Params().GetConsensus());
+    const int64_t scale_factor = 1LL << 31;
+    CBlockIndex *pb0 = pb->pprev;
 
-    // If lookup is larger than chain, then set it to chain length.
-    if (lookup > pb->nHeight)
-        lookup = pb->nHeight;
-
-    const CBlockIndex* pb0 = pb;
-    int64_t minTime = pb0->GetBlockTime();
-    int64_t maxTime = minTime;
-    for (int i = 0; i < lookup; i++) {
-        pb0 = pb0->pprev;
-        int64_t time = pb0->GetBlockTime();
-        minTime = std::min(time, minTime);
-        maxTime = std::max(time, maxTime);
-    }
-
-    // In case there's a situation where minTime == maxTime, we don't want a divide by zero exception.
-    if (minTime == maxTime)
+    if (!filtered_time || !pb0)
         return 0;
 
     arith_uint256 workDiff = pb->nChainWork - pb0->nChainWork;
-    int64_t timeDiff = maxTime - minTime;
-
-    return workDiff.getdouble() / timeDiff;
+    return workDiff.getdouble() * scale_factor / filtered_time;
 }
 
 static RPCHelpMan getnetworkhashps()
 {
     return RPCHelpMan{"getnetworkhashps",
-                "\nReturns the estimated network hashes per second based on the last n blocks.\n"
-                "Pass in [blocks] to override # of blocks, -1 specifies since last difficulty change.\n"
+                "\nReturns the estimated network hashes per second as would be estimated if there was a difficulty adjustment in the next block, or as would have been calculated as of the block height specified.\n"
                 "Pass in [height] to estimate the network speed at the time when a certain block was found.\n",
                 {
-                    {"nblocks", RPCArg::Type::NUM, RPCArg::Default{120}, "The number of previous blocks to calculate estimate from, or -1 for blocks since last difficulty change."},
                     {"height", RPCArg::Type::NUM, RPCArg::Default{-1}, "To estimate at the time of the given height."},
                 },
                 RPCResult{
@@ -127,7 +118,7 @@ static RPCHelpMan getnetworkhashps()
 {
     ChainstateManager& chainman = EnsureAnyChainman(request.context);
     LOCK(cs_main);
-    return GetNetworkHashPS(self.Arg<int>("nblocks"), self.Arg<int>("height"), chainman.ActiveChain());
+    return GetNetworkHashPS(self.Arg<int>("height"), chainman.ActiveChain());
 },
     };
 }
@@ -137,9 +128,30 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock&& block, uint64_t&
     block_out.reset();
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
-    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block.GetHash(), block.nBits, chainman.GetConsensus()) && !chainman.m_interrupt) {
-        ++block.nNonce;
-        --max_tries;
+    if (!block.m_aux_pow.IsNull()) {
+        while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckAuxiliaryProofOfWork(block, chainman.GetConsensus()) && !chainman.m_interrupt) {
+            ++block.m_aux_pow.m_aux_nonce;
+            --max_tries;
+        }
+        if (max_tries == 0 || chainman.m_interrupt) {
+            return false;
+        }
+        if (block.m_aux_pow.m_aux_nonce == std::numeric_limits<uint32_t>::max()) {
+            return true;
+        }
+        uint256 aux_hash2 = block.GetAuxiliaryHash(chainman.GetConsensus()).second;
+        CMutableTransaction cb{*block.vtx[0]};
+        cb.vin[0].scriptSig = CScript() << cb.lock_height;
+        cb.vin[0].scriptSig.insert(cb.vin[0].scriptSig.end(), aux_hash2.begin(), aux_hash2.end());
+        block.vtx[0] = MakeTransactionRef(cb);
+        block.hashMerkleRoot = BlockMerkleRoot(block);
+    }
+
+    if (!IsProtocolCleanupActive(chainman.GetConsensus(), block)) {
+        while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block, chainman.GetConsensus()) && !chainman.m_interrupt) {
+            ++block.nNonce;
+            --max_tries;
+        }
     }
     if (max_tries == 0 || chainman.m_interrupt) {
         return false;
@@ -182,10 +194,41 @@ static UniValue generateBlocks(ChainstateManager& chainman, Mining& miner, const
 static bool getScriptFromDescriptor(const std::string& descriptor, CScript& script, std::string& error)
 {
     FlatSigningProvider key_provider;
+<<<<<<< v29.0
     const auto descs = Parse(descriptor, key_provider, error, /* require_checksum = */ false);
     if (descs.empty()) return false;
     if (descs.size() > 1) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Multipath descriptor not accepted");
+=======
+    const auto desc = Parse(descriptor, key_provider, error, /* require_checksum = */ false);
+    if (desc) {
+        if (desc->IsRange()) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Ranged descriptor not accepted. Maybe pass through deriveaddresses first?");
+        }
+
+        FlatSigningProvider provider;
+        std::vector<CScript> scripts;
+        if (!desc->Expand(0, key_provider, scripts, provider)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot derive script without private keys");
+        }
+
+        // Combo descriptors can have 2 or 3 scripts, so we can't just check scripts.size() == 1
+        CHECK_NONFATAL(scripts.size() > 0 && scripts.size() <= 3);
+
+        if (scripts.size() == 1) {
+            script = scripts.at(0);
+        } else if (scripts.size() == 3) {
+            // For uncompressed keys, take the 3rd script, since it is p2wpk
+            script = scripts.at(2);
+        } else {
+            // Else take the 2nd script, since it is p2pkh
+            script = scripts.at(1);
+        }
+
+        return true;
+    } else {
+        return false;
+>>>>>>> tc-28.1
     }
     const auto& desc = descs.at(0);
     if (desc->IsRange()) {
@@ -221,7 +264,7 @@ static RPCHelpMan generatetodescriptor()
         "Mine to a specified descriptor and return the block hashes.",
         {
             {"num_blocks", RPCArg::Type::NUM, RPCArg::Optional::NO, "How many blocks are generated."},
-            {"descriptor", RPCArg::Type::STR, RPCArg::Optional::NO, "The descriptor to send the newly generated bitcoin to."},
+            {"descriptor", RPCArg::Type::STR, RPCArg::Optional::NO, "The descriptor to send the newly generated freicoin to."},
             {"maxtries", RPCArg::Type::NUM, RPCArg::Default{DEFAULT_MAX_TRIES}, "How many iterations to try."},
         },
         RPCResult{
@@ -265,7 +308,7 @@ static RPCHelpMan generatetoaddress()
         "Mine to a specified address and return the block hashes.",
          {
              {"nblocks", RPCArg::Type::NUM, RPCArg::Optional::NO, "How many blocks are generated."},
-             {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The address to send the newly generated bitcoin to."},
+             {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The address to send the newly generated freicoin to."},
              {"maxtries", RPCArg::Type::NUM, RPCArg::Default{DEFAULT_MAX_TRIES}, "How many iterations to try."},
          },
          RPCResult{
@@ -276,7 +319,11 @@ static RPCHelpMan generatetoaddress()
          RPCExamples{
             "\nGenerate 11 blocks to myaddress\n"
             + HelpExampleCli("generatetoaddress", "11 \"myaddress\"")
+<<<<<<< v29.0
             + "If you are using the " CLIENT_NAME " wallet, you can get a new address to send the newly generated bitcoin to with:\n"
+=======
+            + "If you are using the " PACKAGE_NAME " wallet, you can get a new address to send the newly generated freicoin to with:\n"
+>>>>>>> tc-28.1
             + HelpExampleCli("getnewaddress", "")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
@@ -305,7 +352,7 @@ static RPCHelpMan generateblock()
     return RPCHelpMan{"generateblock",
         "Mine a set of ordered transactions to a specified address or descriptor and return the block hash.",
         {
-            {"output", RPCArg::Type::STR, RPCArg::Optional::NO, "The address or descriptor to send the newly generated bitcoin to."},
+            {"output", RPCArg::Type::STR, RPCArg::Optional::NO, "The address or descriptor to send the newly generated freicoin to."},
             {"transactions", RPCArg::Type::ARR, RPCArg::Optional::NO, "An array of hex strings which are either txids or raw transactions.\n"
                 "Txids must reference transactions currently in the mempool.\n"
                 "All transactions must be valid and in valid order, otherwise the block will be rejected.",
@@ -369,21 +416,31 @@ static RPCHelpMan generateblock()
 
     const bool process_new_block{request.params[2].isNull() ? true : request.params[2].get_bool()};
     CBlock block;
+    bool has_block_final_tx = false;
 
     ChainstateManager& chainman = EnsureChainman(node);
     {
         LOCK(chainman.GetMutex());
         {
+<<<<<<< v29.0
             std::unique_ptr<BlockTemplate> block_template{miner.createNewBlock({.use_mempool = false, .coinbase_output_script = coinbase_output_script})};
             CHECK_NONFATAL(block_template);
 
             block = block_template->getBlock();
+=======
+            std::unique_ptr<CBlockTemplate> blocktemplate{miner.createNewBlock(coinbase_script, {.use_mempool = false})};
+            if (!blocktemplate) {
+                throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");
+            }
+            block = blocktemplate->block;
+            has_block_final_tx = blocktemplate->has_block_final_tx;
+>>>>>>> tc-28.1
         }
 
-        CHECK_NONFATAL(block.vtx.size() == 1);
+        CHECK_NONFATAL(block.vtx.size() == (1U + !!has_block_final_tx));
 
         // Add transactions
-        block.vtx.insert(block.vtx.end(), txs.begin(), txs.end());
+        block.vtx.insert(block.vtx.end() - !!has_block_final_tx, txs.begin(), txs.end());
         RegenerateCommitments(block, chainman);
 
         BlockValidationState state;
@@ -491,7 +548,7 @@ static RPCHelpMan getmininginfo()
 }
 
 
-// NOTE: Unlike wallet RPC (which use BTC values), mining RPCs follow GBT (BIP 22) in using satoshi amounts
+// NOTE: Unlike wallet RPC (which use FRC values), mining RPCs follow GBT (BIP 22) in using kria amounts
 static RPCHelpMan prioritisetransaction()
 {
     return RPCHelpMan{"prioritisetransaction",
@@ -500,7 +557,7 @@ static RPCHelpMan prioritisetransaction()
                     {"txid", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The transaction id."},
                     {"dummy", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "API-Compatibility for previous API. Must be zero or null.\n"
             "                  DEPRECATED. For forward compatibility use named arguments and omit this parameter."},
-                    {"fee_delta", RPCArg::Type::NUM, RPCArg::Optional::NO, "The fee value (in satoshis) to add (or subtract, if negative).\n"
+                    {"fee_delta", RPCArg::Type::NUM, RPCArg::Optional::NO, "The fee value (in kria) to add (or subtract, if negative).\n"
             "                  Note, that this value is not a fee rate. It is a value to modify absolute fee of the TX.\n"
             "                  The fee is not actually paid, only the algorithm for selecting transactions into a block\n"
             "                  considers the transaction as it would have paid a higher (or lower) fee."},
@@ -546,9 +603,9 @@ static RPCHelpMan getprioritisedtransactions()
             RPCResult::Type::OBJ_DYN, "", "prioritisation keyed by txid",
             {
                 {RPCResult::Type::OBJ, "<transactionid>", "", {
-                    {RPCResult::Type::NUM, "fee_delta", "transaction fee delta in satoshis"},
+                    {RPCResult::Type::NUM, "fee_delta", "transaction fee delta in kria"},
                     {RPCResult::Type::BOOL, "in_mempool", "whether this transaction is currently in mempool"},
-                    {RPCResult::Type::NUM, "modified_fee", /*optional=*/true, "modified fee in satoshis. Only returned if in_mempool=true"},
+                    {RPCResult::Type::NUM, "modified_fee", /*optional=*/true, "modified fee in kria. Only returned if in_mempool=true"},
                 }}
             },
         },
@@ -663,7 +720,7 @@ static RPCHelpMan getblocktemplate()
                         {
                             {RPCResult::Type::NUM, "", "transactions before this one (by 1-based index in 'transactions' list) that must be present in the final block if this one is"},
                         }},
-                        {RPCResult::Type::NUM, "fee", "difference in value between transaction inputs and outputs (in satoshis); for coinbase transactions, this is a negative Number of the total collected block fees (ie, not including the block subsidy); if key is not present, fee is unknown and clients MUST NOT assume there isn't one"},
+                        {RPCResult::Type::NUM, "fee", "difference in value between transaction inputs and outputs (in kria); for coinbase transactions, this is a negative Number of the total collected block fees (ie, not including the block subsidy); if key is not present, fee is unknown and clients MUST NOT assume there isn't one"},
                         {RPCResult::Type::NUM, "sigops", "total SigOps cost, as counted for purposes of block limits; if key is not present, sigop cost is unknown and clients MUST NOT assume it is zero"},
                         {RPCResult::Type::NUM, "weight", "total transaction weight, as counted for purposes of block limits"},
                     }},
@@ -672,7 +729,7 @@ static RPCHelpMan getblocktemplate()
                 {
                     {RPCResult::Type::STR_HEX, "key", "values must be in the coinbase (keys may be ignored)"},
                 }},
-                {RPCResult::Type::NUM, "coinbasevalue", "maximum allowable input to coinbase transaction, including the generation award and transaction fees (in satoshis)"},
+                {RPCResult::Type::NUM, "coinbasevalue", "maximum allowable input to coinbase transaction, including the generation award and transaction fees (in kria)"},
                 {RPCResult::Type::STR, "longpollid", "an id to include with a request to longpoll on an update to this template"},
                 {RPCResult::Type::STR, "target", "The hash target"},
                 {RPCResult::Type::NUM_TIME, "mintime", "The minimum timestamp appropriate for the next block time, expressed in " + UNIX_EPOCH_TIME + ". Adjusted for the proposed BIP94 timewarp rule."},
@@ -686,9 +743,19 @@ static RPCHelpMan getblocktemplate()
                 {RPCResult::Type::NUM, "weightlimit", /*optional=*/true, "limit of block weight"},
                 {RPCResult::Type::NUM_TIME, "curtime", "current timestamp in " + UNIX_EPOCH_TIME + ". Adjusted for the proposed BIP94 timewarp rule."},
                 {RPCResult::Type::STR, "bits", "compressed target of next block"},
+                {RPCResult::Type::NUM_TIME, "locktime", "The median-time-past commitment which must be used in the coinbase nLockTime value"},
                 {RPCResult::Type::NUM, "height", "The height of the next block"},
                 {RPCResult::Type::STR_HEX, "signet_challenge", /*optional=*/true, "Only on signet"},
                 {RPCResult::Type::STR_HEX, "default_witness_commitment", /*optional=*/true, "a valid witness commitment for the unmodified block template"},
+                {RPCResult::Type::OBJ, "finaltx", /*optional=*/true, "information necessary to construct the block-final transaction", {
+                    {RPCResult::Type::ARR, "prevout", "UTXO records of inputs which must be included in the block-final transaction", {
+                        {RPCResult::Type::OBJ, "", "", {
+                            {RPCResult::Type::STR_HEX, "txid", "input txid encoded in little-endian hexadecimal"},
+                            {RPCResult::Type::NUM, "vout", "index to the output vector of the previous transaction"},
+                            {RPCResult::Type::NUM, "amount", "value of input at current refheight"},
+                        }},
+                    }},
+                }},
             }},
         },
         RPCExamples{
@@ -867,14 +934,19 @@ static RPCHelpMan getblocktemplate()
 
     UniValue transactions(UniValue::VARR);
     std::map<uint256, int64_t> setTxIndex;
+<<<<<<< v29.0
     std::vector<CAmount> tx_fees{block_template->getTxFees()};
     std::vector<CAmount> tx_sigops{block_template->getTxSigops()};
 
     int i = 0;
     for (const auto& it : block.vtx) {
         const CTransaction& tx = *it;
+=======
+    for (size_t i = 0; i < pblock->vtx.size() - !!pblocktemplate->has_block_final_tx; ++i) {
+        const CTransaction& tx = *pblock->vtx[i];
+>>>>>>> tc-28.1
         uint256 txHash = tx.GetHash();
-        setTxIndex[txHash] = i++;
+        setTxIndex[txHash] = i;
 
         if (tx.IsCoinBase())
             continue;
@@ -893,9 +965,15 @@ static RPCHelpMan getblocktemplate()
         }
         entry.pushKV("depends", std::move(deps));
 
+<<<<<<< v29.0
         int index_in_template = i - 1;
         entry.pushKV("fee", tx_fees.at(index_in_template));
         int64_t nTxSigOps{tx_sigops.at(index_in_template)};
+=======
+        int index_in_template = i;
+        entry.pushKV("fee", pblocktemplate->vTxFees[index_in_template]);
+        int64_t nTxSigOps = pblocktemplate->vTxSigOpsCost[index_in_template];
+>>>>>>> tc-28.1
         if (fPreSegWit) {
             CHECK_NONFATAL(nTxSigOps % WITNESS_SCALE_FACTOR == 0);
             nTxSigOps /= WITNESS_SCALE_FACTOR;
@@ -919,7 +997,7 @@ static RPCHelpMan getblocktemplate()
     result.pushKV("capabilities", std::move(aCaps));
 
     UniValue aRules(UniValue::VARR);
-    aRules.push_back("csv");
+    aRules.push_back("locktime");
     if (!fPreSegWit) aRules.push_back("!segwit");
     if (consensusParams.signet_blocks) {
         // indicate to miner that they must understand signet rules
@@ -975,7 +1053,14 @@ static RPCHelpMan getblocktemplate()
     result.pushKV("previousblockhash", block.hashPrevBlock.GetHex());
     result.pushKV("transactions", std::move(transactions));
     result.pushKV("coinbaseaux", std::move(aux));
+<<<<<<< v29.0
     result.pushKV("coinbasevalue", (int64_t)block.vtx[0]->vout[0].nValue);
+=======
+    CAmount finaltx_fee = pblocktemplate->has_block_final_tx
+                           ? pblocktemplate->vTxFees.back()
+                           : 0;
+    result.pushKV("coinbasevalue", (int64_t)pblock->vtx[0]->GetValueOut() - finaltx_fee);
+>>>>>>> tc-28.1
     result.pushKV("longpollid", tip.GetHex() + ToString(nTransactionsUpdatedLast));
     result.pushKV("target", hashTarget.GetHex());
     result.pushKV("mintime", GetMinimumTime(pindexPrev, consensusParams.DifficultyAdjustmentInterval()));
@@ -994,18 +1079,46 @@ static RPCHelpMan getblocktemplate()
     if (!fPreSegWit) {
         result.pushKV("weightlimit", (int64_t)MAX_BLOCK_WEIGHT);
     }
+<<<<<<< v29.0
     result.pushKV("curtime", block.GetBlockTime());
     result.pushKV("bits", strprintf("%08x", block.nBits));
+=======
+    result.pushKV("curtime", pblock->GetBlockTime());
+    result.pushKV("bits", strprintf("%08x", pblock->nBits));
+    result.pushKV("locktime", (int64_t)(pindexPrev->GetMedianTimePast()));
+>>>>>>> tc-28.1
     result.pushKV("height", (int64_t)(pindexPrev->nHeight+1));
+    if (pblocktemplate->has_block_final_tx) {
+        UniValue finaltx_prevout(UniValue::VARR);
+        for (const CTxIn& txin : pblock->vtx.back()->vin) {
+            UniValue in(UniValue::VOBJ);
+            in.pushKV("txid", txin.prevout.hash.GetHex());
+            in.pushKV("vout", (int64_t)txin.prevout.n);
+            const auto& pcoin = pblocktemplate->block_final_tx_coin_map.find(txin.prevout);
+            if (pcoin == pblocktemplate->block_final_tx_coin_map.end() || pcoin->second.IsSpent()) {
+                // This should never happen
+                in.pushKV("amount", strprintf("Error: UTXO record for block-final input '%s:%d' not found", txin.prevout.hash.GetHex(), txin.prevout.n));
+            } else {
+                in.pushKV("amount", (int64_t)pcoin->second.GetPresentValue(pindexPrev->nHeight + 1));
+            }
+            finaltx_prevout.push_back(in);
+        }
+        UniValue finaltx(UniValue::VOBJ);
+        finaltx.pushKV("prevout", finaltx_prevout);
+        result.pushKV("finaltx", finaltx);
+    }
 
     if (consensusParams.signet_blocks) {
         result.pushKV("signet_challenge", HexStr(consensusParams.signet_challenge));
     }
 
+<<<<<<< v29.0
     if (!block_template->getCoinbaseCommitment().empty()) {
         result.pushKV("default_witness_commitment", HexStr(block_template->getCoinbaseCommitment()));
     }
 
+=======
+>>>>>>> tc-28.1
     return result;
 },
     };

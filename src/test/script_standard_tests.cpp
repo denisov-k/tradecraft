@@ -1,6 +1,17 @@
 // Copyright (c) 2017-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <test/data/bip341_wallet_vectors.json.h>
 
@@ -96,43 +107,60 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_success)
     BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::NULL_DATA);
     BOOST_CHECK_EQUAL(solutions.size(), 0U);
 
-    // TxoutType::WITNESS_V0_KEYHASH
+    // TxoutType::UNSPENDABLE
     s.clear();
-    s << OP_0 << ToByteVector(pubkeys[0].GetID());
-    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_V0_KEYHASH);
-    BOOST_CHECK_EQUAL(solutions.size(), 1U);
-    BOOST_CHECK(solutions[0] == ToByteVector(pubkeys[0].GetID()));
+    s << OP_RETURN;
+    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::UNSPENDABLE);
+    BOOST_CHECK_EQUAL(solutions.size(), 0U);
 
-    // TxoutType::WITNESS_V0_SCRIPTHASH
-    uint256 scriptHash;
-    CSHA256().Write(redeemScript.data(), redeemScript.size())
-        .Finalize(scriptHash.begin());
+    // TxoutType::WITNESS_V0_LONGHASH
+    CScript witnessScript_inner;
+    witnessScript_inner << ToByteVector(pubkeys[0]) << OP_CHECKSIG;
+    std::vector<unsigned char> witnessScript;
+    witnessScript.push_back(0x00);
+    witnessScript.insert(witnessScript.end(),
+                         witnessScript_inner.begin(),
+                         witnessScript_inner.end());
 
+    WitnessV0LongHash long_hash;
+    CHash256().Write(witnessScript).Finalize(long_hash);
     s.clear();
-    s << OP_0 << ToByteVector(scriptHash);
-    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_V0_SCRIPTHASH);
+    s << OP_0 << ToByteVector(long_hash);
+    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_V0_LONGHASH);
     BOOST_CHECK_EQUAL(solutions.size(), 1U);
-    BOOST_CHECK(solutions[0] == ToByteVector(scriptHash));
+    BOOST_CHECK(solutions[0] == ToByteVector(long_hash));
+
+    // TxoutType::WITNESS_V0_SHORTHASH
+    WitnessV0ShortHash short_hash;
+    CRIPEMD160()
+        .Write(long_hash.begin(), 32)
+        .Finalize(short_hash.begin());
+    s.clear();
+    s << OP_0 << ToByteVector(short_hash);
+    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_V0_SHORTHASH);
+    BOOST_CHECK_EQUAL(solutions.size(), 1U);
+    BOOST_CHECK(solutions[0] == ToByteVector(short_hash));
 
     // TxoutType::WITNESS_V1_TAPROOT
     s.clear();
-    s << OP_1 << ToByteVector(uint256::ZERO);
-    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_V1_TAPROOT);
-    BOOST_CHECK_EQUAL(solutions.size(), 1U);
-    BOOST_CHECK(solutions[0] == ToByteVector(uint256::ZERO));
+    s << OP_1NEGATE << ToByteVector(uint256::ZERO);
+    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_UNKNOWN);
+    BOOST_CHECK_EQUAL(solutions.size(), 2U);
+    BOOST_CHECK(solutions[0] == std::vector<unsigned char>{1});
+    BOOST_CHECK(solutions[1] == ToByteVector(uint256::ZERO));
 
     // TxoutType::WITNESS_UNKNOWN
     s.clear();
     s << OP_16 << ToByteVector(uint256::ONE);
     BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_UNKNOWN);
     BOOST_CHECK_EQUAL(solutions.size(), 2U);
-    BOOST_CHECK(solutions[0] == std::vector<unsigned char>{16});
+    BOOST_CHECK(solutions[0] == std::vector<unsigned char>{17});
     BOOST_CHECK(solutions[1] == ToByteVector(uint256::ONE));
 
     // TxoutType::ANCHOR
     std::vector<unsigned char> anchor_bytes{0x4e, 0x73};
     s.clear();
-    s << OP_1 << anchor_bytes;
+    s << OP_1NEGATE << anchor_bytes;
     BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::ANCHOR);
     BOOST_CHECK(solutions.empty());
 
@@ -140,7 +168,7 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_success)
     int version{-1};
     std::vector<unsigned char> witness_program;
     BOOST_CHECK(s.IsPayToAnchor());
-    BOOST_CHECK(s.IsWitnessProgram(version, witness_program));
+    BOOST_CHECK(s.IsWitnessProgram(&version, &witness_program));
     BOOST_CHECK(CScript::IsPayToAnchor(version, witness_program));
 
     // TxoutType::NONSTANDARD
@@ -200,7 +228,7 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_failure)
     // TxoutType::WITNESS_UNKNOWN with incorrect program size
     s.clear();
     s << OP_0 << std::vector<unsigned char>(19, 0x01);
-    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::NONSTANDARD);
+    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_UNKNOWN);
 
     // TxoutType::ANCHOR but wrong witness version
     s.clear();
@@ -252,27 +280,36 @@ BOOST_AUTO_TEST_CASE(script_standard_ExtractDestination)
     s << OP_RETURN << std::vector<unsigned char>({75});
     BOOST_CHECK(!ExtractDestination(s, address));
 
-    // TxoutType::WITNESS_V0_KEYHASH
+    // TxoutType::UNSPENDABLE
     s.clear();
-    s << OP_0 << ToByteVector(pubkey.GetID());
-    BOOST_CHECK(ExtractDestination(s, address));
-    WitnessV0KeyHash keyhash;
-    CHash160().Write(pubkey).Finalize(keyhash);
-    BOOST_CHECK(std::get<WitnessV0KeyHash>(address) == keyhash);
+    s << OP_RETURN;
+    BOOST_CHECK(!ExtractDestination(s, address));
 
-    // TxoutType::WITNESS_V0_SCRIPTHASH
+    // TxoutType::WITNESS_V0_LONGHASH
+    unsigned char prefix = 0x00;
+    WitnessV0LongHash long_hash;
+    CHash256().Write({&prefix, 1}).Write(redeemScript).Finalize(long_hash);
     s.clear();
-    WitnessV0ScriptHash scripthash;
-    CSHA256().Write(redeemScript.data(), redeemScript.size()).Finalize(scripthash.begin());
-    s << OP_0 << ToByteVector(scripthash);
+    s << OP_0 << ToByteVector(long_hash);
     BOOST_CHECK(ExtractDestination(s, address));
-    BOOST_CHECK(std::get<WitnessV0ScriptHash>(address) == scripthash);
+    BOOST_CHECK(std::get_if<WitnessV0LongHash>(&address) && *std::get_if<WitnessV0LongHash>(&address) == long_hash);
+
+    // TxoutType::WITNESS_V0_SHORTHASH
+    WitnessV0ShortHash short_hash;
+    CRIPEMD160()
+        .Write(long_hash.begin(),
+               long_hash.size())
+        .Finalize(short_hash.begin());
+    s.clear();
+    s << OP_0 << ToByteVector(short_hash);
+    BOOST_CHECK(ExtractDestination(s, address));
+    BOOST_CHECK(std::get_if<WitnessV0ShortHash>(&address) && *std::get_if<WitnessV0ShortHash>(&address) == short_hash);
 
     // TxoutType::WITNESS_UNKNOWN with unknown version
     s.clear();
     s << OP_1 << ToByteVector(pubkey);
     BOOST_CHECK(ExtractDestination(s, address));
-    WitnessUnknown unk{1, ToByteVector(pubkey)};
+    WitnessUnknown unk{2, ToByteVector(pubkey)};
     BOOST_CHECK(std::get<WitnessUnknown>(address) == unk);
 }
 
@@ -320,6 +357,7 @@ BOOST_AUTO_TEST_CASE(script_standard_GetScriptFor_)
         OP_3 << OP_CHECKMULTISIG;
     result = GetScriptForMultisig(2, std::vector<CPubKey>(pubkeys, pubkeys + 3));
     BOOST_CHECK(result == expected);
+<<<<<<< v29.0
 
     // WitnessV0KeyHash
     expected.clear();
@@ -448,6 +486,8 @@ BOOST_AUTO_TEST_CASE(bip341_spk_test_vectors)
             BOOST_CHECK(spend_data.scripts[scriptpos.first] == control_set{ParseHex(vec["expected"]["scriptPathControlBlocks"][scriptpos.second].get_str())});
         }
     }
+=======
+>>>>>>> tc-28.1
 }
 
 BOOST_AUTO_TEST_SUITE_END()

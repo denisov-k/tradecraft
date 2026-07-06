@@ -1,9 +1,20 @@
 // Copyright (c) 2019-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_UTIL_TRANSLATION_H
-#define BITCOIN_UTIL_TRANSLATION_H
+#ifndef FREICOIN_UTIL_TRANSLATION_H
+#define FREICOIN_UTIL_TRANSLATION_H
 
 #include <tinyformat.h>
 #include <util/string.h>
@@ -107,4 +118,26 @@ bilingual_str format(util::BilingualFmt<sizeof...(Args)> fmt, const Args&... arg
 }
 } // namespace tinyformat
 
+<<<<<<< v29.0
 #endif // BITCOIN_UTIL_TRANSLATION_H
+=======
+/** Translate a message to the native language of the user. */
+const extern std::function<std::string(const char*)> G_TRANSLATION_FUN;
+
+struct ConstevalStringLiteral {
+    const char* const lit;
+    consteval ConstevalStringLiteral(const char* str) : lit{str} {}
+    consteval ConstevalStringLiteral(std::nullptr_t) = delete;
+};
+
+/**
+ * Translation function.
+ * If no translation function is set, simply return the input.
+ */
+inline bilingual_str _(ConstevalStringLiteral str)
+{
+    return bilingual_str{str.lit, G_TRANSLATION_FUN ? (G_TRANSLATION_FUN)(str.lit) : str.lit};
+}
+
+#endif // FREICOIN_UTIL_TRANSLATION_H
+>>>>>>> tc-28.1

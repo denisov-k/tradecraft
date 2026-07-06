@@ -1,6 +1,17 @@
 // Copyright (c) 2020 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <chainparams.h>
 #include <consensus/consensus.h>
@@ -85,7 +96,7 @@ FUZZ_TARGET(utxo_total_supply)
     const auto AppendRandomTxo = [&](CMutableTransaction& tx) {
         const auto& txo = txos.at(fuzzed_data_provider.ConsumeIntegralInRange<size_t>(0, txos.size() - 1));
         tx.vin.emplace_back(txo.first);
-        tx.vout.emplace_back(txo.second.nValue, txo.second.scriptPubKey); // "Forward" coin with no fee
+        tx.vout.emplace_back(txo.second.GetReferenceValue(), txo.second.scriptPubKey); // "Forward" coin with no fee
     };
     const auto UpdateUtxoStats = [&]() {
         LOCK(chainman.GetMutex());
@@ -93,7 +104,7 @@ FUZZ_TARGET(utxo_total_supply)
         utxo_stats = std::move(
             *Assert(kernel::ComputeUTXOStats(kernel::CoinStatsHashType::NONE, &chainman.ActiveChainstate().CoinsDB(), chainman.m_blockman, {})));
         // Check that miner can't print more money than they are allowed to
-        assert(circulation == utxo_stats.total_amount);
+        assert(circulation == utxo_stats.total_value);
     };
 
 
@@ -120,7 +131,7 @@ FUZZ_TARGET(utxo_total_supply)
         current_block->vtx.front() = MakeTransactionRef(tx);
     }
     current_block->hashMerkleRoot = BlockMerkleRoot(*current_block);
-    assert(!MineBlock(node, current_block).IsNull());
+    assert(!MineBlock(node, current_block).first.IsNull());
     circulation += GetBlockSubsidy(ActiveHeight(), Params().GetConsensus());
 
     assert(ActiveHeight() == 1);
@@ -151,7 +162,7 @@ FUZZ_TARGET(utxo_total_supply)
             [&] {
                 // Append the current block to the active chain
                 node::RegenerateCommitments(*current_block, chainman);
-                const bool was_valid = !MineBlock(node, current_block).IsNull();
+                const bool was_valid = !MineBlock(node, current_block).first.IsNull();
 
                 const auto prev_utxo_stats = utxo_stats;
                 if (was_valid) {

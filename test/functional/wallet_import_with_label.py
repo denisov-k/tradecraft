@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2018-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the behavior of RPC importprivkey on set and unset labels of
 addresses.
 
@@ -10,11 +21,12 @@ with or without a label and then its private key is imported with importprivkey
 with and without a label.
 """
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.address import key_to_p2pkh
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.wallet_util import test_address
 
 
-class ImportWithLabel(BitcoinTestFramework):
+class ImportWithLabel(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser, descriptors=False)
 
@@ -96,8 +108,8 @@ class ImportWithLabel(BitcoinTestFramework):
             "Test importprivkey won't label new dests with the same "
             "label as others labeled dests for the same key."
         )
-        self.log.info("Import a watch-only p2sh-segwit address with a label.")
-        address4 = self.nodes[0].getnewaddress("", "p2sh-segwit")
+        self.log.info("Import a watch-only bech32 address with a label.")
+        address4 = self.nodes[0].getnewaddress("", "bech32")
         label4_addr = "Test Label 4 for importaddress"
         self.nodes[1].importaddress(address4, label4_addr)
         test_address(self.nodes[1],
@@ -115,7 +127,7 @@ class ImportWithLabel(BitcoinTestFramework):
         )
         priv_key4 = self.nodes[0].dumpprivkey(address4)
         self.nodes[1].importprivkey(priv_key4)
-        embedded_addr = self.nodes[1].getaddressinfo(address4)['embedded']['address']
+        embedded_addr = key_to_p2pkh(self.nodes[1].getaddressinfo(address4)['embedded']['pubkey'])
 
         test_address(self.nodes[1], embedded_addr, labels=[""])
 

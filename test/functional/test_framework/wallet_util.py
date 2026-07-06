@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2018-2021 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Useful util functions for testing the wallet"""
 from collections import namedtuple
 import unittest
@@ -9,11 +20,10 @@ import unittest
 from test_framework.address import (
     byte_to_base58,
     key_to_p2pkh,
-    key_to_p2sh_p2wpkh,
-    key_to_p2wpkh,
+    key_to_p2wpk,
     script_to_p2sh,
-    script_to_p2sh_p2wsh,
     script_to_p2wsh,
+    script_to_witscript,
 )
 from test_framework.key import ECKey
 from test_framework.messages import (
@@ -23,7 +33,7 @@ from test_framework.messages import (
 )
 from test_framework.script_util import (
     key_to_p2pkh_script,
-    key_to_p2wpkh_script,
+    key_to_p2wpk_script,
     keys_to_multisig_script,
     script_to_p2sh_script,
     script_to_p2wsh_script,
@@ -33,11 +43,8 @@ Key = namedtuple('Key', ['privkey',
                          'pubkey',
                          'p2pkh_script',
                          'p2pkh_addr',
-                         'p2wpkh_script',
-                         'p2wpkh_addr',
-                         'p2sh_p2wpkh_script',
-                         'p2sh_p2wpkh_redeem_script',
-                         'p2sh_p2wpkh_addr'])
+                         'p2wpk_script',
+                         'p2wpk_addr'])
 
 Multisig = namedtuple('Multisig', ['privkeys',
                                    'pubkeys',
@@ -46,8 +53,7 @@ Multisig = namedtuple('Multisig', ['privkeys',
                                    'redeem_script',
                                    'p2wsh_script',
                                    'p2wsh_addr',
-                                   'p2sh_p2wsh_script',
-                                   'p2sh_p2wsh_addr'])
+                                   'witness_script'])
 
 def get_key(node):
     """Generate a fresh key on node
@@ -59,11 +65,8 @@ def get_key(node):
                pubkey=pubkey,
                p2pkh_script=key_to_p2pkh_script(pubkey).hex(),
                p2pkh_addr=key_to_p2pkh(pubkey),
-               p2wpkh_script=key_to_p2wpkh_script(pubkey).hex(),
-               p2wpkh_addr=key_to_p2wpkh(pubkey),
-               p2sh_p2wpkh_script=script_to_p2sh_script(key_to_p2wpkh_script(pubkey)).hex(),
-               p2sh_p2wpkh_redeem_script=key_to_p2wpkh_script(pubkey).hex(),
-               p2sh_p2wpkh_addr=key_to_p2sh_p2wpkh(pubkey))
+               p2wpk_script=key_to_p2wpk_script(pubkey).hex(),
+               p2wpk_addr=key_to_p2wpk(pubkey))
 
 def get_generate_key():
     """Generate a fresh key
@@ -74,11 +77,8 @@ def get_generate_key():
                pubkey=pubkey.hex(),
                p2pkh_script=key_to_p2pkh_script(pubkey).hex(),
                p2pkh_addr=key_to_p2pkh(pubkey),
-               p2wpkh_script=key_to_p2wpkh_script(pubkey).hex(),
-               p2wpkh_addr=key_to_p2wpkh(pubkey),
-               p2sh_p2wpkh_script=script_to_p2sh_script(key_to_p2wpkh_script(pubkey)).hex(),
-               p2sh_p2wpkh_redeem_script=key_to_p2wpkh_script(pubkey).hex(),
-               p2sh_p2wpkh_addr=key_to_p2sh_p2wpkh(pubkey))
+               p2wpk_script=key_to_p2wpk_script(pubkey).hex(),
+               p2wpk_addr=key_to_p2wpk(pubkey))
 
 def get_multisig(node):
     """Generate a fresh 2-of-3 multisig on node
@@ -99,8 +99,7 @@ def get_multisig(node):
                     redeem_script=script_code.hex(),
                     p2wsh_script=witness_script.hex(),
                     p2wsh_addr=script_to_p2wsh(script_code),
-                    p2sh_p2wsh_script=script_to_p2sh_script(witness_script).hex(),
-                    p2sh_p2wsh_addr=script_to_p2sh_p2wsh(script_code))
+                    witness_script=script_to_witscript(script_code).hex())
 
 def test_address(node, address, **kwargs):
     """Get address info for `address` and test whether the returned values are as expected."""
@@ -133,7 +132,7 @@ def calculate_input_weight(scriptsig_hex, witness_stack_hex=None):
     """Given a scriptSig and a list of witness stack items for an input in hex format,
        calculate the total input weight. If the input has no witness data,
        `witness_stack_hex` can be set to None."""
-    tx_in = CTxIn(scriptSig=bytes.fromhex(scriptsig_hex))
+    tx_in = CTxIn(scriptSig=bytes.fromhex('00' + scriptsig_hex))
     witness_size = 0
     if witness_stack_hex is not None:
         tx_inwit = CTxInWitness()
@@ -164,7 +163,7 @@ class WalletUnlock():
 
 class TestFrameworkWalletUtil(unittest.TestCase):
     def test_calculate_input_weight(self):
-        SKELETON_BYTES = 32 + 4 + 4  # prevout-txid, prevout-index, sequence
+        SKELETON_BYTES = 32 + 4 + 4 + 1  # prevout-txid, prevout-index, sequence, witness version
         SMALL_LEN_BYTES = 1  # bytes needed for encoding scriptSig / witness item lengths < 253
         LARGE_LEN_BYTES = 3  # bytes needed for encoding scriptSig / witness item lengths >= 253
 
@@ -174,19 +173,19 @@ class TestFrameworkWalletUtil(unittest.TestCase):
         self.assertEqual(calculate_input_weight("", None),
                          (SKELETON_BYTES + SMALL_LEN_BYTES) * WITNESS_SCALE_FACTOR)
         # small scriptSig, no witness
-        scriptSig_small = "00"*252
+        scriptSig_small = "00"*251
         self.assertEqual(calculate_input_weight(scriptSig_small, None),
-                         (SKELETON_BYTES + SMALL_LEN_BYTES + 252) * WITNESS_SCALE_FACTOR)
+                         (SKELETON_BYTES + SMALL_LEN_BYTES + 251) * WITNESS_SCALE_FACTOR)
         # small scriptSig, empty witness stack
         self.assertEqual(calculate_input_weight(scriptSig_small, []),
-                         (SKELETON_BYTES + SMALL_LEN_BYTES + 252) * WITNESS_SCALE_FACTOR + SMALL_LEN_BYTES)
+                         (SKELETON_BYTES + SMALL_LEN_BYTES + 251) * WITNESS_SCALE_FACTOR + SMALL_LEN_BYTES)
         # large scriptSig, no witness
-        scriptSig_large = "00"*253
+        scriptSig_large = "00"*252
         self.assertEqual(calculate_input_weight(scriptSig_large, None),
-                         (SKELETON_BYTES + LARGE_LEN_BYTES + 253) * WITNESS_SCALE_FACTOR)
+                         (SKELETON_BYTES + LARGE_LEN_BYTES + 252) * WITNESS_SCALE_FACTOR)
         # large scriptSig, empty witness stack
         self.assertEqual(calculate_input_weight(scriptSig_large, []),
-                         (SKELETON_BYTES + LARGE_LEN_BYTES + 253) * WITNESS_SCALE_FACTOR + SMALL_LEN_BYTES)
+                         (SKELETON_BYTES + LARGE_LEN_BYTES + 252) * WITNESS_SCALE_FACTOR + SMALL_LEN_BYTES)
         # empty scriptSig, 5 small witness stack items
         self.assertEqual(calculate_input_weight("", ["00", "11", "22", "33", "44"]),
                          ((SKELETON_BYTES + SMALL_LEN_BYTES) * WITNESS_SCALE_FACTOR) + SMALL_LEN_BYTES + 5 * SMALL_LEN_BYTES + 5)
@@ -195,7 +194,7 @@ class TestFrameworkWalletUtil(unittest.TestCase):
                          ((SKELETON_BYTES + SMALL_LEN_BYTES) * WITNESS_SCALE_FACTOR) + LARGE_LEN_BYTES + 253 * SMALL_LEN_BYTES + 253)
         # small scriptSig, 3 large witness stack items
         self.assertEqual(calculate_input_weight(scriptSig_small, ["00"*253]*3),
-                         ((SKELETON_BYTES + SMALL_LEN_BYTES + 252) * WITNESS_SCALE_FACTOR) + SMALL_LEN_BYTES + 3 * LARGE_LEN_BYTES + 3*253)
+                         ((SKELETON_BYTES + SMALL_LEN_BYTES + 251) * WITNESS_SCALE_FACTOR) + SMALL_LEN_BYTES + 3 * LARGE_LEN_BYTES + 3*253)
         # large scriptSig, 3 large witness stack items
         self.assertEqual(calculate_input_weight(scriptSig_large, ["00"*253]*3),
-                         ((SKELETON_BYTES + LARGE_LEN_BYTES + 253) * WITNESS_SCALE_FACTOR) + SMALL_LEN_BYTES + 3 * LARGE_LEN_BYTES + 3*253)
+                         ((SKELETON_BYTES + LARGE_LEN_BYTES + 252) * WITNESS_SCALE_FACTOR) + SMALL_LEN_BYTES + 3 * LARGE_LEN_BYTES + 3*253)

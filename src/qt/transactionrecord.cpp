@@ -1,6 +1,17 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <qt/transactionrecord.h>
 
@@ -68,7 +79,7 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const interface
 
             if (fAllFromMe) {
                 // Change is only really possible if we're the sender
-                // Otherwise, someone just sent bitcoins to a change address, which should be shown
+                // Otherwise, someone just sent freicoins to a change address, which should be shown
                 if (wtx.txout_is_change[i]) {
                     continue;
                 }
@@ -83,7 +94,7 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const interface
 
                 if (!std::get_if<CNoDestination>(&wtx.txout_address[i]))
                 {
-                    // Sent to Bitcoin Address
+                    // Sent to Freicoin Address
                     sub.type = TransactionRecord::SendToAddress;
                     sub.address = EncodeDestination(wtx.txout_address[i]);
                 }
@@ -94,7 +105,7 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const interface
                     sub.address = mapValue["to"];
                 }
 
-                CAmount nValue = txout.nValue;
+                CAmount nValue = txout.GetReferenceValue();
                 /* Add fee to first output */
                 if (nTxFee > 0)
                 {
@@ -115,11 +126,11 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const interface
 
                 TransactionRecord sub(hash, nTime);
                 sub.idx = i; // vout index
-                sub.credit = txout.nValue;
+                sub.credit = txout.GetReferenceValue();
                 sub.involvesWatchAddress = mine & ISMINE_WATCH_ONLY;
                 if (wtx.txout_address_is_mine[i])
                 {
-                    // Received by Bitcoin Address
+                    // Received by Freicoin Address
                     sub.type = TransactionRecord::RecvWithAddress;
                     sub.address = EncodeDestination(wtx.txout_address[i]);
                 }
@@ -135,6 +146,8 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const interface
                     sub.type = TransactionRecord::Generated;
                 }
 
+                sub.lock_height = wtx.tx->lock_height;
+
                 parts.append(sub);
             }
         }
@@ -142,7 +155,7 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const interface
         //
         // Mixed debit transaction, can't break down payees
         //
-        parts.append(TransactionRecord(hash, nTime, TransactionRecord::Other, "", nNet, 0));
+        parts.append(TransactionRecord(hash, nTime, TransactionRecord::Other, "", nNet, 0, wtx.tx->lock_height));
         parts.last().involvesWatchAddress = involvesWatchAddress;
     }
 

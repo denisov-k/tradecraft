@@ -1,8 +1,27 @@
+<<<<<<< v29.0
 // Copyright (c) 2009-present The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <bitcoin-build-config.h> // IWYU pragma: keep
+=======
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#include <config/freicoin-config.h> // IWYU pragma: keep
+>>>>>>> tc-28.1
 
 #include <chain.h>
 #include <clientversion.h>
@@ -201,9 +220,10 @@ RPCHelpMan importprivkey()
                 throw JSONRPCError(RPC_WALLET_ERROR, "Error adding key to wallet");
             }
 
-            // Add the wpkh script for this key if possible
+            // Add the wpk and wsh scripts for this key if possible
             if (pubkey.IsCompressed()) {
-                pwallet->ImportScripts({GetScriptForDestination(WitnessV0KeyHash(vchAddress))}, /*timestamp=*/0);
+                CScript p2pk = GetScriptForRawPubKey(pubkey);
+                pwallet->ImportWitnessV0Scripts({WitnessV0ScriptEntry(/*version=*/0, p2pk)}, /*timestamp=*/0);
             }
         }
     }
@@ -231,7 +251,7 @@ RPCHelpMan importaddress()
             "Note: Use \"getwalletinfo\" to query the scanning progress.\n"
             "Note: This command is only compatible with legacy wallets. Use \"importdescriptors\" for descriptor wallets.\n",
                 {
-                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Bitcoin address (or hex-encoded script)"},
+                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Freicoin address (or hex-encoded script)"},
                     {"label", RPCArg::Type::STR, RPCArg::Default{""}, "An optional label"},
                     {"rescan", RPCArg::Type::BOOL, RPCArg::Default{true}, "Scan the chain and mempool for wallet transactions."},
                     {"p2sh", RPCArg::Type::BOOL, RPCArg::Default{false}, "Add the P2SH version of the script as well"},
@@ -284,9 +304,6 @@ RPCHelpMan importaddress()
             if (fP2SH) {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot use the p2sh flag with an address - use a script instead");
             }
-            if (OutputTypeFromDestination(dest) == OutputType::BECH32M) {
-                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Bech32m addresses cannot be imported into legacy wallets");
-            }
 
             pwallet->MarkDirty();
 
@@ -304,7 +321,7 @@ RPCHelpMan importaddress()
 
             pwallet->ImportScriptPubKeys(strLabel, scripts, /*have_solving_data=*/false, /*apply_label=*/true, /*timestamp=*/1);
         } else {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address or script");
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Freicoin address or script");
         }
     }
     if (fRescan)
@@ -537,6 +554,7 @@ RPCHelpMan importwallet()
         pwallet->chain().showProgress(strprintf("%s %s", pwallet->GetDisplayName(), _("Importing…")), 0, false); // show progress dialog in GUI
         std::vector<std::tuple<CKey, int64_t, bool, std::string>> keys;
         std::vector<std::pair<CScript, int64_t>> scripts;
+        std::vector<WitnessV0ScriptEntry> witscripts;
         while (file.good()) {
             pwallet->chain().showProgress("", std::max(1, std::min(50, (int)(((double)file.tellg() / (double)nFilesize) * 100))), false);
             std::string line;
@@ -568,10 +586,46 @@ RPCHelpMan importwallet()
                 keys.emplace_back(key, nTime, fLabel, strLabel);
             } else if(IsHex(vstr[0])) {
                 std::vector<unsigned char> vData(ParseHex(vstr[0]));
+<<<<<<< v29.0
                 CScript script = CScript(vData.begin(), vData.end());
                 int64_t birth_time{ParseISO8601DateTime(vstr[1]).value_or(0)};
+=======
+                int64_t birth_time = ParseISO8601DateTime(vstr[1]);
+>>>>>>> tc-28.1
                 if (birth_time > 0) nTimeBegin = std::min(nTimeBegin, birth_time);
-                scripts.emplace_back(script, birth_time);
+                if (vstr[2] == "script=1") {
+                    CScript script = CScript(vData.begin(), vData.end());
+                    scripts.emplace_back(script, birth_time);
+                } else if (vstr[2] == "witver=0") {
+                    int64_t path = std::stoll(vstr[3]);
+                    if (path < std::numeric_limits<uint32_t>::min() ||
+                        path > std::numeric_limits<uint32_t>::max())
+                    {
+                        pwallet->WalletLogPrintf("Error invalid or missing path for witscript %s\n", vstr[0]);
+                        continue;
+                    }
+                    std::vector<uint256> branch;
+                    if (vstr[4] != "[") {
+                        pwallet->WalletLogPrintf("Error invalid or missing branch for witscript %s\n", vstr[0]);
+                        continue;
+                    }
+                    auto pstr = vstr.begin() + 5;
+                    for (; pstr != vstr.end() && *pstr != "]"; ++pstr) {
+                        std::vector<unsigned char> vch = ParseHex(*pstr);
+                        if (vch.size() != 32) {
+                            pwallet->WalletLogPrintf("Invalid hash value within branch for witscript %s\n", vstr[0]);
+                            pstr = vstr.end();
+                            break;
+                        }
+                        branch.emplace_back(vch);
+                    }
+                    if (pstr == vstr.end()) {
+                        pwallet->WalletLogPrintf("Error invalid or missing branch for witscript %s\n", vstr[0]);
+                        continue;
+                    }
+                    WitnessV0ScriptEntry entry(vData, branch, path);
+                    witscripts.push_back(entry);
+                }
             }
         }
         file.close();
@@ -581,7 +635,7 @@ RPCHelpMan importwallet()
             pwallet->chain().showProgress("", 100, false); // hide progress dialog in GUI
             throw JSONRPCError(RPC_WALLET_ERROR, "Importing wallets is disabled when private keys are disabled");
         }
-        double total = (double)(keys.size() + scripts.size());
+        double total = (double)(keys.size() + scripts.size() + witscripts.size());
         double progress = 0;
         for (const auto& key_tuple : keys) {
             pwallet->chain().showProgress("", std::max(50, std::min(75, (int)((progress / total) * 100) + 50)), false);
@@ -619,6 +673,15 @@ RPCHelpMan importwallet()
 
             progress++;
         }
+        for (const auto& entry : witscripts) {
+            pwallet->chain().showProgress("", std::max(50, std::min(75, (int)((progress / total) * 100) + 50)), false);
+            if (!pwallet->ImportWitnessV0Scripts({entry}, 0 /* timestamp */)) {
+                pwallet->WalletLogPrintf("Error improting witscript %s\n", HexStr(entry.m_script));
+                fGood = false;
+                continue;
+            }
+            progress++;
+        }
         pwallet->chain().showProgress("", 100, false); // hide progress dialog in GUI
     }
     pwallet->chain().showProgress("", 100, false); // hide progress dialog in GUI
@@ -626,7 +689,7 @@ RPCHelpMan importwallet()
     pwallet->MarkDirty();
 
     if (!fGood)
-        throw JSONRPCError(RPC_WALLET_ERROR, "Error adding some keys/scripts to wallet");
+        throw JSONRPCError(RPC_WALLET_ERROR, "Error adding some keys/scripts/witscripts to wallet");
 
     return UniValue::VNULL;
 },
@@ -640,7 +703,7 @@ RPCHelpMan dumpprivkey()
                 "Then the importprivkey can be used with this output\n"
                 "Note: This command is only compatible with legacy wallets.\n",
                 {
-                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The bitcoin address for the private key"},
+                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The freicoin address for the private key"},
                 },
                 RPCResult{
                     RPCResult::Type::STR, "key", "The private key"
@@ -664,7 +727,7 @@ RPCHelpMan dumpprivkey()
     std::string strAddress = request.params[0].get_str();
     CTxDestination dest = DecodeDestination(strAddress);
     if (!IsValidDestination(dest)) {
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address");
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Freicoin address");
     }
     auto keyid = GetKeyForDestination(spk_man, dest);
     if (keyid.IsNull()) {
@@ -684,7 +747,7 @@ RPCHelpMan dumpwallet()
 {
     return RPCHelpMan{"dumpwallet",
                 "\nDumps all wallet keys in a human-readable format to a server-side file. This does not allow overwriting existing files.\n"
-                "Imported scripts are included in the dumpfile, but corresponding BIP173 addresses, etc. may not be added automatically by importwallet.\n"
+                "Imported scripts and witscripts are included in the dumpfile, but corresponding BIP173 addresses, etc. may not be added automatically by importwallet.\n"
                 "Note that if your wallet contains keys which are not derived from your HD seed (e.g. imported keys), these are not covered by\n"
                 "only backing up the seed itself, and must be backed up too (e.g. ensure you back up the whole dumpfile).\n"
                 "Note: This command is only compatible with legacy wallets.\n",
@@ -746,6 +809,7 @@ RPCHelpMan dumpwallet()
 
     const std::map<CKeyID, int64_t>& mapKeyPool = spk_man.GetAllReserveKeys();
     std::set<CScriptID> scripts = spk_man.GetCScripts();
+    std::set<WitnessV0ShortHash> witscripts = spk_man.GetWitnessV0Scripts();
 
     // sort time/key pairs
     std::vector<std::pair<int64_t, CKeyID> > vKeyBirth;
@@ -816,6 +880,20 @@ RPCHelpMan dumpwallet()
         }
     }
     file << "\n";
+    for (const WitnessV0ShortHash& shortid : witscripts) {
+        WitnessV0ScriptEntry entry;
+        std::string create_time = "0";
+        std::string address = EncodeDestination(shortid);
+        if(spk_man.GetWitnessV0Script(shortid, entry)) {
+            // FIXME: find some way of getting birth times from metadata
+            file << strprintf("%s %s witver=0 %d [", HexStr(entry.m_script), create_time, entry.m_path);
+            for (const uint256& hash : entry.m_branch) {
+                file << strprintf(" %s", HexStr(hash));
+            }
+            file << strprintf(" ] # addr=%s\n", address);
+        }
+    }
+    file << "\n";
     file << "# End of dump\n";
     file.close();
 
@@ -831,10 +909,11 @@ struct ImportData
 {
     // Input data
     std::unique_ptr<CScript> redeemscript; //!< Provided redeemScript; will be moved to `import_scripts` if relevant.
-    std::unique_ptr<CScript> witnessscript; //!< Provided witnessScript; will be moved to `import_scripts` if relevant.
+    std::unique_ptr<WitnessV0ScriptEntry> witnessscript; //!< Provided witnessScript; will be moved to `import_witscripts` if relevant.
 
     // Output data
     std::set<CScript> import_scripts;
+    std::set<WitnessV0ScriptEntry> import_witscripts;
     std::map<CKeyID, bool> used_keys; //!< Import these private keys if available (the value indicates whether if the key is required for solvability)
     std::map<CKeyID, std::pair<CPubKey, KeyOriginInfo>> key_origins;
 };
@@ -884,32 +963,40 @@ static std::string RecurseImportData(const CScript& script, ImportData& import_d
         }
         return "";
     }
-    case TxoutType::WITNESS_V0_SCRIPTHASH: {
+    case TxoutType::WITNESS_V0_LONGHASH:
+    case TxoutType::WITNESS_V0_SHORTHASH: {
         if (script_ctx == ScriptContext::WITNESS_V0) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Trying to nest P2WSH inside another P2WSH");
-        CScriptID id{RIPEMD160(solverdata[0])};
-        auto subscript = std::move(import_data.witnessscript); // Remove redeemscript from import_data to check for superfluous script later.
-        if (!subscript) return "missing witnessscript";
-        if (CScriptID(*subscript) != id) return "witnessScript does not match the scriptPubKey or redeemScript";
+        WitnessV0ShortHash id;
+        if (script_type == TxoutType::WITNESS_V0_LONGHASH) {
+            id = WitnessV0ShortHash(WitnessV0LongHash{uint256{solverdata[0]}});
+        } else if (script_type == TxoutType::WITNESS_V0_SHORTHASH) {
+            id = WitnessV0ShortHash{uint160{solverdata[0]}};
+        }
+        auto witscript = std::move(import_data.witnessscript); // Remove redeemscript from import_data to check for superfluous script later.
+        if (!witscript) return "missing witnessscript";
+        if (witscript->GetShortHash() != id) return "witnessScript does not match the scriptPubKey or redeemScript";
         if (script_ctx == ScriptContext::TOP) {
             import_data.import_scripts.emplace(script); // Special rule for IsMine: native P2WSH requires the TOP script imported (see script/ismine.cpp)
         }
-        import_data.import_scripts.emplace(*subscript);
-        return RecurseImportData(*subscript, import_data, ScriptContext::WITNESS_V0);
-    }
-    case TxoutType::WITNESS_V0_KEYHASH: {
-        if (script_ctx == ScriptContext::WITNESS_V0) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Trying to nest P2WPKH inside P2WSH");
-        CKeyID id = CKeyID(uint160(solverdata[0]));
-        import_data.used_keys[id] = true;
-        if (script_ctx == ScriptContext::TOP) {
-            import_data.import_scripts.emplace(script); // Special rule for IsMine: native P2WPKH requires the TOP script imported (see script/ismine.cpp)
+        import_data.import_witscripts.emplace(*witscript);
+        if (script_type == TxoutType::WITNESS_V0_LONGHASH) {
+            import_data.import_scripts.emplace(CScript() << OP_0 << ToByteVector(witscript->GetLongHash()));
+        } else if (script_type == TxoutType::WITNESS_V0_SHORTHASH) {
+            import_data.import_scripts.emplace(CScript() << OP_0 << ToByteVector(witscript->GetShortHash()));
         }
-        return "";
+        if (!witscript->m_script.empty() && witscript->m_script[0] == 0x00) {
+            CScript subscript(witscript->m_script.begin() + 1, witscript->m_script.end());
+            import_data.import_scripts.insert(subscript);
+            return RecurseImportData(subscript, import_data, ScriptContext::WITNESS_V0);
+        } else {
+            return "";
+        }
     }
     case TxoutType::NULL_DATA:
+    case TxoutType::UNSPENDABLE:
         return "unspendable script";
     case TxoutType::NONSTANDARD:
     case TxoutType::WITNESS_UNKNOWN:
-    case TxoutType::WITNESS_V1_TAPROOT:
     case TxoutType::ANCHOR:
         return "unrecognized script";
     } // no default case, so the compiler can warn about missing cases
@@ -947,9 +1034,6 @@ static UniValue ProcessImportLegacy(ImportData& import_data, std::map<CKeyID, CP
         if (!IsValidDestination(dest)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address \"" + output + "\"");
         }
-        if (OutputTypeFromDestination(dest) == OutputType::BECH32M) {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Bech32m addresses cannot be imported into legacy wallets");
-        }
         script = GetScriptForDestination(dest);
     } else {
         if (!IsHex(output)) {
@@ -976,13 +1060,28 @@ static UniValue ProcessImportLegacy(ImportData& import_data, std::map<CKeyID, CP
         if (!IsHex(witness_script_hex)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid witness script \"" + witness_script_hex + "\": must be hex string");
         }
+        // FIXME: Add branch and path parsing
         auto parsed_witnessscript = ParseHex(witness_script_hex);
-        import_data.witnessscript = std::make_unique<CScript>(parsed_witnessscript.begin(), parsed_witnessscript.end());
+        import_data.witnessscript = std::make_unique<WitnessV0ScriptEntry>(parsed_witnessscript);
     }
     for (size_t i = 0; i < pubKeys.size(); ++i) {
         CPubKey pubkey = HexToPubKey(pubKeys[i].get_str());
         pubkey_map.emplace(pubkey.GetID(), pubkey);
+<<<<<<< v29.0
         ordered_pubkeys.emplace_back(pubkey.GetID(), internal);
+=======
+        ordered_pubkeys.push_back(pubkey.GetID());
+        if (!import_data.witnessscript) {
+            CScript p2pk = GetScriptForRawPubKey(pubkey);
+            WitnessV0ScriptEntry entry(0 /* version */, p2pk);
+            CScript p2wsh = GetScriptForDestination(entry.GetLongHash());
+            CScript p2wpk = GetScriptForDestination(entry.GetShortHash());
+            if (script == p2wpk || script == p2wsh) {
+                import_data.witnessscript = std::make_unique<WitnessV0ScriptEntry>(entry);
+                import_data.used_keys[pubkey.GetID()] = true;
+            }
+        }
+>>>>>>> tc-28.1
     }
     for (size_t i = 0; i < keys.size(); ++i) {
         const auto& str = keys[i].get_str();
@@ -996,6 +1095,15 @@ static UniValue ProcessImportLegacy(ImportData& import_data, std::map<CKeyID, CP
             pubkey_map.erase(id);
         }
         privkey_map.emplace(id, key);
+        if (!import_data.witnessscript) {
+            CScript p2pk = GetScriptForRawPubKey(pubkey);
+            WitnessV0ScriptEntry entry(0 /* version */, p2pk);
+            CScript p2wsh = GetScriptForDestination(entry.GetLongHash());
+            CScript p2wpk = GetScriptForDestination(entry.GetShortHash());
+            if (script == p2wpk || script == p2wsh) {
+                import_data.witnessscript = std::make_unique<WitnessV0ScriptEntry>(entry);
+            }
+        }
     }
 
 
@@ -1033,7 +1141,7 @@ static UniValue ProcessImportLegacy(ImportData& import_data, std::map<CKeyID, CP
         } else {
             // RecurseImportData() removes any relevant redeemscript/witnessscript from import_data, so we can use that to discover if a superfluous one was provided.
             if (import_data.redeemscript) warnings.push_back("Ignoring redeemscript as this is not a P2SH script.");
-            if (import_data.witnessscript) warnings.push_back("Ignoring witnessscript as this is not a (P2SH-)P2WSH script.");
+            if (import_data.witnessscript) warnings.push_back("Ignoring witnessscript as this is not a P2WSH or P2WPK script.");
             for (auto it = privkey_map.begin(); it != privkey_map.end(); ) {
                 auto oldit = it++;
                 if (import_data.used_keys.count(oldit->first) == 0) {
@@ -1045,7 +1153,7 @@ static UniValue ProcessImportLegacy(ImportData& import_data, std::map<CKeyID, CP
                 auto oldit = it++;
                 auto key_data_it = import_data.used_keys.find(oldit->first);
                 if (key_data_it == import_data.used_keys.end() || !key_data_it->second) {
-                    warnings.push_back("Ignoring public key \"" + HexStr(oldit->first) + "\" as it doesn't appear inside P2PKH or P2WPKH.");
+                    warnings.push_back("Ignoring public key \"" + HexStr(oldit->first) + "\" as it doesn't appear inside P2PKH.");
                     pubkey_map.erase(oldit);
                 }
             }
@@ -1066,9 +1174,12 @@ static UniValue ProcessImportDescriptor(ImportData& import_data, std::map<CKeyID
     if (parsed_descs.empty()) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, error);
     }
+<<<<<<< v29.0
     if (parsed_descs.at(0)->GetOutputType() == OutputType::BECH32M) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Bech32m descriptors cannot be imported into legacy wallets");
     }
+=======
+>>>>>>> tc-28.1
 
     std::optional<bool> internal;
     if (data.exists("internal")) {
@@ -1121,6 +1232,19 @@ static UniValue ProcessImportDescriptor(ImportData& import_data, std::map<CKeyID
             std::copy(out_keys.keys.begin(), out_keys.keys.end(), std::inserter(privkey_map, privkey_map.end()));
             import_data.key_origins.insert(out_keys.origins.begin(), out_keys.origins.end());
         }
+<<<<<<< v29.0
+=======
+
+        for (const auto& x : out_keys.witscripts) {
+            import_data.import_witscripts.emplace(x.second);
+        }
+
+        parsed_desc->ExpandPrivate(i, keys, out_keys);
+
+        std::copy(out_keys.pubkeys.begin(), out_keys.pubkeys.end(), std::inserter(pubkey_map, pubkey_map.end()));
+        std::copy(out_keys.keys.begin(), out_keys.keys.end(), std::inserter(privkey_map, privkey_map.end()));
+        import_data.key_origins.insert(out_keys.origins.begin(), out_keys.origins.end());
+>>>>>>> tc-28.1
     }
 
     for (size_t i = 0; i < priv_keys.size(); ++i) {
@@ -1211,6 +1335,9 @@ static UniValue ProcessImport(CWallet& wallet, const UniValue& data, const int64
 
         // All good, time to import
         wallet.MarkDirty();
+        if (!wallet.ImportWitnessV0Scripts(import_data.import_witscripts, timestamp)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Error adding witscript to wallet");
+        }
         if (!wallet.ImportScripts(import_data.import_scripts, timestamp)) {
             throw JSONRPCError(RPC_WALLET_ERROR, "Error adding script to wallet");
         }
@@ -1280,9 +1407,9 @@ RPCHelpMan importmulti()
                                         "creation time of all keys being imported by the importmulti call will be scanned.",
                                         RPCArgOptions{.type_str={"timestamp | \"now\"", "integer / string"}}
                                     },
-                                    {"redeemscript", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Allowed only if the scriptPubKey is a P2SH or P2SH-P2WSH address/scriptPubKey"},
-                                    {"witnessscript", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Allowed only if the scriptPubKey is a P2SH-P2WSH or P2WSH address/scriptPubKey"},
-                                    {"pubkeys", RPCArg::Type::ARR, RPCArg::Default{UniValue::VARR}, "Array of strings giving pubkeys to import. They must occur in P2PKH or P2WPKH scripts. They are not required when the private key is also provided (see the \"keys\" argument).",
+                                    {"redeemscript", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Allowed only if the scriptPubKey is a P2SH address/scriptPubKey"},
+                                    {"witnessscript", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Allowed only if the scriptPubKey is a P2WSH or P2WPK address/scriptPubKey"},
+                                    {"pubkeys", RPCArg::Type::ARR, RPCArg::Default{UniValue::VARR}, "Array of strings giving pubkeys to import. They must occur in P2PKH scripts. They are not required when the private key is also provided (see the \"keys\" argument).",
                                         {
                                             {"pubKey", RPCArg::Type::STR, RPCArg::Optional::OMITTED, ""},
                                         }
@@ -1436,7 +1563,7 @@ RPCHelpMan importmulti()
                                       "block from time %d, which is after or within %d seconds of key creation, and "
                                       "could contain transactions pertaining to the key. As a result, transactions "
                                       "and coins using this key may not appear in the wallet. This error could be "
-                                      "caused by pruning or data corruption (see bitcoind log for details) and could "
+                                      "caused by pruning or data corruption (see freicoind log for details) and could "
                                       "be dealt with by downloading and rescanning the relevant blocks (see -reindex "
                                       "option and rescanblockchain RPC).",
                                 GetImportTimestamp(request, now), scannedTime - TIMESTAMP_WINDOW - 1, TIMESTAMP_WINDOW)));
@@ -1765,7 +1892,22 @@ RPCHelpMan importdescriptors()
 
                     UniValue result = UniValue(UniValue::VOBJ);
                     result.pushKV("success", UniValue(false));
+<<<<<<< v29.0
                     result.pushKV("error", JSONRPCError(RPC_MISC_ERROR, error_msg));
+=======
+                    result.pushKV(
+                        "error",
+                        JSONRPCError(
+                            RPC_MISC_ERROR,
+                            strprintf("Rescan failed for descriptor with timestamp %d. There was an error reading a "
+                                      "block from time %d, which is after or within %d seconds of key creation, and "
+                                      "could contain transactions pertaining to the desc. As a result, transactions "
+                                      "and coins using this desc may not appear in the wallet. This error could be "
+                                      "caused by pruning or data corruption (see freicoind log for details) and could "
+                                      "be dealt with by downloading and rescanning the relevant blocks (see -reindex "
+                                      "option and rescanblockchain RPC).",
+                                GetImportTimestamp(request, now), scanned_time - TIMESTAMP_WINDOW - 1, TIMESTAMP_WINDOW)));
+>>>>>>> tc-28.1
                     response.push_back(std::move(result));
                 }
             }

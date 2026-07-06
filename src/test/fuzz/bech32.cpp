@@ -1,6 +1,17 @@
 // Copyright (c) 2019-2021 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bech32.h>
 #include <test/fuzz/fuzz.h>
@@ -45,6 +56,7 @@ std::string GenerateRandomHRP(FuzzedDataProvider& fdp)
     return hrp;
 }
 
+<<<<<<< v29.0
 FUZZ_TARGET(bech32_roundtrip)
 {
     FuzzedDataProvider fdp(buffer.data(), buffer.size());
@@ -64,6 +76,18 @@ FUZZ_TARGET(bech32_roundtrip)
             assert(decoded.encoding == encoding);
             assert(decoded.hrp == hrp);
             assert(decoded.data == converted_input);
+=======
+    // Input data part + 3 characters for the HRP and separator (bc1) + the checksum characters
+    if (input.size() + 3 + bech32::CHECKSUM_SIZE <= bech32::CharLimit::BECH32) {
+        // If it's possible to encode input in Bech32(m) without exceeding the bech32-character limit:
+        for (auto encoding : {bech32::Encoding::BECH32, bech32::Encoding::BECH32M}) {
+            const std::string encoded = bech32::Encode(encoding, "fc", input);
+            assert(!encoded.empty());
+            const auto r2 = bech32::Decode(encoded);
+            assert(r2.encoding == encoding);
+            assert(r2.hrp == "fc");
+            assert(r2.data == input);
+>>>>>>> tc-28.1
         }
     }
 }

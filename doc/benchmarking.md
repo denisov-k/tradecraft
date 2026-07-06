@@ -1,13 +1,14 @@
 Benchmarking
 ============
 
-Bitcoin Core has an internal benchmarking framework, with benchmarks
+Freicoin has an internal benchmarking framework, with benchmarks
 for cryptographic algorithms (e.g. SHA1, SHA256, SHA512, RIPEMD160, Poly1305, ChaCha20), rolling bloom filter, coins selection,
 thread queue, wallet balance.
 
 Running
 ---------------------
 
+<<<<<<< v29.0
 For benchmarking, you only need to compile `bench_bitcoin`.  The bench runner
 warns if you configure with `-DCMAKE_BUILD_TYPE=Debug`, but consider if building without
 it will impact the benchmark(s) you are interested in by unlatching log printers
@@ -15,10 +16,22 @@ and lock analysis.
 
     cmake -B build -DBUILD_BENCH=ON
     cmake --build build -t bench_bitcoin
+=======
+For benchmarking, you only need to compile `freicoin_bench`.  The bench runner
+warns if you configure with `--enable-debug`, but consider if building without
+it will impact the benchmark(s) you are interested in by unlatching log printers
+and lock analysis.
 
-After compiling bitcoin-core, the benchmarks can be run with:
+    make -C src freicoin_bench
+>>>>>>> tc-28.1
 
+After compiling freicoin, the benchmarks can be run with:
+
+<<<<<<< v29.0
     build/bin/bench_bitcoin
+=======
+    src/bench/bench_freicoin
+>>>>>>> tc-28.1
 
 The output will look similar to:
 ```
@@ -40,7 +53,11 @@ The output will look similar to:
 Help
 ---------------------
 
+<<<<<<< v29.0
     build/bin/bench_bitcoin -h
+=======
+    src/bench/bench_freicoin -?
+>>>>>>> tc-28.1
 
 To print the various options, like listing the benchmarks without running them
 or using a regex filter to only run certain benchmarks.
@@ -74,4 +91,10 @@ specifically aimed at exploring the possible input space.
 Going Further
 --------------------
 
+<<<<<<< v29.0
 To monitor Bitcoin Core performance more in depth (like reindex or IBD): https://github.com/bitcoin-dev-tools/benchcoin
+=======
+To monitor Freicoin performance more in depth (like reindex or IBD): https://github.com/chaincodelabs/freicoinperf
+
+To generate Flame Graphs for Freicoin: https://github.com/eklitzke/freicoin/blob/flamegraphs/doc/flamegraphs.md
+>>>>>>> tc-28.1

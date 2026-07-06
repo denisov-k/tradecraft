@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the listdescriptors RPC."""
 
 from test_framework.blocktools import (
@@ -10,14 +21,14 @@ from test_framework.blocktools import (
 from test_framework.descriptors import (
     descsum_create,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
 )
 
 
-class ListDescriptorsTest(BitcoinTestFramework):
+class ListDescriptorsTest(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser, legacy=False)
 
@@ -49,9 +60,9 @@ class ListDescriptorsTest(BitcoinTestFramework):
         node.createwallet(wallet_name='w3', descriptors=True)
         result = node.get_wallet_rpc('w3').listdescriptors()
         assert_equal("w3", result['wallet_name'])
-        assert_equal(8, len(result['descriptors']))
-        assert_equal(8, len([d for d in result['descriptors'] if d['active']]))
-        assert_equal(4, len([d for d in result['descriptors'] if d['internal']]))
+        assert_equal(4, len(result['descriptors']))
+        assert_equal(4, len([d for d in result['descriptors'] if d['active']]))
+        assert_equal(2, len([d for d in result['descriptors'] if d['internal']]))
         for item in result['descriptors']:
             assert item['desc'] != ''
             assert item['next_index'] == 0
@@ -68,13 +79,13 @@ class ListDescriptorsTest(BitcoinTestFramework):
         hardened_path = '/84h/1h/0h'
         wallet = node.get_wallet_rpc('w2')
         wallet.importdescriptors([{
-            'desc': descsum_create('wpkh(' + xprv + hardened_path + '/0/*)'),
+            'desc': descsum_create('wpk(' + xprv + hardened_path + '/0/*)'),
             'timestamp': TIME_GENESIS_BLOCK,
         }])
         expected = {
             'wallet_name': 'w2',
             'descriptors': [
-                {'desc': descsum_create('wpkh([80002067' + hardened_path + ']' + xpub_acc + '/0/*)'),
+                {'desc': descsum_create('wpk([80002067' + hardened_path + ']' + xpub_acc + '/0/*)'),
                  'timestamp': TIME_GENESIS_BLOCK,
                  'active': False,
                  'range': [0, 0],
@@ -89,7 +100,7 @@ class ListDescriptorsTest(BitcoinTestFramework):
         expected_private = {
             'wallet_name': 'w2',
             'descriptors': [
-                {'desc': descsum_create('wpkh(' + xprv + hardened_path + '/0/*)'),
+                {'desc': descsum_create('wpk(' + xprv + hardened_path + '/0/*)'),
                  'timestamp': TIME_GENESIS_BLOCK,
                  'active': False,
                  'range': [0, 0],
@@ -112,7 +123,7 @@ class ListDescriptorsTest(BitcoinTestFramework):
         node.createwallet(wallet_name='watch-only', descriptors=True, disable_private_keys=True)
         watch_only_wallet = node.get_wallet_rpc('watch-only')
         watch_only_wallet.importdescriptors([{
-            'desc': descsum_create('wpkh(' + xpub_acc + ')'),
+            'desc': descsum_create('wpk(' + xpub_acc + ')'),
             'timestamp': TIME_GENESIS_BLOCK,
         }])
         assert_raises_rpc_error(-4, 'Can\'t get descriptor string', watch_only_wallet.listdescriptors, True)

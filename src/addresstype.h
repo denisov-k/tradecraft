@@ -1,18 +1,31 @@
 // Copyright (c) 2023 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or https://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_ADDRESSTYPE_H
-#define BITCOIN_ADDRESSTYPE_H
+#ifndef FREICOIN_ADDRESSTYPE_H
+#define FREICOIN_ADDRESSTYPE_H
 
 #include <attributes.h>
 #include <pubkey.h>
+#include <hash.h>
 #include <script/script.h>
 #include <uint256.h>
 #include <util/check.h>
 #include <util/hash_type.h>
 
 #include <algorithm>
+#include <utility> // for std::tie
 #include <variant>
 #include <vector>
 
@@ -53,14 +66,12 @@ struct PKHash : public BaseHash<uint160>
 };
 CKeyID ToKeyID(const PKHash& key_hash);
 
-struct WitnessV0KeyHash;
 
 struct ScriptHash : public BaseHash<uint160>
 {
     ScriptHash() : BaseHash() {}
     // These don't do what you'd expect.
     // Use ScriptHash(GetScriptForDestination(...)) instead.
-    explicit ScriptHash(const WitnessV0KeyHash& hash) = delete;
     explicit ScriptHash(const PKHash& hash) = delete;
 
     explicit ScriptHash(const uint160& hash) : BaseHash(hash) {}
@@ -69,26 +80,25 @@ struct ScriptHash : public BaseHash<uint160>
 };
 CScriptID ToScriptID(const ScriptHash& script_hash);
 
-struct WitnessV0ScriptHash : public BaseHash<uint256>
+struct WitnessV0LongHash : public BaseHash<uint256>
 {
-    WitnessV0ScriptHash() : BaseHash() {}
-    explicit WitnessV0ScriptHash(const uint256& hash) : BaseHash(hash) {}
-    explicit WitnessV0ScriptHash(const CScript& script);
+    WitnessV0LongHash() : BaseHash() {}
+    explicit WitnessV0LongHash(const uint256& hash) : BaseHash(hash) {}
+    WitnessV0LongHash(unsigned char version, const CScript& innerscript);
 };
 
-struct WitnessV0KeyHash : public BaseHash<uint160>
+struct WitnessV0ShortHash : public BaseHash<uint160>
 {
-    WitnessV0KeyHash() : BaseHash() {}
-    explicit WitnessV0KeyHash(const uint160& hash) : BaseHash(hash) {}
-    explicit WitnessV0KeyHash(const CPubKey& pubkey);
-    explicit WitnessV0KeyHash(const PKHash& pubkey_hash);
-};
-CKeyID ToKeyID(const WitnessV0KeyHash& key_hash);
-
-struct WitnessV1Taproot : public XOnlyPubKey
-{
-    WitnessV1Taproot() : XOnlyPubKey() {}
-    explicit WitnessV1Taproot(const XOnlyPubKey& xpk) : XOnlyPubKey(xpk) {}
+    WitnessV0ShortHash() : BaseHash() {}
+    explicit WitnessV0ShortHash(const uint160& hash) : BaseHash(hash) {}
+    explicit WitnessV0ShortHash(const WitnessV0LongHash &longid) {
+        CRIPEMD160().Write(longid.begin(), 32).Finalize(begin());
+    }
+    WitnessV0ShortHash(unsigned char version, const CScript& innerscript) {
+        WitnessV0LongHash longid(version, innerscript);
+        CRIPEMD160().Write(longid.begin(), 32).Finalize(begin());
+    }
+    WitnessV0ShortHash(unsigned char version, const CPubKey& pubkey);
 };
 
 //! CTxDestination subtype to encode any future Witness version
@@ -124,20 +134,72 @@ struct PayToAnchor : public WitnessUnknown
     };
 };
 
+/** Encapsulating class for information necessary to spend a witness
+    output: the witness redeem script and Merkle proof. */
+class WitnessV0ScriptEntry
+{
+public:
+    std::vector<unsigned char> m_script;
+    std::vector<uint256> m_branch;
+    uint32_t m_path;
+
+    WitnessV0ScriptEntry() : m_path(0) { }
+
+    explicit WitnessV0ScriptEntry(const std::vector<unsigned char>& scriptIn) : m_script(scriptIn), m_path(0) { }
+    explicit WitnessV0ScriptEntry(std::vector<unsigned char>&& scriptIn) : m_script(scriptIn), m_path(0) { }
+    WitnessV0ScriptEntry(const std::vector<unsigned char>& scriptIn, const std::vector<uint256>& branchIn, uint32_t pathIn) : m_script(scriptIn), m_branch(branchIn), m_path(pathIn) { }
+    WitnessV0ScriptEntry(std::vector<unsigned char>&& scriptIn, std::vector<uint256>&& branchIn, uint32_t pathIn) : m_script(scriptIn), m_branch(branchIn), m_path(pathIn) { }
+
+    WitnessV0ScriptEntry(unsigned char version, const CScript& innerscript);
+    WitnessV0ScriptEntry(unsigned char version, const CScript& innerscript, const std::vector<uint256>& branchIn, uint32_t pathIn);
+    WitnessV0ScriptEntry(unsigned char version, const CScript& innerscript, std::vector<uint256>&& branchIn, uint32_t pathIn);
+
+    SERIALIZE_METHODS(WitnessV0ScriptEntry, obj) {
+        READWRITE(obj.m_script, VARINT(obj.m_path), obj.m_branch);
+    }
+
+    inline void SetNull() {
+        m_script.clear();
+        m_branch.clear();
+        m_path = 0;
+    }
+
+    inline bool IsNull() const {
+        return m_script.empty();
+    }
+
+    inline bool operator==(const WitnessV0ScriptEntry& rhs) const {
+        return m_script == rhs.m_script;
+    }
+
+    inline bool operator<(const WitnessV0ScriptEntry& rhs) const {
+        return std::tie(m_script, m_branch, m_path) < std::tie(rhs.m_script, rhs.m_branch, rhs.m_path);
+    }
+
+    WitnessV0LongHash GetLongHash() const;
+    WitnessV0ShortHash GetShortHash() const;
+};
+
+inline void swap(WitnessV0ScriptEntry& lhs, WitnessV0ScriptEntry& rhs) noexcept {
+    using std::swap;
+    swap(lhs.m_script, rhs.m_script);
+    swap(lhs.m_branch, rhs.m_branch);
+    swap(lhs.m_path, rhs.m_path);
+}
+
 /**
  * A txout script categorized into standard templates.
  *  * CNoDestination: Optionally a script, no corresponding address.
  *  * PubKeyDestination: TxoutType::PUBKEY (P2PK), no corresponding address
  *  * PKHash: TxoutType::PUBKEYHASH destination (P2PKH address)
  *  * ScriptHash: TxoutType::SCRIPTHASH destination (P2SH address)
- *  * WitnessV0ScriptHash: TxoutType::WITNESS_V0_SCRIPTHASH destination (P2WSH address)
- *  * WitnessV0KeyHash: TxoutType::WITNESS_V0_KEYHASH destination (P2WPKH address)
- *  * WitnessV1Taproot: TxoutType::WITNESS_V1_TAPROOT destination (P2TR address)
+ *  * WitnessV0LongHash: TxoutType::WITNESS_V0_LONGHASH destination (P2WSH address)
+ *  * WitnessV0ShortHash: TxoutType::WITNESS_V0_SHORTHASH destination (P2WPK address)
  *  * PayToAnchor: TxoutType::ANCHOR destination (P2A address)
  *  * WitnessUnknown: TxoutType::WITNESS_UNKNOWN destination (P2W??? address)
- *  A CTxDestination is the internal data type encoded in a bitcoin address
+ *  A CTxDestination is the internal data type encoded in a freicoin address
  */
-using CTxDestination = std::variant<CNoDestination, PubKeyDestination, PKHash, ScriptHash, WitnessV0ScriptHash, WitnessV0KeyHash, WitnessV1Taproot, PayToAnchor, WitnessUnknown>;
+using CTxDestination = std::variant<CNoDestination, PubKeyDestination, PKHash, ScriptHash, WitnessV0LongHash, WitnessV0ShortHash, PayToAnchor, WitnessUnknown>;
 
 /** Check whether a CTxDestination corresponds to one with an address. */
 bool IsValidDestination(const CTxDestination& dest);
@@ -149,16 +211,16 @@ bool IsValidDestination(const CTxDestination& dest);
  * is assigned to addressRet.
  * For all other scripts. addressRet is assigned as a CNoDestination containing the scriptPubKey.
  *
- * Returns true for standard destinations with addresses - P2PKH, P2SH, P2WPKH, P2WSH, P2TR and P2W??? scripts.
+ * Returns true for standard destinations with addresses - P2PKH, P2SH, P2WPK, P2WSH, P2TR and P2W??? scripts.
  * Returns false for non-standard destinations and those without addresses - P2PK, bare multisig, null data, and nonstandard scripts.
  */
 bool ExtractDestination(const CScript& scriptPubKey, CTxDestination& addressRet);
 
 /**
- * Generate a Bitcoin scriptPubKey for the given CTxDestination. Returns a P2PKH
+ * Generate a Freicoin scriptPubKey for the given CTxDestination. Returns a P2PKH
  * script for a CKeyID destination, a P2SH script for a CScriptID, and an empty
  * script for CNoDestination.
  */
 CScript GetScriptForDestination(const CTxDestination& dest);
 
-#endif // BITCOIN_ADDRESSTYPE_H
+#endif // FREICOIN_ADDRESSTYPE_H

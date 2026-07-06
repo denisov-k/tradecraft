@@ -1,9 +1,20 @@
 // Copyright (c) 2021 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_NODE_MINISKETCHWRAPPER_H
-#define BITCOIN_NODE_MINISKETCHWRAPPER_H
+#ifndef FREICOIN_NODE_MINISKETCHWRAPPER_H
+#define FREICOIN_NODE_MINISKETCHWRAPPER_H
 
 #include <minisketch.h>
 
@@ -17,4 +28,4 @@ Minisketch MakeMinisketch32(size_t capacity);
 Minisketch MakeMinisketch32FP(size_t max_elements, uint32_t fpbits);
 } // namespace node
 
-#endif // BITCOIN_NODE_MINISKETCHWRAPPER_H
+#endif // FREICOIN_NODE_MINISKETCHWRAPPER_H

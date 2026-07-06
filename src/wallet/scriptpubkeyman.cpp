@@ -1,6 +1,17 @@
 // Copyright (c) 2019-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <hash.h>
 #include <key_io.h>
@@ -21,7 +32,7 @@
 
 #include <optional>
 
-using common::PSBTError;
+using common::PSTError;
 using util::ToString;
 
 namespace wallet {
@@ -31,9 +42,8 @@ const uint32_t BIP32_HARDENED_KEY_LIMIT = 0x80000000;
 util::Result<CTxDestination> LegacyScriptPubKeyMan::GetNewDestination(const OutputType type)
 {
     if (LEGACY_OUTPUT_TYPES.count(type) == 0) {
-        return util::Error{_("Error: Legacy wallets only support the \"legacy\", \"p2sh-segwit\", and \"bech32\" address types")};
+        return util::Error{_("Error: Legacy wallets only support the \"legacy\" or \"bech32\" address types")};
     }
-    assert(type != OutputType::BECH32M);
 
     // Fill-up keypool if needed
     TopUp();
@@ -113,8 +123,8 @@ IsMineResult IsMineInner(const LegacyDataSPKM& keystore, const CScript& scriptPu
     switch (whichType) {
     case TxoutType::NONSTANDARD:
     case TxoutType::NULL_DATA:
+    case TxoutType::UNSPENDABLE:
     case TxoutType::WITNESS_UNKNOWN:
-    case TxoutType::WITNESS_V1_TAPROOT:
     case TxoutType::ANCHOR:
         break;
     case TxoutType::PUBKEY:
@@ -126,21 +136,6 @@ IsMineResult IsMineInner(const LegacyDataSPKM& keystore, const CScript& scriptPu
             ret = std::max(ret, IsMineResult::SPENDABLE);
         }
         break;
-    case TxoutType::WITNESS_V0_KEYHASH:
-    {
-        if (sigversion == IsMineSigVersion::WITNESS_V0) {
-            // P2WPKH inside P2WSH is invalid.
-            return IsMineResult::INVALID;
-        }
-        if (sigversion == IsMineSigVersion::TOP && !keystore.HaveCScript(CScriptID(CScript() << OP_0 << vSolutions[0]))) {
-            // We do not support bare witness outputs unless the P2SH version of it would be
-            // acceptable as well. This protects against matching before segwit activates.
-            // This also applies to the P2WSH case.
-            break;
-        }
-        ret = std::max(ret, IsMineInner(keystore, GetScriptForDestination(PKHash(uint160(vSolutions[0]))), IsMineSigVersion::WITNESS_V0));
-        break;
-    }
     case TxoutType::PUBKEYHASH:
         keyID = CKeyID(uint160(vSolutions[0]));
         if (!PermitsUncompressed(sigversion)) {
@@ -166,20 +161,29 @@ IsMineResult IsMineInner(const LegacyDataSPKM& keystore, const CScript& scriptPu
         }
         break;
     }
-    case TxoutType::WITNESS_V0_SCRIPTHASH:
+    case TxoutType::WITNESS_V0_SHORTHASH:
+    case TxoutType::WITNESS_V0_LONGHASH:
     {
         if (sigversion == IsMineSigVersion::WITNESS_V0) {
             // P2WSH inside P2WSH is invalid.
             return IsMineResult::INVALID;
         }
-        if (sigversion == IsMineSigVersion::TOP && !keystore.HaveCScript(CScriptID(CScript() << OP_0 << vSolutions[0]))) {
+        bool found = false;
+        WitnessV0ScriptEntry entry;
+        if (whichType == TxoutType::WITNESS_V0_SHORTHASH) {
+            found = keystore.GetWitnessV0Script(WitnessV0ShortHash(uint160{vSolutions[0]}), entry);
+        }
+        else if (whichType == TxoutType::WITNESS_V0_LONGHASH) {
+            found = keystore.GetWitnessV0Script(WitnessV0LongHash(uint256{vSolutions[0]}), entry);
+        }
+        if (!found) {
             break;
         }
-        CScriptID scriptID{RIPEMD160(vSolutions[0])};
-        CScript subscript;
-        if (keystore.GetCScript(scriptID, subscript)) {
-            ret = std::max(ret, recurse_scripthash ? IsMineInner(keystore, subscript, IsMineSigVersion::WITNESS_V0) : IsMineResult::SPENDABLE);
+        if (entry.m_script.empty() || (entry.m_script[0] != 0x00)) {
+            break;
         }
+        CScript subscript(entry.m_script.begin() + 1, entry.m_script.end());
+        ret = std::max(ret, recurse_scripthash ? IsMineInner(keystore, subscript, IsMineSigVersion::WITNESS_V0) : IsMineResult::SPENDABLE);
         break;
     }
 
@@ -305,9 +309,8 @@ bool LegacyScriptPubKeyMan::Encrypt(const CKeyingMaterial& master_key, WalletBat
 util::Result<CTxDestination> LegacyScriptPubKeyMan::GetReservedDestination(const OutputType type, bool internal, int64_t& index, CKeyPool& keypool)
 {
     if (LEGACY_OUTPUT_TYPES.count(type) == 0) {
-        return util::Error{_("Error: Legacy wallets only support the \"legacy\", \"p2sh-segwit\", and \"bech32\" address types")};
+        return util::Error{_("Error: Legacy wallets only support the \"legacy\" or \"bech32\" address types")};
     }
-    assert(type != OutputType::BECH32M);
 
     LOCK(cs_KeyStore);
     if (!CanGetAddresses(internal)) {
@@ -638,36 +641,36 @@ SigningResult LegacyScriptPubKeyMan::SignMessage(const std::string& message, con
     return SigningResult::SIGNING_FAILED;
 }
 
-std::optional<PSBTError> LegacyScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbtx, const PrecomputedTransactionData& txdata, int sighash_type, bool sign, bool bip32derivs, int* n_signed, bool finalize) const
+std::optional<PSTError> LegacyScriptPubKeyMan::FillPST(PartiallySignedTransaction& pstx, const PrecomputedTransactionData& txdata, int sighash_type, bool sign, bool bip32derivs, int* n_signed, bool finalize) const
 {
     if (n_signed) {
         *n_signed = 0;
     }
-    for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
-        const CTxIn& txin = psbtx.tx->vin[i];
-        PSBTInput& input = psbtx.inputs.at(i);
+    for (unsigned int i = 0; i < pstx.tx->vin.size(); ++i) {
+        const CTxIn& txin = pstx.tx->vin[i];
+        PSTInput& input = pstx.inputs.at(i);
 
-        if (PSBTInputSigned(input)) {
+        if (PSTInputSigned(input)) {
             continue;
         }
 
         // Get the Sighash type
         if (sign && input.sighash_type != std::nullopt && *input.sighash_type != sighash_type) {
-            return PSBTError::SIGHASH_MISMATCH;
+            return PSTError::SIGHASH_MISMATCH;
         }
 
         // Check non_witness_utxo has specified prevout
         if (input.non_witness_utxo) {
             if (txin.prevout.n >= input.non_witness_utxo->vout.size()) {
-                return PSBTError::MISSING_INPUTS;
+                return PSTError::MISSING_INPUTS;
             }
         } else if (input.witness_utxo.IsNull()) {
             // There's no UTXO so we can just skip this now
             continue;
         }
-        SignPSBTInput(HidingSigningProvider(this, !sign, !bip32derivs), psbtx, i, &txdata, sighash_type, nullptr, finalize);
+        SignPSTInput(HidingSigningProvider(this, !sign, !bip32derivs), pstx, i, &txdata, sighash_type, nullptr, finalize);
 
-        bool signed_one = PSBTInputSigned(input);
+        bool signed_one = PSTInputSigned(input);
         if (n_signed && (signed_one || !sign)) {
             // If sign is false, we assume that we _could_ sign if we get here. This
             // will never have false negatives; it is hard to tell under what i
@@ -677,8 +680,8 @@ std::optional<PSBTError> LegacyScriptPubKeyMan::FillPSBT(PartiallySignedTransact
     }
 
     // Fill in the bip32 keypaths and redeemscripts for the outputs so that hardware wallets can identify change
-    for (unsigned int i = 0; i < psbtx.tx->vout.size(); ++i) {
-        UpdatePSBTOutput(HidingSigningProvider(this, true, !bip32derivs), psbtx, i);
+    for (unsigned int i = 0; i < pstx.tx->vout.size(); ++i) {
+        UpdatePSTOutput(HidingSigningProvider(this, true, !bip32derivs), pstx, i);
     }
 
     return {};
@@ -793,6 +796,11 @@ bool LegacyDataSPKM::LoadCScript(const CScript& redeemScript)
     }
 
     return FillableSigningProvider::AddCScript(redeemScript);
+}
+
+bool LegacyDataSPKM::LoadWitnessV0Script(const WitnessV0ScriptEntry& entry)
+{
+    return FillableSigningProvider::AddWitnessV0Script(entry);
 }
 
 void LegacyDataSPKM::LoadKeyMetadata(const CKeyID& keyID, const CKeyMetadata& meta)
@@ -1395,7 +1403,6 @@ void LegacyScriptPubKeyMan::AddKeypoolPubkeyWithDB(const CPubKey& pubkey, const 
 
 void LegacyScriptPubKeyMan::KeepDestination(int64_t nIndex, const OutputType& type)
 {
-    assert(type != OutputType::BECH32M);
     // Remove from key pool
     WalletBatch batch(m_storage.GetDatabase());
     batch.ErasePool(nIndex);
@@ -1429,7 +1436,6 @@ void LegacyScriptPubKeyMan::ReturnDestination(int64_t nIndex, bool fInternal, co
 
 bool LegacyScriptPubKeyMan::GetKeyFromPool(CPubKey& result, const OutputType type)
 {
-    assert(type != OutputType::BECH32M);
     if (!CanGetAddresses(/*internal=*/ false)) {
         return false;
     }
@@ -1498,21 +1504,20 @@ bool LegacyScriptPubKeyMan::ReserveKeyFromKeyPool(int64_t& nIndex, CKeyPool& key
 
 void LegacyScriptPubKeyMan::LearnRelatedScripts(const CPubKey& key, OutputType type)
 {
-    assert(type != OutputType::BECH32M);
-    if (key.IsCompressed() && (type == OutputType::P2SH_SEGWIT || type == OutputType::BECH32)) {
-        CTxDestination witdest = WitnessV0KeyHash(key.GetID());
-        CScript witprog = GetScriptForDestination(witdest);
+    if (key.IsCompressed() && type == OutputType::BECH32) {
+        WitnessV0ScriptEntry entry(0 /* version */, GetScriptForRawPubKey(key));
+        AddWitnessV0Script(entry);
+        CScript witprog = GetScriptForDestination(entry.GetShortHash());
         // Make sure the resulting program is solvable.
         const auto desc = InferDescriptor(witprog, *this);
         assert(desc && desc->IsSolvable());
-        AddCScript(witprog);
     }
 }
 
 void LegacyScriptPubKeyMan::LearnAllRelatedScripts(const CPubKey& key)
 {
-    // OutputType::P2SH_SEGWIT always adds all necessary scripts for all types.
-    LearnRelatedScripts(key, OutputType::P2SH_SEGWIT);
+    // OutputType::BECH32 always adds all necessary scripts for all types.
+    LearnRelatedScripts(key, OutputType::BECH32);
 }
 
 std::vector<CKeyPool> LegacyScriptPubKeyMan::MarkReserveKeysAsUsed(int64_t keypool_id)
@@ -1591,6 +1596,23 @@ bool LegacyScriptPubKeyMan::AddCScriptWithDB(WalletBatch& batch, const CScript& 
     return false;
 }
 
+bool LegacyScriptPubKeyMan::AddWitnessV0Script(const WitnessV0ScriptEntry& entry)
+{
+    WalletBatch batch(m_storage.GetDatabase());
+    return AddWitnessV0ScriptWithDB(batch, entry);
+}
+
+bool LegacyScriptPubKeyMan::AddWitnessV0ScriptWithDB(WalletBatch& batch, const WitnessV0ScriptEntry& entry)
+{
+    if (!FillableSigningProvider::AddWitnessV0Script(entry))
+        return false;
+    if (batch.WriteWitnessV0Script(entry.GetShortHash(), entry)) {
+        m_storage.UnsetBlankWalletFlag(batch);
+        return true;
+    }
+    return false;
+}
+
 bool LegacyScriptPubKeyMan::AddKeyOriginWithDB(WalletBatch& batch, const CPubKey& pubkey, const KeyOriginInfo& info)
 {
     LOCK(cs_KeyStore);
@@ -1617,6 +1639,27 @@ bool LegacyScriptPubKeyMan::ImportScripts(const std::set<CScript> scripts, int64
         if (timestamp > 0) {
             m_script_metadata[CScriptID(entry)].nCreateTime = timestamp;
         }
+    }
+    if (timestamp > 0) {
+        UpdateTimeFirstKey(timestamp);
+    }
+
+    return true;
+}
+
+bool LegacyScriptPubKeyMan::ImportWitnessV0Scripts(const std::set<WitnessV0ScriptEntry> witscripts, int64_t timestamp)
+{
+    WalletBatch batch(m_storage.GetDatabase());
+    for (const auto& entry : witscripts) {
+        if (HaveWitnessV0Script(entry.GetShortHash())) {
+            WalletLogPrintf("Already have witscript %s, skipping\n", HexStr(entry.m_script));
+            continue;
+        }
+        if (!AddWitnessV0ScriptWithDB(batch, entry)) {
+            return false;
+        }
+
+        // FIXME: Record timestamp to witscript metadata
     }
     if (timestamp > 0) {
         UpdateTimeFirstKey(timestamp);
@@ -1758,12 +1801,92 @@ std::unordered_set<CScript, SaltedSipHasher> LegacyDataSPKM::GetScriptPubKeys() 
     // script to return.
     // This both filters out things that are not watched by the wallet, and things that are invalid.
     std::unordered_set<CScript, SaltedSipHasher> spks;
+<<<<<<< v29.0
     for (const CScript& script : GetCandidateScriptPubKeys()) {
         if (IsMine(script) != ISMINE_NO) {
             spks.insert(script);
         }
     }
 
+=======
+
+    // All keys have at least P2PK and P2PKH
+    for (const auto& key_pair : mapKeys) {
+        const CPubKey& pub = key_pair.second.GetPubKey();
+        spks.insert(GetScriptForRawPubKey(pub));
+        spks.insert(GetScriptForDestination(PKHash(pub)));
+    }
+    for (const auto& key_pair : mapCryptedKeys) {
+        const CPubKey& pub = key_pair.second.first;
+        spks.insert(GetScriptForRawPubKey(pub));
+        spks.insert(GetScriptForDestination(PKHash(pub)));
+    }
+
+    // For every script in mapScript, only the ISMINE_SPENDABLE ones are being tracked.
+    // The watchonly ones will be in setWatchOnly which we deal with later
+    // For all keys, if they have segwit scripts, those scripts will end up in mapScripts
+    for (const auto& script_pair : mapScripts) {
+        const CScript& script = script_pair.second;
+        if (IsMine(script) == ISMINE_SPENDABLE) {
+            // Add ScriptHash for scripts that are not already P2SH
+            if (!script.IsPayToScriptHash()) {
+                spks.insert(GetScriptForDestination(ScriptHash(script)));
+            }
+            // For segwit scripts, we only consider them spendable if we have the segwit spk
+            int wit_ver = -1;
+            if (script.IsWitnessProgram(&wit_ver) && wit_ver == 0) {
+                spks.insert(script);
+            }
+        } else {
+            // Multisigs are special. They don't show up as ISMINE_SPENDABLE unless they are in a P2SH
+            // So check the P2SH of a multisig to see if we should insert it
+            std::vector<std::vector<unsigned char>> sols;
+            TxoutType type = Solver(script, sols);
+            if (type == TxoutType::MULTISIG) {
+                CScript ms_spk = GetScriptForDestination(ScriptHash(script));
+                if (IsMine(ms_spk) != ISMINE_NO) {
+                    spks.insert(ms_spk);
+                }
+            }
+        }
+    }
+
+    // For every witness script in mapWitnessV0Scripts, only the ISMINE_SPENDABLE ones are being tracked.
+    for (const auto& x : mapWitnessV0Scripts) {
+        if (!x.second.m_script.empty() && x.second.m_script[0] == 0x00) {
+            CScript subscript(x.second.m_script.begin() + 1, x.second.m_script.end());
+            // P2PK outputs are shorthashes, other scripts are longhashes
+            std::vector<std::vector<unsigned char>> sols;
+            TxoutType type = Solver(subscript, sols);
+            CTxDestination witdest = CNoDestination();
+            if (type == TxoutType::PUBKEY) {
+                witdest = x.second.GetShortHash();
+            } else if (type == TxoutType::MULTISIG) {
+                witdest = x.second.GetLongHash();
+            }
+            // Multisigs don't show up as ISMINE_SPENDABLE unless they are in wrapped in P2SH
+            isminetype ismine = ISMINE_NO;
+            if (type == TxoutType::MULTISIG) {
+                ismine = IsMine(GetScriptForDestination(ScriptHash(subscript)));
+            } else {
+                ismine = IsMine(subscript);
+            }
+            // Only report the script if it is solvable
+            if (ismine != ISMINE_NO) {
+                spks.insert(GetScriptForDestination(witdest));
+            }
+        }
+    }
+
+    // All watchonly scripts are raw
+    for (const CScript& script : setWatchOnly) {
+        // As the legacy wallet allowed to import any script, we need to verify the validity here.
+        // LegacyScriptPubKeyMan::IsMine() return 'ISMINE_NO' for invalid or not watched scripts (IsMineResult::INVALID or IsMineResult::NO).
+        // e.g. a "sh(sh(pkh()))" which legacy wallets allowed to import!.
+        if (IsMine(script) != ISMINE_NO) spks.insert(script);
+    }
+
+>>>>>>> tc-28.1
     return spks;
 }
 
@@ -2029,6 +2152,7 @@ std::optional<MigrationData> LegacyDataSPKM::MigrateToDescriptor()
             creation_time = it->second.nCreateTime;
         }
 
+<<<<<<< v29.0
         // InferDescriptor as that will get us all the solving info if it is there
         std::unique_ptr<Descriptor> desc = InferDescriptor(script, *GetSolvingProvider(script));
         if (!desc->IsSolvable()) {
@@ -2047,6 +2171,38 @@ std::optional<MigrationData> LegacyDataSPKM::MigrateToDescriptor()
             if (parsed_descs.empty()) {
                 continue;
             }
+=======
+        std::vector<std::vector<unsigned char>> sols;
+        TxoutType type = Solver(script, sols);
+        if (type == TxoutType::MULTISIG) {
+            CScript sh_spk = GetScriptForDestination(ScriptHash(script));
+            CTxDestination witdest = WitnessV0LongHash(/*version=*/0, script);
+            CScript witprog = GetScriptForDestination(witdest);
+
+            // We only want the multisigs that we have not already seen, i.e. they are not watchonly and not spendable
+            // For P2SH, a multisig is not ISMINE_NO when:
+            // * All keys are in the wallet
+            // * The multisig itself is watch only
+            // * The P2SH is watch only
+            // For P2WSH, a multisig is not ISMINE_NO when, other than the P2SH conditions:
+            // * The P2WSH script is in the wallet and it is being watched
+            std::vector<std::vector<unsigned char>> keys(sols.begin() + 1, sols.begin() + sols.size() - 1);
+            if (HaveWatchOnly(sh_spk) || HaveWatchOnly(script) || HaveKeys(keys, *this) || HaveWatchOnly(witprog)) {
+                // The above emulates IsMine for these 3 scriptPubKeys, so double check that by running IsMine
+                assert(IsMine(sh_spk) != ISMINE_NO || IsMine(witprog) != ISMINE_NO);
+                continue;
+            }
+            assert(IsMine(sh_spk) == ISMINE_NO && IsMine(witprog) == ISMINE_NO);
+
+            std::unique_ptr<Descriptor> sh_desc = InferDescriptor(sh_spk, *GetSolvingProvider(sh_spk));
+            out.solvable_descs.emplace_back(sh_desc->ToString(), creation_time);
+
+            const auto desc = InferDescriptor(witprog, *this);
+            if (desc->IsSolvable()) {
+                std::unique_ptr<Descriptor> wsh_desc = InferDescriptor(witprog, *GetSolvingProvider(witprog));
+                out.solvable_descs.emplace_back(wsh_desc->ToString(), creation_time);
+            }
+>>>>>>> tc-28.1
         }
 
         out.solvable_descs.emplace_back(desc->ToString(), creation_time);
@@ -2565,22 +2721,22 @@ SigningResult DescriptorScriptPubKeyMan::SignMessage(const std::string& message,
     return SigningResult::OK;
 }
 
-std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbtx, const PrecomputedTransactionData& txdata, int sighash_type, bool sign, bool bip32derivs, int* n_signed, bool finalize) const
+std::optional<PSTError> DescriptorScriptPubKeyMan::FillPST(PartiallySignedTransaction& pstx, const PrecomputedTransactionData& txdata, int sighash_type, bool sign, bool bip32derivs, int* n_signed, bool finalize) const
 {
     if (n_signed) {
         *n_signed = 0;
     }
-    for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
-        const CTxIn& txin = psbtx.tx->vin[i];
-        PSBTInput& input = psbtx.inputs.at(i);
+    for (unsigned int i = 0; i < pstx.tx->vin.size(); ++i) {
+        const CTxIn& txin = pstx.tx->vin[i];
+        PSTInput& input = pstx.inputs.at(i);
 
-        if (PSBTInputSigned(input)) {
+        if (PSTInputSigned(input)) {
             continue;
         }
 
         // Get the Sighash type
         if (sign && input.sighash_type != std::nullopt && *input.sighash_type != sighash_type) {
-            return PSBTError::SIGHASH_MISMATCH;
+            return PSTError::SIGHASH_MISMATCH;
         }
 
         // Get the scriptPubKey to know which SigningProvider to use
@@ -2589,7 +2745,7 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
             script = input.witness_utxo.scriptPubKey;
         } else if (input.non_witness_utxo) {
             if (txin.prevout.n >= input.non_witness_utxo->vout.size()) {
-                return PSBTError::MISSING_INPUTS;
+                return PSTError::MISSING_INPUTS;
             }
             script = input.non_witness_utxo->vout[txin.prevout.n].scriptPubKey;
         } else {
@@ -2611,27 +2767,6 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
                 pubkeys.push_back(pk);
             }
 
-            // Taproot output pubkey
-            std::vector<std::vector<unsigned char>> sols;
-            if (Solver(script, sols) == TxoutType::WITNESS_V1_TAPROOT) {
-                sols[0].insert(sols[0].begin(), 0x02);
-                pubkeys.emplace_back(sols[0]);
-                sols[0][0] = 0x03;
-                pubkeys.emplace_back(sols[0]);
-            }
-
-            // Taproot pubkeys
-            for (const auto& pk_pair : input.m_tap_bip32_paths) {
-                const XOnlyPubKey& pubkey = pk_pair.first;
-                for (unsigned char prefix : {0x02, 0x03}) {
-                    unsigned char b[33] = {prefix};
-                    std::copy(pubkey.begin(), pubkey.end(), b + 1);
-                    CPubKey fullpubkey;
-                    fullpubkey.Set(b, b + 33);
-                    pubkeys.push_back(fullpubkey);
-                }
-            }
-
             for (const auto& pubkey : pubkeys) {
                 std::unique_ptr<FlatSigningProvider> pk_keys = GetSigningProvider(pubkey);
                 if (pk_keys) {
@@ -2640,9 +2775,9 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
             }
         }
 
-        SignPSBTInput(HidingSigningProvider(keys.get(), /*hide_secret=*/!sign, /*hide_origin=*/!bip32derivs), psbtx, i, &txdata, sighash_type, nullptr, finalize);
+        SignPSTInput(HidingSigningProvider(keys.get(), /*hide_secret=*/!sign, /*hide_origin=*/!bip32derivs), pstx, i, &txdata, sighash_type, nullptr, finalize);
 
-        bool signed_one = PSBTInputSigned(input);
+        bool signed_one = PSTInputSigned(input);
         if (n_signed && (signed_one || !sign)) {
             // If sign is false, we assume that we _could_ sign if we get here. This
             // will never have false negatives; it is hard to tell under what i
@@ -2652,12 +2787,12 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
     }
 
     // Fill in the bip32 keypaths and redeemscripts for the outputs so that hardware wallets can identify change
-    for (unsigned int i = 0; i < psbtx.tx->vout.size(); ++i) {
-        std::unique_ptr<SigningProvider> keys = GetSolvingProvider(psbtx.tx->vout.at(i).scriptPubKey);
+    for (unsigned int i = 0; i < pstx.tx->vout.size(); ++i) {
+        std::unique_ptr<SigningProvider> keys = GetSolvingProvider(pstx.tx->vout.at(i).scriptPubKey);
         if (!keys) {
             continue;
         }
-        UpdatePSBTOutput(HidingSigningProvider(keys.get(), /*hide_secret=*/true, /*hide_origin=*/!bip32derivs), psbtx, i);
+        UpdatePSTOutput(HidingSigningProvider(keys.get(), /*hide_secret=*/true, /*hide_origin=*/!bip32derivs), pstx, i);
     }
 
     return {};

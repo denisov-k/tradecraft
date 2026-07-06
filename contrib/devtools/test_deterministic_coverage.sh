@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 #
 # Copyright (c) 2019-2020 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 # Test for deterministic coverage across unit test runs.
 
@@ -34,7 +45,7 @@ NON_DETERMINISTIC_TESTS=(
     "wallet_tests/wallet_disableprivkeys"                     # validation.cpp: if (signals.CallbacksPending() > 10)
 )
 
-TEST_BITCOIN_BINARY="src/test/test_bitcoin"
+TEST_FREICOIN_BINARY="src/test/test_freicoin"
 
 print_usage() {
     echo "Usage: $0 [custom test filter (default: all but known non-deterministic tests)] [number of test runs (default: 2)]"
@@ -80,8 +91,13 @@ if ! command -v gcovr > /dev/null; then
     exit 1
 fi
 
+<<<<<<< v29.0
 if [[ ! -e ${TEST_BITCOIN_BINARY} ]]; then
     echo "Error: Executable ${TEST_BITCOIN_BINARY} not found. Run \"cmake -B build -DCMAKE_BUILD_TYPE=Coverage\" and compile."
+=======
+if [[ ! -e ${TEST_FREICOIN_BINARY} ]]; then
+    echo "Error: Executable ${TEST_FREICOIN_BINARY} not found. Run \"./configure --enable-lcov\" and compile."
+>>>>>>> tc-28.1
     exit 1
 fi
 
@@ -108,7 +124,7 @@ while [[ ${TEST_RUN_ID} -lt ${N_TEST_RUNS} ]]; do
         exit 1
     fi
     TEST_OUTPUT_TEMPFILE=$(mktemp)
-    if ! BOOST_TEST_RUN_FILTERS="${BOOST_TEST_RUN_FILTERS}" ${TEST_BITCOIN_BINARY} > "${TEST_OUTPUT_TEMPFILE}" 2>&1; then
+    if ! BOOST_TEST_RUN_FILTERS="${BOOST_TEST_RUN_FILTERS}" ${TEST_FREICOIN_BINARY} > "${TEST_OUTPUT_TEMPFILE}" 2>&1; then
         cat "${TEST_OUTPUT_TEMPFILE}"
         rm "${TEST_OUTPUT_TEMPFILE}"
         exit 1

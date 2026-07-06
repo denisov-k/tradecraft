@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 #
 # Copyright (c) 2019-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 export LC_ALL=C.UTF-8
 
@@ -17,5 +28,12 @@ export PACKAGES="nsis g++-mingw-w64-x86-64-posix wine-binfmt wine64 wine32 file"
 export RUN_UNIT_TESTS=${RUN_UNIT_TESTS:-false}
 export RUN_FUNCTIONAL_TESTS=false
 export GOAL="deploy"
+<<<<<<< v29.0
 export BITCOIN_CONFIG="-DREDUCE_EXPORTS=ON -DBUILD_GUI_TESTS=OFF \
 -DCMAKE_CXX_FLAGS='-Wno-error=maybe-uninitialized -Wno-error=array-bounds'"
+=======
+# Prior to 11.0.0, the mingw-w64 headers were missing noreturn attributes, causing warnings when
+# cross-compiling for Windows. https://sourceforge.net/p/mingw-w64/bugs/306/
+# https://github.com/mingw-w64/mingw-w64/commit/1690994f515910a31b9fb7c7bd3a52d4ba987abe
+export FREICOIN_CONFIG="--enable-reduce-exports --disable-gui-tests CXXFLAGS='-Wno-return-type -Wno-error=maybe-uninitialized -Wno-error=array-bounds'"
+>>>>>>> tc-28.1

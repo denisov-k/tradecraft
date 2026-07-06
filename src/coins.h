@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_COINS_H
-#define BITCOIN_COINS_H
+#ifndef FREICOIN_COINS_H
+#define FREICOIN_COINS_H
 
 #include <compressor.h>
 #include <core_memusage.h>
@@ -20,6 +31,7 @@
 #include <stdint.h>
 
 #include <functional>
+#include <optional>
 #include <unordered_map>
 
 /**
@@ -35,6 +47,10 @@ public:
     //! unspent transaction output
     CTxOut out;
 
+    //! lock height of the CTransaction, which serves double-duty as
+    //! the reference height for demurrage calculations
+    uint32_t refheight;
+
     //! whether containing transaction was a coinbase
     unsigned int fCoinBase : 1;
 
@@ -42,17 +58,18 @@ public:
     uint32_t nHeight : 31;
 
     //! construct a Coin from a CTxOut and height/coinbase information.
-    Coin(CTxOut&& outIn, int nHeightIn, bool fCoinBaseIn) : out(std::move(outIn)), fCoinBase(fCoinBaseIn), nHeight(nHeightIn) {}
-    Coin(const CTxOut& outIn, int nHeightIn, bool fCoinBaseIn) : out(outIn), fCoinBase(fCoinBaseIn),nHeight(nHeightIn) {}
+    Coin(CTxOut&& outIn, uint32_t refheightIn, int nHeightIn, bool fCoinBaseIn) : out(std::move(outIn)), refheight(refheightIn), fCoinBase(fCoinBaseIn), nHeight(nHeightIn) {}
+    Coin(const CTxOut& outIn, uint32_t refheightIn, int nHeightIn, bool fCoinBaseIn) : out(outIn), refheight(refheightIn), fCoinBase(fCoinBaseIn),nHeight(nHeightIn) {}
 
     void Clear() {
         out.SetNull();
+        refheight = 0;
         fCoinBase = false;
         nHeight = 0;
     }
 
     //! empty constructor
-    Coin() : fCoinBase(false), nHeight(0) { }
+    Coin() : refheight(0), fCoinBase(false), nHeight(0) { }
 
     bool IsCoinBase() const {
         return fCoinBase;
@@ -64,6 +81,7 @@ public:
         uint32_t code = nHeight * uint32_t{2} + fCoinBase;
         ::Serialize(s, VARINT(code));
         ::Serialize(s, Using<TxOutCompression>(out));
+        ::Serialize(s, VARINT(refheight));
     }
 
     template<typename Stream>
@@ -73,6 +91,7 @@ public:
         nHeight = code >> 1;
         fCoinBase = code & 1;
         ::Unserialize(s, Using<TxOutCompression>(out));
+        ::Unserialize(s, VARINT(refheight));
     }
 
     /** Either this coin never existed (see e.g. coinEmpty in coins.cpp), or it
@@ -80,6 +99,12 @@ public:
       */
     bool IsSpent() const {
         return out.IsNull();
+    }
+
+    // calculate value of an output at the specified block height
+    CAmount GetPresentValue(uint32_t height) const
+    {
+        return out.GetTimeAdjustedValue((int)height - refheight);
     }
 
     size_t DynamicMemoryUsage() const {
@@ -213,6 +238,54 @@ public:
     }
 };
 
+struct BlockFinalTxEntry
+{
+    Txid hash;
+    uint32_t size;
+
+    BlockFinalTxEntry() : size(0) {}
+    BlockFinalTxEntry(const Txid& _hash, uint32_t _size) : hash(_hash), size(_size) {}
+
+    bool IsNull() const {
+        return (size == 0);
+    }
+
+    void SetNull() {
+        hash.SetNull();
+        size = 0;
+    }
+
+    friend bool operator<(const BlockFinalTxEntry& a, const BlockFinalTxEntry& b) {
+        return (a.hash < b.hash || (a.hash == b.hash && a.size < b.size));
+    }
+
+    friend bool operator==(const BlockFinalTxEntry& a, const BlockFinalTxEntry& b) {
+        return (a.hash == b.hash && a.size == b.size);
+    }
+
+    friend bool operator!=(const BlockFinalTxEntry& a, const BlockFinalTxEntry& b) {
+        return !(a == b);
+    }
+
+    template<typename Stream>
+    void Serialize(Stream &s) const {
+        ::Serialize(s, VARINT(size));
+        if (!IsNull()) {
+            ::Serialize(s, hash);
+        }
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream &s) {
+        ::Unserialize(s, VARINT(size));
+        if (!size) {
+            hash.SetNull();
+        } else {
+            ::Unserialize(s, hash);
+        }
+    }
+};
+
 /**
  * PoolAllocator's MAX_BLOCK_SIZE_BYTES parameter here uses sizeof the data, and adds the size
  * of 4 pointers. We do not know the exact node size used in the std::unordered_node implementation
@@ -324,9 +397,12 @@ public:
     //! the old block hash, in that order.
     virtual std::vector<uint256> GetHeadBlocks() const;
 
+    //! Retrieve the hash of the block-final transaction in the chain tip.
+    virtual BlockFinalTxEntry GetFinalTx() const;
+
     //! Do a bulk modification (multiple Coin changes + BestBlock change).
     //! The passed cursor is used to iterate through the coins.
-    virtual bool BatchWrite(CoinsViewCacheCursor& cursor, const uint256& hashBlock);
+    virtual bool BatchWrite(CoinsViewCacheCursor& cursor, const uint256& hashBlock, const BlockFinalTxEntry &final_tx);
 
     //! Get a cursor to iterate over the whole state
     virtual std::unique_ptr<CCoinsViewCursor> Cursor() const;
@@ -351,8 +427,9 @@ public:
     bool HaveCoin(const COutPoint &outpoint) const override;
     uint256 GetBestBlock() const override;
     std::vector<uint256> GetHeadBlocks() const override;
+    BlockFinalTxEntry GetFinalTx() const override;
     void SetBackend(CCoinsView &viewIn);
-    bool BatchWrite(CoinsViewCacheCursor& cursor, const uint256 &hashBlock) override;
+    bool BatchWrite(CoinsViewCacheCursor& cursor, const uint256 &hashBlock, const BlockFinalTxEntry &final_tx) override;
     std::unique_ptr<CCoinsViewCursor> Cursor() const override;
     size_t EstimateSize() const override;
 };
@@ -369,7 +446,8 @@ protected:
      * Make mutable so that we can "fill the cache" even from Get-methods
      * declared as "const".
      */
-    mutable uint256 hashBlock;
+    mutable std::optional<uint256> hashBlock;
+    mutable std::optional<BlockFinalTxEntry> finalTxEntry;
     mutable CCoinsMapMemoryResource m_cache_coins_memory_resource{};
     /* The starting sentinel of the flagged entry circular doubly linked list. */
     mutable CoinsCachePair m_sentinel;
@@ -391,7 +469,9 @@ public:
     bool HaveCoin(const COutPoint &outpoint) const override;
     uint256 GetBestBlock() const override;
     void SetBestBlock(const uint256 &hashBlock);
-    bool BatchWrite(CoinsViewCacheCursor& cursor, const uint256 &hashBlock) override;
+    BlockFinalTxEntry GetFinalTx() const override;
+    void SetFinalTx(const BlockFinalTxEntry &final_tx);
+    bool BatchWrite(CoinsViewCacheCursor& cursor, const uint256 &hashBlock, const BlockFinalTxEntry &final_tx) override;
     std::unique_ptr<CCoinsViewCursor> Cursor() const override {
         throw std::logic_error("CCoinsViewCache cursor iteration not supported.");
     }
@@ -466,6 +546,16 @@ public:
     //! Calculate the size of the cache (in bytes)
     size_t DynamicMemoryUsage() const;
 
+    /**
+     * Amount of freicoins coming in to a transaction
+     * Note that lightweight clients may not know anything besides the hash of previous transactions,
+     * so may not be able to calculate this.
+     *
+     * @param[in] tx    transaction for which we are checking input total
+     * @return  Sum of value of all inputs (scriptSigs)
+     */
+    CAmount GetValueIn(const CTransaction& tx) const;
+
     //! Check whether all prevouts of the transaction are present in the UTXO set represented by this view
     bool HaveInputs(const CTransaction& tx) const;
 
@@ -504,7 +594,7 @@ const Coin& AccessByTxid(const CCoinsViewCache& cache, const Txid& txid);
 /**
  * This is a minimally invasive approach to shutdown on LevelDB read errors from the
  * chainstate, while keeping user interface out of the common library, which is shared
- * between bitcoind, and bitcoin-qt and non-server tools.
+ * between freicoind, and freicoin-qt and non-server tools.
  *
  * Writes do not need similar protection, as failure to write is handled by the caller.
 */
@@ -526,4 +616,4 @@ private:
 
 };
 
-#endif // BITCOIN_COINS_H
+#endif // FREICOIN_COINS_H

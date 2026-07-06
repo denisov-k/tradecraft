@@ -1,6 +1,17 @@
 // Copyright (c) 2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <kernel/coinstats.h>
 
@@ -43,6 +54,7 @@ uint64_t GetBogoSize(const CScript& script_pub_key)
            4 /* vout index */ +
            4 /* height + coinbase */ +
            8 /* amount */ +
+           4 /* refheight */ +
            2 /* scriptPubKey len */ +
            script_pub_key.size() /* scriptPubKey */;
 }
@@ -53,6 +65,7 @@ static void TxOutSer(T& ss, const COutPoint& outpoint, const Coin& coin)
     ss << outpoint;
     ss << static_cast<uint32_t>((coin.nHeight << 1) + coin.fCoinBase);
     ss << coin.out;
+    ss << coin.refheight;
 }
 
 static void ApplyCoinHash(HashWriter& ss, const COutPoint& outpoint, const Coin& coin)
@@ -104,8 +117,11 @@ static void ApplyStats(CCoinsStats& stats, const uint256& hash, const std::map<u
     stats.nTransactions++;
     for (auto it = outputs.begin(); it != outputs.end(); ++it) {
         stats.nTransactionOutputs++;
+        if (stats.total_value.has_value()) {
+            stats.total_value = CheckedAdd(*stats.total_value, it->second.out.GetReferenceValue());
+        }
         if (stats.total_amount.has_value()) {
-            stats.total_amount = CheckedAdd(*stats.total_amount, it->second.out.nValue);
+            stats.total_amount = CheckedAdd(*stats.total_amount, it->second.GetPresentValue(stats.nHeight + 1));
         }
         stats.nBogoSize += GetBogoSize(it->second.out.scriptPubKey);
     }

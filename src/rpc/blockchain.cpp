@@ -1,7 +1,18 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <rpc/blockchain.h>
 
@@ -88,11 +99,11 @@ UniValue WriteUTXOSnapshot(
 
 /* Calculate the difficulty for a given block index.
  */
-double GetDifficulty(const CBlockIndex& blockindex)
+double ConvertBitsToDifficulty(uint32_t nBits)
 {
-    int nShift = (blockindex.nBits >> 24) & 0xff;
+    int nShift = (nBits >> 24) & 0xff;
     double dDiff =
-        (double)0x0000ffff / (double)(blockindex.nBits & 0x00ffffff);
+        (double)0x0000ffff / (double)(nBits & 0x00ffffff);
 
     while (nShift < 29)
     {
@@ -146,7 +157,25 @@ static const CBlockIndex* ParseHashOrHeight(const UniValue& param, ChainstateMan
     }
 }
 
+<<<<<<< v29.0
 UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex, const uint256 pow_limit)
+=======
+/* Calculate the difficulty for a given block index.
+ */
+double GetDifficulty(const CBlockIndex& blockindex)
+{
+    return ConvertBitsToDifficulty(blockindex.nBits);
+}
+
+/* Calculate the merge-mining difficulty for a given block index.
+ */
+double GetAuxiliaryDifficulty(const CBlockIndex& blockindex)
+{
+    return ConvertBitsToDifficulty(blockindex.m_aux_pow.m_commit_bits);
+}
+
+UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex)
+>>>>>>> tc-28.1
 {
     // Serialize passed information without accessing chain state of the active chain!
     AssertLockNotHeld(cs_main); // For performance reasons
@@ -166,6 +195,9 @@ UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex
     result.pushKV("bits", strprintf("%08x", blockindex.nBits));
     result.pushKV("target", GetTarget(tip, pow_limit).GetHex());
     result.pushKV("difficulty", GetDifficulty(blockindex));
+    if (!blockindex.m_aux_pow.IsNull()) {
+        result.pushKV("auxdifficulty", (double)GetAuxiliaryDifficulty(blockindex));
+    }
     result.pushKV("chainwork", blockindex.nChainWork.GetHex());
     result.pushKV("nTx", blockindex.nTx);
 
@@ -448,6 +480,26 @@ static RPCHelpMan getdifficulty()
     };
 }
 
+static RPCHelpMan getauxdifficulty()
+{
+    return RPCHelpMan{"getauxdifficulty",
+        "\nReturns the auxiliary proof-of-work difficulty as a multiple of the minimum difficulty.\n",
+        {},
+        RPCResult{
+            RPCResult::Type::NUM, "", "the auxiliaryproof-of-work difficulty as a multiple of the minimum difficulty."},
+        RPCExamples{
+            HelpExampleCli("getauxdifficulty", "")
+          + HelpExampleRpc("getauxdifficulty", "")
+        },
+    [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    ChainstateManager& chainman = EnsureAnyChainman(request.context);
+    LOCK(cs_main);
+    return GetAuxiliaryDifficulty(*CHECK_NONFATAL(chainman.ActiveChain().Tip()));
+},
+    };
+}
+
 static RPCHelpMan getblockfrompeer()
 {
     return RPCHelpMan{
@@ -557,6 +609,7 @@ static RPCHelpMan getblockheader()
                             {RPCResult::Type::STR_HEX, "bits", "nBits: compact representation of the block difficulty target"},
                             {RPCResult::Type::STR_HEX, "target", "The difficulty target"},
                             {RPCResult::Type::NUM, "difficulty", "The difficulty"},
+                            {RPCResult::Type::NUM, "auxdifficulty", /*optional=*/true, "The auxiliarydifficulty"},
                             {RPCResult::Type::STR_HEX, "chainwork", "Expected number of hashes required to produce the current chain"},
                             {RPCResult::Type::NUM, "nTx", "The number of transactions in the block"},
                             {RPCResult::Type::STR_HEX, "previousblockhash", /*optional=*/true, "The hash of the previous block (if available)"},
@@ -689,7 +742,7 @@ const RPCResult getblock_vin{
                     {RPCResult::Type::STR, "asm", "Disassembly of the output script"},
                     {RPCResult::Type::STR, "desc", "Inferred descriptor for the output"},
                     {RPCResult::Type::STR_HEX, "hex", "The raw output script bytes, hex-encoded"},
-                    {RPCResult::Type::STR, "address", /*optional=*/true, "The Bitcoin address (only if a well-defined address exists)"},
+                    {RPCResult::Type::STR, "address", /*optional=*/true, "The Freicoin address (only if a well-defined address exists)"},
                     {RPCResult::Type::STR, "type", "The type (one of: " + GetAllOutputTypes() + ")"},
                 }},
             }},
@@ -732,6 +785,7 @@ static RPCHelpMan getblock()
                     {RPCResult::Type::STR_HEX, "bits", "nBits: compact representation of the block difficulty target"},
                     {RPCResult::Type::STR_HEX, "target", "The difficulty target"},
                     {RPCResult::Type::NUM, "difficulty", "The difficulty"},
+                    {RPCResult::Type::NUM, "auxdifficulty", /*optional=*/true, "The auxiliary difficulty"},
                     {RPCResult::Type::STR_HEX, "chainwork", "Expected number of hashes required to produce the chain up to this block (in hex)"},
                     {RPCResult::Type::NUM, "nTx", "The number of transactions in the block"},
                     {RPCResult::Type::STR_HEX, "previousblockhash", /*optional=*/true, "The hash of the previous block (if available)"},
@@ -746,6 +800,7 @@ static RPCHelpMan getblock()
                         {RPCResult::Type::OBJ, "", "",
                         {
                             {RPCResult::Type::ELISION, "", "The transactions in the format of the getrawtransaction RPC. Different from verbosity = 1 \"tx\" result"},
+                            {RPCResult::Type::NUM, "demurrage", "The amount of the input demurrage in " + CURRENCY_UNIT + ", omitted if block undo data is not available"},
                             {RPCResult::Type::NUM, "fee", "The transaction fee in " + CURRENCY_UNIT + ", omitted if block undo data is not available"},
                         }},
                     }},
@@ -961,10 +1016,12 @@ static RPCHelpMan gettxoutsetinfo()
                         {RPCResult::Type::STR_HEX, "muhash", /*optional=*/true, "The serialized hash (only present if 'muhash' hash_type is chosen)"},
                         {RPCResult::Type::NUM, "transactions", /*optional=*/true, "The number of transactions with unspent outputs (not available when coinstatsindex is used)"},
                         {RPCResult::Type::NUM, "disk_size", /*optional=*/true, "The estimated size of the chainstate on disk (not available when coinstatsindex is used)"},
-                        {RPCResult::Type::STR_AMOUNT, "total_amount", "The total amount of coins in the UTXO set"},
-                        {RPCResult::Type::STR_AMOUNT, "total_unspendable_amount", /*optional=*/true, "The total amount of coins permanently excluded from the UTXO set (only available if coinstatsindex is used)"},
+                        {RPCResult::Type::STR_AMOUNT, "total_value", "The total amount of coins in the UTXO set"},
+                        {RPCResult::Type::STR_AMOUNT, "total_amount", "The total amount of coins in the UTXO set, time-adjusted to the next block's height"},
+                        {RPCResult::Type::STR_AMOUNT, "total_unspendable_value", /*optional=*/true, "The total amount of coins permanently excluded from the UTXO set (only available if coinstatsindex is used)"},
                         {RPCResult::Type::OBJ, "block_info", /*optional=*/true, "Info on amounts in the block at this block height (only available if coinstatsindex is used)",
                         {
+                            {RPCResult::Type::STR_AMOUNT, "demurrage", "The amount of the input demurrage across all transactions in this block"},
                             {RPCResult::Type::STR_AMOUNT, "prevout_spent", "Total amount of all prevouts spent in this block"},
                             {RPCResult::Type::STR_AMOUNT, "coinbase", "Coinbase subsidy amount of this block"},
                             {RPCResult::Type::STR_AMOUNT, "new_outputs_ex_coinbase", "Total amount of new outputs created by this block"},
@@ -1051,13 +1108,15 @@ static RPCHelpMan gettxoutsetinfo()
         if (hash_type == CoinStatsHashType::MUHASH) {
             ret.pushKV("muhash", stats.hashSerialized.GetHex());
         }
+        CHECK_NONFATAL(stats.total_value.has_value());
+        ret.pushKV("total_value", ValueFromAmount(stats.total_value.value()));
         CHECK_NONFATAL(stats.total_amount.has_value());
         ret.pushKV("total_amount", ValueFromAmount(stats.total_amount.value()));
         if (!stats.index_used) {
             ret.pushKV("transactions", static_cast<int64_t>(stats.nTransactions));
             ret.pushKV("disk_size", stats.nDiskSize);
         } else {
-            ret.pushKV("total_unspendable_amount", ValueFromAmount(stats.total_unspendable_amount));
+            ret.pushKV("total_unspendable_value", ValueFromAmount(stats.total_unspendable_value));
 
             CCoinsStats prev_stats{};
             if (pindex->nHeight > 0) {
@@ -1069,10 +1128,11 @@ static RPCHelpMan gettxoutsetinfo()
             }
 
             UniValue block_info(UniValue::VOBJ);
+            block_info.pushKV("demurrage", ValueFromAmount(stats.block_demurrage));
             block_info.pushKV("prevout_spent", ValueFromAmount(stats.total_prevout_spent_amount - prev_stats.total_prevout_spent_amount));
             block_info.pushKV("coinbase", ValueFromAmount(stats.total_coinbase_amount - prev_stats.total_coinbase_amount));
             block_info.pushKV("new_outputs_ex_coinbase", ValueFromAmount(stats.total_new_outputs_ex_coinbase_amount - prev_stats.total_new_outputs_ex_coinbase_amount));
-            block_info.pushKV("unspendable", ValueFromAmount(stats.total_unspendable_amount - prev_stats.total_unspendable_amount));
+            block_info.pushKV("unspendable", ValueFromAmount(stats.total_unspendable_value - prev_stats.total_unspendable_value));
 
             UniValue unspendables(UniValue::VOBJ);
             unspendables.pushKV("genesis_block", ValueFromAmount(stats.total_unspendables_genesis_block - prev_stats.total_unspendables_genesis_block));
@@ -1105,15 +1165,17 @@ static RPCHelpMan gettxout()
             RPCResult{"Otherwise", RPCResult::Type::OBJ, "", "", {
                 {RPCResult::Type::STR_HEX, "bestblock", "The hash of the block at the tip of the chain"},
                 {RPCResult::Type::NUM, "confirmations", "The number of confirmations"},
-                {RPCResult::Type::STR_AMOUNT, "value", "The transaction value in " + CURRENCY_UNIT},
+                {RPCResult::Type::STR_AMOUNT, "value", "The transaction value in " + CURRENCY_UNIT + " at its reference height"},
+                {RPCResult::Type::STR_AMOUNT, "amount", "The transaction value in " + CURRENCY_UNIT + " time-adjusted to the next block's height"},
                 {RPCResult::Type::OBJ, "scriptPubKey", "", {
                     {RPCResult::Type::STR, "asm", "Disassembly of the output script"},
                     {RPCResult::Type::STR, "desc", "Inferred descriptor for the output"},
                     {RPCResult::Type::STR_HEX, "hex", "The raw output script bytes, hex-encoded"},
                     {RPCResult::Type::STR, "type", "The type, eg pubkeyhash"},
-                    {RPCResult::Type::STR, "address", /*optional=*/true, "The Bitcoin address (only if a well-defined address exists)"},
+                    {RPCResult::Type::STR, "address", /*optional=*/true, "The Freicoin address (only if a well-defined address exists)"},
                 }},
                 {RPCResult::Type::BOOL, "coinbase", "Coinbase or not"},
+                {RPCResult::Type::NUM, "refheight", "Reference height"},
             }},
         },
         RPCExamples{
@@ -1159,11 +1221,21 @@ static RPCHelpMan gettxout()
     } else {
         ret.pushKV("confirmations", (int64_t)(pindex->nHeight - coin->nHeight + 1));
     }
+<<<<<<< v29.0
     ret.pushKV("value", ValueFromAmount(coin->out.nValue));
+=======
+    ret.pushKV("value", ValueFromAmount(coin.out.GetReferenceValue()));
+    ret.pushKV("amount", ValueFromAmount(coin.GetPresentValue(pindex->nHeight + 1)));
+>>>>>>> tc-28.1
     UniValue o(UniValue::VOBJ);
     ScriptToUniv(coin->out.scriptPubKey, /*out=*/o, /*include_hex=*/true, /*include_address=*/true);
     ret.pushKV("scriptPubKey", std::move(o));
+<<<<<<< v29.0
     ret.pushKV("coinbase", (bool)coin->fCoinBase);
+=======
+    ret.pushKV("coinbase", (bool)coin.fCoinBase);
+    ret.pushKV("refheight", (int64_t)coin.refheight);
+>>>>>>> tc-28.1
 
     return ret;
 },
@@ -1302,6 +1374,7 @@ RPCHelpMan getblockchaininfo()
                 {RPCResult::Type::STR_HEX, "bits", "nBits: compact representation of the block difficulty target"},
                 {RPCResult::Type::STR_HEX, "target", "The difficulty target"},
                 {RPCResult::Type::NUM, "difficulty", "the current difficulty"},
+                {RPCResult::Type::NUM, "auxdifficulty", /*optional=*/true, "the current auxiliary difficulty"},
                 {RPCResult::Type::NUM_TIME, "time", "The block time expressed in " + UNIX_EPOCH_TIME},
                 {RPCResult::Type::NUM_TIME, "mediantime", "The median block time expressed in " + UNIX_EPOCH_TIME},
                 {RPCResult::Type::NUM, "verificationprogress", "estimate of verification progress [0..1]"},
@@ -1342,6 +1415,9 @@ RPCHelpMan getblockchaininfo()
     obj.pushKV("bits", strprintf("%08x", tip.nBits));
     obj.pushKV("target", GetTarget(tip, chainman.GetConsensus().powLimit).GetHex());
     obj.pushKV("difficulty", GetDifficulty(tip));
+    if (!tip.m_aux_pow.IsNull()) {
+        obj.pushKV("auxdifficulty", GetAuxiliaryDifficulty(tip));
+    }
     obj.pushKV("time", tip.GetBlockTime());
     obj.pushKV("mediantime", tip.GetMedianTimePast());
     obj.pushKV("verificationprogress", chainman.GuessVerificationProgress(&tip));
@@ -1403,11 +1479,12 @@ UniValue DeploymentInfo(const CBlockIndex* blockindex, const ChainstateManager& 
     UniValue softforks(UniValue::VOBJ);
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_HEIGHTINCB);
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_DERSIG);
-    SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_CLTV);
-    SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_CSV);
+    SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_LOCKTIME);
+    SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_FINALTX);
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_SEGWIT);
+    SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_FINALTX);
+    SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_AUXPOW);
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_TESTDUMMY);
-    SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_TAPROOT);
     return softforks;
 }
 } // anon namespace
@@ -1732,7 +1809,7 @@ static RPCHelpMan getchaintxstats()
 {
     ChainstateManager& chainman = EnsureAnyChainman(request.context);
     const CBlockIndex* pindex;
-    int blockcount = 30 * 24 * 60 * 60 / chainman.GetParams().GetConsensus().nPowTargetSpacing; // By default: 1 month
+    int blockcount = 30 * 24 * 60 * 60 / chainman.GetConsensus().aux_pow_target_spacing; // By default: 1 month
 
     if (request.params[1].isNull()) {
         LOCK(cs_main);
@@ -1847,7 +1924,7 @@ static constexpr size_t PER_UTXO_OVERHEAD = sizeof(COutPoint) + sizeof(uint32_t)
 static RPCHelpMan getblockstats()
 {
     return RPCHelpMan{"getblockstats",
-                "\nCompute per block statistics for a given window. All amounts are in satoshis.\n"
+                "\nCompute per block statistics for a given window. All amounts are in kria.\n"
                 "It won't work for some heights with pruning.\n",
                 {
                     {"hash_or_height", RPCArg::Type::NUM, RPCArg::Optional::NO, "The block hash or height of the target block",
@@ -1866,10 +1943,10 @@ static RPCHelpMan getblockstats()
             RPCResult::Type::OBJ, "", "",
             {
                 {RPCResult::Type::NUM, "avgfee", /*optional=*/true, "Average fee in the block"},
-                {RPCResult::Type::NUM, "avgfeerate", /*optional=*/true, "Average feerate (in satoshis per virtual byte)"},
+                {RPCResult::Type::NUM, "avgfeerate", /*optional=*/true, "Average feerate (in kria per virtual byte)"},
                 {RPCResult::Type::NUM, "avgtxsize", /*optional=*/true, "Average transaction size"},
                 {RPCResult::Type::STR_HEX, "blockhash", /*optional=*/true, "The block hash (to check for potential reorgs)"},
-                {RPCResult::Type::ARR_FIXED, "feerate_percentiles", /*optional=*/true, "Feerates at the 10th, 25th, 50th, 75th, and 90th percentile weight unit (in satoshis per virtual byte)",
+                {RPCResult::Type::ARR_FIXED, "feerate_percentiles", /*optional=*/true, "Feerates at the 10th, 25th, 50th, 75th, and 90th percentile weight unit (in kria per virtual byte)",
                 {
                     {RPCResult::Type::NUM, "10th_percentile_feerate", "The 10th percentile feerate"},
                     {RPCResult::Type::NUM, "25th_percentile_feerate", "The 25th percentile feerate"},
@@ -1880,13 +1957,13 @@ static RPCHelpMan getblockstats()
                 {RPCResult::Type::NUM, "height", /*optional=*/true, "The height of the block"},
                 {RPCResult::Type::NUM, "ins", /*optional=*/true, "The number of inputs (excluding coinbase)"},
                 {RPCResult::Type::NUM, "maxfee", /*optional=*/true, "Maximum fee in the block"},
-                {RPCResult::Type::NUM, "maxfeerate", /*optional=*/true, "Maximum feerate (in satoshis per virtual byte)"},
+                {RPCResult::Type::NUM, "maxfeerate", /*optional=*/true, "Maximum feerate (in kria per virtual byte)"},
                 {RPCResult::Type::NUM, "maxtxsize", /*optional=*/true, "Maximum transaction size"},
                 {RPCResult::Type::NUM, "medianfee", /*optional=*/true, "Truncated median fee in the block"},
                 {RPCResult::Type::NUM, "mediantime", /*optional=*/true, "The block median time past"},
                 {RPCResult::Type::NUM, "mediantxsize", /*optional=*/true, "Truncated median transaction size"},
                 {RPCResult::Type::NUM, "minfee", /*optional=*/true, "Minimum fee in the block"},
-                {RPCResult::Type::NUM, "minfeerate", /*optional=*/true, "Minimum feerate (in satoshis per virtual byte)"},
+                {RPCResult::Type::NUM, "minfeerate", /*optional=*/true, "Minimum feerate (in kria per virtual byte)"},
                 {RPCResult::Type::NUM, "mintxsize", /*optional=*/true, "Minimum transaction size"},
                 {RPCResult::Type::NUM, "outs", /*optional=*/true, "The number of outputs"},
                 {RPCResult::Type::NUM, "subsidy", /*optional=*/true, "The block subsidy"},
@@ -1968,7 +2045,7 @@ static RPCHelpMan getblockstats()
         CAmount tx_total_out = 0;
         if (loop_outputs) {
             for (const CTxOut& out : tx->vout) {
-                tx_total_out += out.nValue;
+                tx_total_out += out.GetReferenceValue();
 
                 size_t out_size = GetSerializeSize(out) + PER_UTXO_OVERHEAD;
                 utxo_size_inc += out_size;
@@ -1989,7 +2066,7 @@ static RPCHelpMan getblockstats()
         }
 
         inputs += tx->vin.size(); // Don't count coinbase's fake input
-        total_out += tx_total_out; // Don't count coinbase reward
+        total_out += GetTimeAdjustedValue(tx_total_out, pindex.nHeight - tx->lock_height); // Don't count coinbase reward
 
         int64_t tx_size = 0;
         if (do_calculate_size) {
@@ -2019,15 +2096,15 @@ static RPCHelpMan getblockstats()
             CAmount tx_total_in = 0;
             const auto& txundo = blockUndo.vtxundo.at(i - 1);
             for (const Coin& coin: txundo.vprevout) {
-                const CTxOut& prevoutput = coin.out;
-
-                tx_total_in += prevoutput.nValue;
-                size_t prevout_size = GetSerializeSize(prevoutput) + PER_UTXO_OVERHEAD;
+                tx_total_in += coin.GetPresentValue(tx->lock_height);
+                size_t prevout_size = GetSerializeSize(coin.out) + PER_UTXO_OVERHEAD;
                 utxo_size_inc -= prevout_size;
                 utxo_size_inc_actual -= prevout_size;
             }
 
             CAmount txfee = tx_total_in - tx_total_out;
+            CHECK_NONFATAL(MoneyRange(txfee));
+            txfee = GetTimeAdjustedValue(txfee, pindex.nHeight - tx->lock_height);
             CHECK_NONFATAL(MoneyRange(txfee));
             if (do_medianfee) {
                 fee_array.push_back(txfee);
@@ -2036,7 +2113,7 @@ static RPCHelpMan getblockstats()
             minfee = std::min(minfee, txfee);
             totalfee += txfee;
 
-            // New feerate uses satoshis per virtual byte instead of per serialized byte
+            // New feerate uses kria per virtual byte instead of per serialized byte
             CAmount feerate = weight ? (txfee * WITNESS_SCALE_FACTOR) / weight : 0;
             if (do_feerate_percentiles) {
                 feerate_array.emplace_back(feerate, weight);
@@ -2209,7 +2286,7 @@ static RPCHelpMan scantxoutset()
         "Examples of output descriptors are:\n"
         "    addr(<address>)                      Outputs whose output script corresponds to the specified address (does not include P2PK)\n"
         "    raw(<hex script>)                    Outputs whose output script equals the specified hex-encoded bytes\n"
-        "    combo(<pubkey>)                      P2PK, P2PKH, P2WPKH, and P2SH-P2WPKH outputs for the given pubkey\n"
+        "    combo(<pubkey>)                      P2PK, P2PKH, and P2WPK outputs for the given pubkey\n"
         "    pkh(<pubkey>)                        P2PKH outputs for the given pubkey\n"
         "    sh(multi(<n>,<pubkey>,<pubkey>,...)) P2SH-multisig outputs for the given threshold and pubkeys\n"
         "    tr(<pubkey>)                         P2TR\n"
@@ -2239,9 +2316,11 @@ static RPCHelpMan scantxoutset()
                         {RPCResult::Type::NUM, "vout", "The vout value"},
                         {RPCResult::Type::STR_HEX, "scriptPubKey", "The output script"},
                         {RPCResult::Type::STR, "desc", "A specialized descriptor for the matched output script"},
-                        {RPCResult::Type::STR_AMOUNT, "amount", "The total amount in " + CURRENCY_UNIT + " of the unspent output"},
+                        {RPCResult::Type::STR_AMOUNT, "value", "The total amount in " + CURRENCY_UNIT + " of the unspent output at its reference height"},
+                        {RPCResult::Type::STR_AMOUNT, "amount", "The total amount in " + CURRENCY_UNIT + " of the unspent output time-adjusted to the next block height"},
                         {RPCResult::Type::BOOL, "coinbase", "Whether this is a coinbase output"},
                         {RPCResult::Type::NUM, "height", "Height of the unspent transaction output"},
+                        {RPCResult::Type::NUM, "refheight", "Reference height of the unspent transaction output"},
                         {RPCResult::Type::STR_HEX, "blockhash", "Blockhash of the unspent transaction output"},
                         {RPCResult::Type::NUM, "confirmations", "Number of confirmations of the unspent transaction output when the scan was done"},
                     }},
@@ -2335,16 +2414,19 @@ static RPCHelpMan scantxoutset()
             const CTxOut& txo = coin.out;
             const CBlockIndex& coinb_block{*CHECK_NONFATAL(tip->GetAncestor(coin.nHeight))};
             input_txos.push_back(txo);
-            total_in += txo.nValue;
+            CAmount tx_amount_in = coin.GetPresentValue(tip->nHeight + 1);
+            total_in += tx_amount_in;
 
             UniValue unspent(UniValue::VOBJ);
             unspent.pushKV("txid", outpoint.hash.GetHex());
             unspent.pushKV("vout", outpoint.n);
             unspent.pushKV("scriptPubKey", HexStr(txo.scriptPubKey));
             unspent.pushKV("desc", descriptors[txo.scriptPubKey]);
-            unspent.pushKV("amount", ValueFromAmount(txo.nValue));
+            unspent.pushKV("value", ValueFromAmount(txo.GetReferenceValue()));
+            unspent.pushKV("refheight", (int64_t)coin.refheight);
             unspent.pushKV("coinbase", coin.IsCoinBase());
             unspent.pushKV("height", coin.nHeight);
+            unspent.pushKV("amount", ValueFromAmount(tx_amount_in));
             unspent.pushKV("blockhash", coinb_block.GetBlockHash().GetHex());
             unspent.pushKV("confirmations", tip->nHeight - coin.nHeight + 1);
 
@@ -2417,7 +2499,7 @@ static RPCHelpMan scanblocks()
 {
     return RPCHelpMan{"scanblocks",
         "\nReturn relevant blockhashes for given descriptors (requires blockfilterindex).\n"
-        "This call may take several minutes. Make sure to use no RPC timeout (bitcoin-cli -rpcclienttimeout=0)",
+        "This call may take several minutes. Make sure to use no RPC timeout (freicoin-cli -rpcclienttimeout=0)",
         {
             scan_action_arg_desc,
             scan_objects_arg_desc,
@@ -2448,11 +2530,11 @@ static RPCHelpMan scanblocks()
             scan_result_abort,
         },
         RPCExamples{
-            HelpExampleCli("scanblocks", "start '[\"addr(bcrt1q4u4nsgk6ug0sqz7r3rj9tykjxrsl0yy4d0wwte)\"]' 300000") +
-            HelpExampleCli("scanblocks", "start '[\"addr(bcrt1q4u4nsgk6ug0sqz7r3rj9tykjxrsl0yy4d0wwte)\"]' 100 150 basic") +
+            HelpExampleCli("scanblocks", "start '[\"addr(fcrt1q4u4nsgk6ug0sqz7r3rj9tykjxrsl0yy47m8ff0)\"]' 300000") +
+            HelpExampleCli("scanblocks", "start '[\"addr(fcrt1q4u4nsgk6ug0sqz7r3rj9tykjxrsl0yy47m8ff0)\"]' 100 150 basic") +
             HelpExampleCli("scanblocks", "status") +
-            HelpExampleRpc("scanblocks", "\"start\", [\"addr(bcrt1q4u4nsgk6ug0sqz7r3rj9tykjxrsl0yy4d0wwte)\"], 300000") +
-            HelpExampleRpc("scanblocks", "\"start\", [\"addr(bcrt1q4u4nsgk6ug0sqz7r3rj9tykjxrsl0yy4d0wwte)\"], 100, 150, \"basic\"") +
+            HelpExampleRpc("scanblocks", "\"start\", [\"addr(fcrt1q4u4nsgk6ug0sqz7r3rj9tykjxrsl0yy47m8ff0)\"], 300000") +
+            HelpExampleRpc("scanblocks", "\"start\", [\"addr(fcrt1q4u4nsgk6ug0sqz7r3rj9tykjxrsl0yy47m8ff0)\"], 100, 150, \"basic\"") +
             HelpExampleRpc("scanblocks", "\"status\"")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
@@ -2978,6 +3060,11 @@ static RPCHelpMan dumptxoutset()
                     {RPCResult::Type::STR, "path", "the absolute path that the snapshot was written to"},
                     {RPCResult::Type::STR_HEX, "txoutset_hash", "the hash of the UTXO set contents"},
                     {RPCResult::Type::NUM, "nchaintx", "the number of transactions in the chain up to and including the base block"},
+                    {RPCResult::Type::OBJ, "final_tx", /*optional=*/true, "(Only if block-final transaction information is available)",
+                    {
+                        {RPCResult::Type::STR_HEX, "hash", "The block-final transaction hash."},
+                        {RPCResult::Type::NUM, "size", "The number of spendable outputs in the block-final transaction."},
+                    }},
                 }
         },
         RPCExamples{
@@ -3107,6 +3194,7 @@ PrepareUTXOSnapshot(
     std::unique_ptr<CCoinsViewCursor> pcursor;
     std::optional<CCoinsStats> maybe_stats;
     const CBlockIndex* tip;
+    BlockFinalTxEntry final_tx;
 
     {
         // We need to lock cs_main to ensure that the coinsdb isn't written to
@@ -3132,6 +3220,7 @@ PrepareUTXOSnapshot(
 
         pcursor = chainstate.CoinsDB().Cursor();
         tip = CHECK_NONFATAL(chainstate.m_blockman.LookupBlockIndex(maybe_stats->hashBlock));
+        final_tx = chainstate.CoinsDB().GetFinalTx();
     }
 
     return {std::move(pcursor), *CHECK_NONFATAL(maybe_stats), tip};
@@ -3151,7 +3240,7 @@ UniValue WriteUTXOSnapshot(
         tip->nHeight, tip->GetBlockHash().ToString(),
         fs::PathToString(path), fs::PathToString(temppath)));
 
-    SnapshotMetadata metadata{chainstate.m_chainman.GetParams().MessageStart(), tip->GetBlockHash(), maybe_stats->coins_count};
+    SnapshotMetadata metadata{chainstate.m_chainman.GetParams().MessageStart(), tip->GetBlockHash(), final_tx, maybe_stats->coins_count};
 
     afile << metadata;
 
@@ -3210,6 +3299,12 @@ UniValue WriteUTXOSnapshot(
     result.pushKV("path", path.utf8string());
     result.pushKV("txoutset_hash", maybe_stats->hashSerialized.ToString());
     result.pushKV("nchaintx", tip->m_chain_tx_count);
+    if (!final_tx.IsNull()) {
+        UniValue entry(UniValue::VOBJ);
+        entry.pushKV("hash", final_tx.hash.ToString());
+        entry.pushKV("size", (int64_t)final_tx.size);
+        result.pushKV("final_tx", entry);
+    }
     return result;
 }
 
@@ -3235,13 +3330,13 @@ static RPCHelpMan loadtxoutset()
         "Meanwhile, the original chainstate will complete the initial block download process in "
         "the background, eventually validating up to the block that the snapshot is based upon.\n\n"
 
-        "The result is a usable bitcoind instance that is current with the network tip in a "
+        "The result is a usable freicoind instance that is current with the network tip in a "
         "matter of minutes rather than hours. UTXO snapshot are typically obtained from "
         "third-party sources (HTTP, torrent, etc.) which is reasonable since their "
         "contents are always checked by hash.\n\n"
 
         "You can find more information on this process in the `assumeutxo` design "
-        "document (<https://github.com/bitcoin/bitcoin/blob/master/doc/design/assumeutxo.md>).",
+        "document (<https://github.com/tradecraftio/tradecraft/blob/master/doc/design/assumeutxo.md>).",
         {
             {"path",
                 RPCArg::Type::STR,
@@ -3393,6 +3488,7 @@ void RegisterBlockchainRPCCommands(CRPCTable& t)
         {"blockchain", &getblockheader},
         {"blockchain", &getchaintips},
         {"blockchain", &getdifficulty},
+        {"blockchain", &getauxdifficulty},
         {"blockchain", &getdeploymentinfo},
         {"blockchain", &gettxout},
         {"blockchain", &gettxoutsetinfo},

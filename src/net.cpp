@@ -1,9 +1,24 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+<<<<<<< v29.0
 #include <bitcoin-build-config.h> // IWYU pragma: keep
+=======
+#include <config/freicoin-config.h> // IWYU pragma: keep
+>>>>>>> tc-28.1
 
 #include <net.h>
 
@@ -532,6 +547,7 @@ CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCo
             addr_bind = GetBindAddress(*sock);
         }
         CNode* pnode = new CNode(id,
+                                MaxUntrustedPeers(),
                                 std::move(sock),
                                 target_addr,
                                 CalculateKeyedNetGroup(target_addr),
@@ -663,6 +679,52 @@ void CNode::CopyStats(CNodeStats& stats)
 }
 #undef X
 
+/** The maximum length of an incoming protocol message after taking into account
+ ** whether the protocol cleanup rule change has occured (and the number of
+ ** allowed peers on 32-bit hosts). */
+static std::size_t MaxProtocolMessageLength(const Consensus::Params &params, size_t max_untrusted_peers, std::chrono::seconds time)
+{
+    if (IsSizeExpansionActive(params, time)) {
+        return SIZE_EXPANSION_MAX_BLOCK_SERIALIZED_SIZE + 24;
+    } else {
+        return MAX_PROTOCOL_MESSAGE_LENGTH;
+    }
+#if 0
+    // Unconstraining the block size in the size expansion fork means that
+    // network message size must also be unconstrained, which is a potential DoS
+    // vector.  Unfortunately there is no easy way around this.  Until better
+    // tools are available in future versions, we must accept that after
+    // activation of the size expansion fork we might receive a message up to
+    // the largest possible block size, which is limited only by
+    // SIZE_EXPANSION_MAX_BLOCKFILE_SIZE, which is nearly 2 GiB.
+    //
+    // However this value is dangerously high for 32-bit clients, as it presents
+    // an easy DoS vector for memory exhaustion attacks.  We therefore use a
+    // lower limit for 32-bit builds which prevents exhaustion of the memory
+    // address space with the maximum number of connected peers.  This does mean
+    // that 32-bit clients will stop being able to synchronize from the network
+    // once blocks genuinely grow larger than 16 MiB.  But as it is doubtful
+    // that a true 32-bit peer could keep up with the network in such an
+    // instance, this is deemed an acceptable tradeoff.
+    std::size_t max_msg_size = MAX_PROTOCOL_MESSAGE_LENGTH;
+    if (IsSizeExpansionActive(params, time)) {
+        // Use no more than 2 GiB for messages in flight on 32-bit peers.  With
+        // the default max of 125 untrusted connections this is slightly more
+        // than 16 MiB.  A 32-bit node operator could indirectly raise this
+        // value by lowering the maximum number of allowed connections in their
+        // node configuration settings.  But we will not decrease below this
+        // amount just because user configured their node to accept more inbound
+        // peers than the default.
+        std::size_t max_data_per_peer = std::numeric_limits<std::size_t>::max() / std::min(std::max((size_t)1, max_untrusted_peers), (size_t)125) / 2;
+        // On 64-bit nodes, the above calculation results in an enormous number,
+        // so we use the lower implicit protocol rule of the maximum blockfile
+        // size--a block larger than this value could not be stored to disk.
+        max_msg_size = std::min(max_data_per_peer, static_cast<std::size_t>(SIZE_EXPANSION_MAX_BLOCK_SERIALIZED_SIZE + 24));
+    }
+    return max_msg_size;
+#endif
+}
+
 bool CNode::ReceiveMsgBytes(Span<const uint8_t> msg_bytes, bool& complete)
 {
     complete = false;
@@ -670,6 +732,7 @@ bool CNode::ReceiveMsgBytes(Span<const uint8_t> msg_bytes, bool& complete)
     LOCK(cs_vRecv);
     m_last_recv = std::chrono::duration_cast<std::chrono::seconds>(time);
     nRecvBytes += msg_bytes.size();
+    m_transport->SetMaxMessageLength(MaxProtocolMessageLength(Params().GetConsensus(), max_untrusted_peers, m_last_recv.load()));
     while (msg_bytes.size() > 0) {
         // absorb network data
         if (!m_transport->ReceivedBytes(msg_bytes)) {
@@ -724,6 +787,7 @@ V1Transport::V1Transport(const NodeId node_id) noexcept
 {
     LOCK(m_recv_mutex);
     Reset();
+    max_message_length = MaxProtocolMessageLength(Params().GetConsensus(), DEFAULT_MAX_PEER_CONNECTIONS, GetTime<std::chrono::seconds>());
 }
 
 Transport::Info V1Transport::GetInfo() const noexcept
@@ -761,8 +825,13 @@ int V1Transport::readHeader(Span<const uint8_t> msg_bytes)
     }
 
     // reject messages larger than MAX_SIZE or MAX_PROTOCOL_MESSAGE_LENGTH
+<<<<<<< v29.0
     if (hdr.nMessageSize > MAX_SIZE || hdr.nMessageSize > MAX_PROTOCOL_MESSAGE_LENGTH) {
         LogDebug(BCLog::NET, "Header error: Size too large (%s, %u bytes), peer=%d\n", SanitizeString(hdr.GetMessageType()), hdr.nMessageSize, m_node_id);
+=======
+    if (hdr.nMessageSize > MAX_SIZE || hdr.nMessageSize > max_message_length) {
+        LogPrint(BCLog::NET, "Header error: Size too large (%s, %u bytes), peer=%d\n", SanitizeString(hdr.GetCommand()), hdr.nMessageSize, m_node_id);
+>>>>>>> tc-28.1
         return -1;
     }
 
@@ -1004,6 +1073,7 @@ V2Transport::V2Transport(NodeId nodeid, bool initiating, const CKey& key, Span<c
       m_send_garbage{std::move(garbage)},
       m_send_state{initiating ? SendState::AWAITING_KEY : SendState::MAYBE_V1}
 {
+    max_message_length = MaxProtocolMessageLength(Params().GetConsensus(), DEFAULT_MAX_PEER_CONNECTIONS, GetTime<std::chrono::seconds>());
     Assume(m_send_garbage.size() <= MAX_GARBAGE_LEN);
     // Start sending immediately if we're the initiator of the connection.
     if (initiating) {
@@ -1829,6 +1899,7 @@ void CConnman::CreateNodeFromAcceptedSocket(std::unique_ptr<Sock>&& sock,
     const bool use_v2transport(local_services & NODE_P2P_V2);
 
     CNode* pnode = new CNode(id,
+                             MaxUntrustedPeers(),
                              std::move(sock),
                              CAddress{addr, NODE_NONE},
                              CalculateKeyedNetGroup(addr),
@@ -3593,6 +3664,11 @@ bool CConnman::AddedNodesContain(const CAddress& addr) const
                            [&](const auto& p) { return p.m_added_node == addr_str || p.m_added_node == addr_port_str; }));
 }
 
+size_t CConnman::MaxUntrustedPeers() const
+{
+    return std::max(0, m_max_automatic_connections);
+}
+
 size_t CConnman::GetNodeCount(ConnectionDirection flags) const
 {
     LOCK(m_nodes_mutex);
@@ -3791,6 +3867,7 @@ static std::unique_ptr<Transport> MakeTransport(NodeId id, bool use_v2transport,
 }
 
 CNode::CNode(NodeId idIn,
+             int max_untrusted_peersIn,
              std::shared_ptr<Sock> sock,
              const CAddress& addrIn,
              uint64_t nKeyedNetGroupIn,
@@ -3800,7 +3877,8 @@ CNode::CNode(NodeId idIn,
              ConnectionType conn_type_in,
              bool inbound_onion,
              CNodeOptions&& node_opts)
-    : m_transport{MakeTransport(idIn, node_opts.use_v2transport, conn_type_in == ConnectionType::INBOUND)},
+    : max_untrusted_peers(max_untrusted_peersIn),
+      m_transport{MakeTransport(idIn, node_opts.use_v2transport, conn_type_in == ConnectionType::INBOUND)},
       m_permission_flags{node_opts.permission_flags},
       m_sock{sock},
       m_connected{GetTime<std::chrono::seconds>()},

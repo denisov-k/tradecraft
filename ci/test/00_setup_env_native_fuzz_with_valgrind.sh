@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 #
 # Copyright (c) 2019-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 export LC_ALL=C.UTF-8
 
@@ -14,6 +25,7 @@ export RUN_UNIT_TESTS=false
 export RUN_FUNCTIONAL_TESTS=false
 export RUN_FUZZ_TESTS=true
 export FUZZ_TESTS_CONFIG="--valgrind"
+<<<<<<< v29.0
 export GOAL="all"
 export BITCOIN_CONFIG="\
  -DBUILD_FOR_FUZZING=ON \
@@ -21,4 +33,9 @@ export BITCOIN_CONFIG="\
  -DCMAKE_C_COMPILER=clang-16 \
  -DCMAKE_CXX_COMPILER=clang++-16 \
 "
+=======
+export GOAL="install"
+export FREICOIN_CONFIG="--enable-fuzz --with-sanitizers=fuzzer CC=clang-16 CXX=clang++-16"
+export CCACHE_MAXSIZE=200M
+>>>>>>> tc-28.1
 export LLVM_SYMBOLIZER_PATH="/usr/bin/llvm-symbolizer-16"

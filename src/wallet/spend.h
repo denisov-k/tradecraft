@@ -1,9 +1,20 @@
 // Copyright (c) 2021-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_WALLET_SPEND_H
-#define BITCOIN_WALLET_SPEND_H
+#ifndef FREICOIN_WALLET_SPEND_H
+#define FREICOIN_WALLET_SPEND_H
 
 #include <consensus/amount.h>
 #include <policy/fees.h> // for FeeCalculation
@@ -84,6 +95,7 @@ struct CoinFilterParams {
  * Populate the CoinsResult struct with vectors of available COutputs, organized by OutputType.
  */
 CoinsResult AvailableCoins(const CWallet& wallet,
+                           uint32_t atheight,
                            const CCoinControl* coinControl = nullptr,
                            std::optional<CFeeRate> feerate = std::nullopt,
                            const CoinFilterParams& params = {}) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
@@ -92,7 +104,7 @@ CoinsResult AvailableCoins(const CWallet& wallet,
  * Wrapper function for AvailableCoins which skips the `feerate` and `CoinFilterParams::only_spendable` parameters. Use this function
  * to list all available coins (e.g. listunspent RPC) while not intending to fund a transaction.
  */
-CoinsResult AvailableCoinsListUnspent(const CWallet& wallet, const CCoinControl* coinControl = nullptr, CoinFilterParams params = {}) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
+CoinsResult AvailableCoinsListUnspent(const CWallet& wallet, uint32_t atheight, const CCoinControl* coinControl = nullptr, CoinFilterParams params = {}) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /**
  * Find non-change parent output.
@@ -160,11 +172,17 @@ struct PreSelectedInputs
     // will be the sum of each output effective value
     // instead of the sum of the outputs amount
     CAmount total_amount{0};
+    uint32_t atheight{0};
 
     void Insert(const COutput& output, bool subtract_fee_outputs)
     {
+        if (!atheight && coins.empty()) {
+            atheight = output.atheight;
+        } else {
+            assert(atheight == output.atheight);
+        }
         if (subtract_fee_outputs) {
-            total_amount += output.txout.nValue;
+            total_amount += output.adjusted;
         } else {
             total_amount += output.GetEffectiveValue();
         }
@@ -176,7 +194,7 @@ struct PreSelectedInputs
  * Fetch and validate coin control selected inputs.
  * Coins could be internal (from the wallet) or external.
 */
-util::Result<PreSelectedInputs> FetchSelectedInputs(const CWallet& wallet, const CCoinControl& coin_control,
+util::Result<PreSelectedInputs> FetchSelectedInputs(const CWallet& wallet, uint32_t atheight, const CCoinControl& coin_control,
                                                     const CoinSelectionParams& coin_selection_params) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /**
@@ -218,7 +236,7 @@ struct CreatedTransactionResult
  * selected by SelectCoins(); Also create the change output, when needed
  * @note passing change_pos as std::nullopt will result in setting a random position
  */
-util::Result<CreatedTransactionResult> CreateTransaction(CWallet& wallet, const std::vector<CRecipient>& vecSend, std::optional<unsigned int> change_pos, const CCoinControl& coin_control, bool sign = true);
+util::Result<CreatedTransactionResult> CreateTransaction(CWallet& wallet, const std::vector<CRecipient>& vecSend, std::optional<uint32_t> refheight, std::optional<unsigned int> change_pos, const CCoinControl& coin_control, bool sign = true);
 
 /**
  * Insert additional inputs into the transaction by
@@ -227,4 +245,4 @@ util::Result<CreatedTransactionResult> CreateTransaction(CWallet& wallet, const 
 util::Result<CreatedTransactionResult> FundTransaction(CWallet& wallet, const CMutableTransaction& tx, const std::vector<CRecipient>& recipients, std::optional<unsigned int> change_pos, bool lockUnspents, CCoinControl);
 } // namespace wallet
 
-#endif // BITCOIN_WALLET_SPEND_H
+#endif // FREICOIN_WALLET_SPEND_H

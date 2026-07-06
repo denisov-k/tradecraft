@@ -1,9 +1,24 @@
 // Copyright (c) 2012 Pieter Wuille
 // Copyright (c) 2012-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+<<<<<<< v29.0
 #include <bitcoin-build-config.h> // IWYU pragma: keep
+=======
+#include <config/freicoin-config.h> // IWYU pragma: keep
+>>>>>>> tc-28.1
 
 #include <addrman.h>
 #include <addrman_impl.h>
@@ -139,12 +154,12 @@ void AddrManImpl::Serialize(Stream& s_) const
      * * format version byte (@see `Format`)
      * * lowest compatible format version byte. This is used to help old software decide
      *   whether to parse the file. For example:
-     *   * Bitcoin Core version N knows how to parse up to format=3. If a new format=4 is
+     *   * Freicoin version N knows how to parse up to format=3. If a new format=4 is
      *     introduced in version N+1 that is compatible with format=3 and it is known that
      *     version N will be able to parse it, then version N+1 will write
      *     (format=4, lowest_compatible=3) in the first two bytes of the file, and so
      *     version N will still try to parse it.
-     *   * Bitcoin Core version N+2 introduces a new incompatible format=5. It will write
+     *   * Freicoin version N+2 introduces a new incompatible format=5. It will write
      *     (format=5, lowest_compatible=5) and so any versions that do not know how to parse
      *     format=5 will not try to read the file.
      * * nKey

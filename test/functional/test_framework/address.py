@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
 # Copyright (c) 2016-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Encode and decode Bitcoin addresses.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Encode and decode Freicoin addresses.
 
 - base58 P2PKH and P2SH addresses.
-- bech32 segwit v0 P2WPKH and P2WSH addresses.
-- bech32m segwit v1 P2TR addresses."""
+- bech32 segwit v0 P2WPKH and P2WSH addresses."""
 
 import enum
 import unittest
@@ -14,11 +24,10 @@ import unittest
 from .script import (
     CScript,
     OP_0,
-    OP_TRUE,
+    OP_CHECKSIG,
     hash160,
     hash256,
-    sha256,
-    taproot_construct,
+    ripemd160,
 )
 from .util import assert_equal
 from test_framework.script_util import (
@@ -32,35 +41,18 @@ from test_framework.segwit_addr import (
 )
 
 
-ADDRESS_BCRT1_UNSPENDABLE = 'bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3xueyj'
-ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR = 'addr(bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3xueyj)#juyq9d97'
-# Coins sent to this address can be spent with a witness stack of just OP_TRUE
-ADDRESS_BCRT1_P2WSH_OP_TRUE = 'bcrt1qft5p2uhsdcdc3l2ua4ap5qqfg4pjaqlp250x7us7a8qqhrxrxfsqseac85'
+ADDRESS_FCRT1_UNSPENDABLE = 'fcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0nr988'
+ADDRESS_FCRT1_UNSPENDABLE_DESCRIPTOR = 'addr(fcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0nr988)#04du8fc2'
+# Coins sent to this address can be spent with a version=0 witness stack of just OP_TRUE
+ADDRESS_FCRT1_P2WSH_OP_TRUE = 'fcrt1qpfumrmcfcusnnjk4k6gfdpdh4940m0jlxh92kxnl6p403cvrfatsl6549x'
 
 
 class AddressType(enum.Enum):
     bech32 = 'bech32'
-    p2sh_segwit = 'p2sh-segwit'
     legacy = 'legacy'  # P2PKH
 
 
 b58chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-
-
-def create_deterministic_address_bcrt1_p2tr_op_true(explicit_internal_key=None):
-    """
-    Generates a deterministic bech32m address (segwit v1 output) that
-    can be spent with a witness stack of OP_TRUE and the control block
-    with internal public key (script-path spending).
-
-    Returns a tuple with the generated address and the TaprootInfo object.
-    """
-    internal_key = explicit_internal_key or (1).to_bytes(32, 'big')
-    taproot_info = taproot_construct(internal_key, [("only-path", CScript([OP_TRUE]))])
-    address = output_key_to_p2tr(taproot_info.output_pubkey)
-    if explicit_internal_key is None:
-        assert_equal(address, 'bcrt1p9yfmy5h72durp7zrhlw9lf7jpwjgvwdg0jr0lqmmjtgg83266lqsekaqka')
-    return (address, taproot_info)
 
 
 def byte_to_base58(b, version):
@@ -125,31 +117,23 @@ def script_to_p2sh(script, main=False):
     script = check_script(script)
     return scripthash_to_p2sh(hash160(script), main)
 
-def key_to_p2sh_p2wpkh(key, main=False):
-    key = check_key(key)
-    p2shscript = CScript([OP_0, hash160(key)])
-    return script_to_p2sh(p2shscript, main)
-
 def program_to_witness(version, program, main=False):
     if (type(program) is str):
         program = bytes.fromhex(program)
-    assert 0 <= version <= 16
-    assert 2 <= len(program) <= 40
-    assert version > 0 or len(program) in [20, 32]
-    return encode_segwit_address("bc" if main else "bcrt", version, program)
+    assert 0 <= version <= 30
+    assert 2 <= len(program) <= 75
+    return encode_segwit_address("fc" if main else "fcrt", version, program)
+
+def script_to_witscript(script, main=False):
+    return b'\x00' + script
 
 def script_to_p2wsh(script, main=False):
     script = check_script(script)
-    return program_to_witness(0, sha256(script), main)
+    return program_to_witness(0, hash256(script_to_witscript(script)), main)
 
-def key_to_p2wpkh(key, main=False):
+def key_to_p2wpk(key, main=False):
     key = check_key(key)
-    return program_to_witness(0, hash160(key), main)
-
-def script_to_p2sh_p2wsh(script, main=False):
-    script = check_script(script)
-    p2shscript = CScript([OP_0, sha256(script)])
-    return script_to_p2sh(p2shscript, main)
+    return program_to_witness(0, ripemd160(hash256(b'\x00' + CScript([key, OP_CHECKSIG]))), main)
 
 def output_key_to_p2tr(key, main=False):
     assert len(key) == 32
@@ -175,7 +159,7 @@ def check_script(script):
 
 def bech32_to_bytes(address):
     hrp = address.split('1')[0]
-    if hrp not in ['bc', 'tb', 'bcrt']:
+    if hrp not in ['fc', 'tf', 'fcrt']:
         return (None, None)
     version, payload = decode_segwit_address(hrp, address)
     if version is None:
@@ -219,7 +203,7 @@ class TestFrameworkScript(unittest.TestCase):
 
     def test_bech32_decode(self):
         def check_bech32_decode(payload, version):
-            hrp = "tb"
+            hrp = "tf"
             self.assertEqual(bech32_to_bytes(encode_segwit_address(hrp, version, payload)), (version, payload))
 
         check_bech32_decode(bytes.fromhex('36e3e2a33f328de12e4b43c515a75fba2632ecc3'), 0)
