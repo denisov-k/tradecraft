@@ -378,7 +378,6 @@ std::string Capitalize(std::string str);
  */
 std::optional<uint64_t> ParseByteUnits(std::string_view str, ByteUnit default_multiplier);
 
-<<<<<<< v29.0
 namespace util {
 /** consteval version of HexDigit() without the lookup table. */
 consteval uint8_t ConstevalHexDigit(const char c)
@@ -454,6 +453,3 @@ inline auto operator""_hex_v_u8() { return std::vector<uint8_t>{UCharCast(str.by
 } // namespace util
 
 #endif // BITCOIN_UTIL_STRENCODINGS_H
-=======
-#endif // FREICOIN_UTIL_STRENCODINGS_H
->>>>>>> tc-28.1

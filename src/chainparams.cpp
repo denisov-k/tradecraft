@@ -91,8 +91,6 @@ void ReadRegTestArgs(const ArgsManager& args, CChainParams::RegTestOptions& opti
         }
     }
 
-<<<<<<< v29.0
-=======
     if (!args.IsArgSet("-vbparams")) return;
 
     ReadDeploymentArgs(options, args);
@@ -100,7 +98,6 @@ void ReadRegTestArgs(const ArgsManager& args, CChainParams::RegTestOptions& opti
 
 void ReadDeploymentArgs(CChainParams::BaseChainOptions& options, const ArgsManager& args)
 {
->>>>>>> tc-28.1
     for (const std::string& strDeployment : args.GetArgs("-vbparams")) {
         std::vector<std::string> vDeploymentParams = SplitString(strDeployment, ':');
         if (vDeploymentParams.size() < 3 || 4 < vDeploymentParams.size()) {
