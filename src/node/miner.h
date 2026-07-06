@@ -50,15 +50,13 @@ struct CBlockTemplate
     CBlock block;
     std::vector<CAmount> vTxFees;
     std::vector<int64_t> vTxSigOpsCost;
-<<<<<<< v29.0
     std::vector<unsigned char> vchCoinbaseCommitment;
     /* A vector of package fee rates, ordered by the sequence in which
      * packages are selected for inclusion in the block template.*/
     std::vector<FeeFrac> m_package_feerates;
-=======
+    // Freicoin: block-final transaction state.
     bool has_block_final_tx;
     std::map<COutPoint, Coin> block_final_tx_coin_map;
->>>>>>> tc-28.1
 };
 
 // Container for tracking updates to ancestor feerate as we include (parent)

@@ -46,8 +46,6 @@ static constexpr int NUM_GETBLOCKSTATS_PERCENTILES = 5;
  */
 double GetDifficulty(const CBlockIndex& blockindex);
 
-<<<<<<< v29.0
-=======
 /**
  * Get the merge-mining difficulty of the net wrt to the given block index.
  *
@@ -59,7 +57,6 @@ double GetAuxiliaryDifficulty(const CBlockIndex& blockindex);
 /** Callback for when block tip changed. */
 void RPCNotifyBlockChange(const CBlockIndex*);
 
->>>>>>> tc-28.1
 /** Block description to JSON */
 UniValue blockToJSON(node::BlockManager& blockman, const CBlock& block, const CBlockIndex& tip, const CBlockIndex& blockindex, TxVerbosity verbosity, const uint256 pow_limit) LOCKS_EXCLUDED(cs_main);
 

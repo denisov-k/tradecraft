@@ -78,20 +78,12 @@ namespace BCLog {
 #ifdef DEBUG_LOCKCONTENTION
         LOCK        = (CategoryMask{1} << 24),
 #endif
-<<<<<<< v29.0
         BLOCKSTORAGE = (CategoryMask{1} << 25),
         TXRECONCILIATION = (CategoryMask{1} << 26),
         SCAN        = (CategoryMask{1} << 27),
         TXPACKAGES  = (CategoryMask{1} << 28),
+        STRATUM     = (CategoryMask{1} << 31), // Freicoin: stratum mining server
         ALL         = ~NONE,
-=======
-        BLOCKSTORAGE = (1 << 25),
-        TXRECONCILIATION = (1 << 26),
-        SCAN        = (1 << 27),
-        TXPACKAGES  = (1 << 28),
-        STRATUM     = (1UL << 31),
-        ALL         = ~(uint32_t)0,
->>>>>>> tc-28.1
     };
     enum class Level {
         Trace = 0, // High-volume or detailed logging for development/debugging
@@ -300,11 +292,7 @@ inline void LogPrintFormatInternal(std::string_view logging_function, std::strin
 #define LogDebug(category, ...) LogPrintLevel(category, BCLog::Level::Debug, __VA_ARGS__)
 #define LogTrace(category, ...) LogPrintLevel(category, BCLog::Level::Trace, __VA_ARGS__)
 
-<<<<<<< v29.0
-#endif // BITCOIN_LOGGING_H
-=======
 // Deprecated conditional logging
 #define LogPrint(category, ...)  LogDebug(category, __VA_ARGS__)
 
 #endif // FREICOIN_LOGGING_H
->>>>>>> tc-28.1

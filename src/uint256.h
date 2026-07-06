@@ -221,9 +221,6 @@ public:
     static const uint256 ONE;
 };
 
-<<<<<<< v29.0
-#endif // BITCOIN_UINT256_H
-=======
 /* uint256 from std::string_view, containing byte-reversed hex encoding.
  * DEPRECATED. Unlike FromHex this accepts any invalid input, thus it is fragile and deprecated!
  */
@@ -235,4 +232,3 @@ inline uint256 uint256S(std::string_view str)
 }
 
 #endif // FREICOIN_UINT256_H
->>>>>>> tc-28.1

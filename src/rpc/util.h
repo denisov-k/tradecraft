@@ -525,7 +525,6 @@ private:
 void PushWarnings(const UniValue& warnings, UniValue& obj);
 void PushWarnings(const std::vector<bilingual_str>& warnings, UniValue& obj);
 
-<<<<<<< v29.0
 std::vector<RPCResult> ScriptPubKeyDoc();
 
 /***
@@ -539,6 +538,3 @@ std::vector<RPCResult> ScriptPubKeyDoc();
 uint256 GetTarget(const CBlockIndex& blockindex, const uint256 pow_limit);
 
 #endif // BITCOIN_RPC_UTIL_H
-=======
-#endif // FREICOIN_RPC_UTIL_H
->>>>>>> tc-28.1

@@ -53,11 +53,7 @@ PeerManager& EnsurePeerman(const node::NodeContext& node);
 AddrMan& EnsureAddrman(const node::NodeContext& node);
 AddrMan& EnsureAnyAddrman(const std::any& context);
 
-<<<<<<< v29.0
 /** Return an empty block index on top of the tip, with height, time and nBits set */
 void NextEmptyBlockIndex(CBlockIndex& tip, const Consensus::Params& consensusParams, CBlockIndex& next_index);
 
 #endif // BITCOIN_RPC_SERVER_UTIL_H
-=======
-#endif // FREICOIN_RPC_SERVER_UTIL_H
->>>>>>> tc-28.1

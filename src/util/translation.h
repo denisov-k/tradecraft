@@ -118,9 +118,6 @@ bilingual_str format(util::BilingualFmt<sizeof...(Args)> fmt, const Args&... arg
 }
 } // namespace tinyformat
 
-<<<<<<< v29.0
-#endif // BITCOIN_UTIL_TRANSLATION_H
-=======
 /** Translate a message to the native language of the user. */
 const extern std::function<std::string(const char*)> G_TRANSLATION_FUN;
 
@@ -140,4 +137,3 @@ inline bilingual_str _(ConstevalStringLiteral str)
 }
 
 #endif // FREICOIN_UTIL_TRANSLATION_H
->>>>>>> tc-28.1

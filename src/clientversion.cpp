@@ -47,11 +47,7 @@ const std::string UA_NAME("Satoshi");
     #define BUILD_DESC BUILD_GIT_TAG
     #define BUILD_SUFFIX ""
 #else
-<<<<<<< v29.0
-    #define BUILD_DESC "v" CLIENT_VERSION_STRING
-=======
     #define BUILD_DESC "v" STRINGIZE(CLIENT_RELEASE_STRING)
->>>>>>> tc-28.1
     #if CLIENT_VERSION_IS_RELEASE
         #define BUILD_SUFFIX ""
     #elif defined(BUILD_GIT_COMMIT)
@@ -116,12 +112,7 @@ std::string LicenseInfo()
            strprintf(_("The source code is available from %s."), URL_SOURCE_CODE).translated +
            "\n" +
            "\n" +
-<<<<<<< v29.0
-           _("This is experimental software.") + "\n" +
-           strprintf(_("Distributed under the MIT software license, see the accompanying file %s or %s"), "COPYING", "<https://opensource.org/licenses/MIT>").translated +
-=======
            _("This is experimental software.").translated + "\n" +
            strprintf(_("Distributed under the GNU Affero General Purpose License v3.0, see the accompanying file %s or %s").translated, "COPYING", "<https://www.gnu.org/licenses/agpl-3.0.en.html>") +
->>>>>>> tc-28.1
            "\n";
 }

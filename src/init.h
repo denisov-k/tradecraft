@@ -66,11 +66,7 @@ bool AppInitParameterInteraction(const ArgsManager& args);
  */
 bool AppInitSanityChecks(const kernel::Context& kernel);
 /**
-<<<<<<< v29.0
- * Lock bitcoin core critical directories.
-=======
  * Lock freicoin data directory.
->>>>>>> tc-28.1
  * @note This should only be done after daemonization. Do not call Shutdown() if this function fails.
  * @pre Parameters should be parsed and config file should be read, AppInitSanityChecks should have been called.
  */

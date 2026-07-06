@@ -103,8 +103,6 @@ struct SignatureData {
 /** Produce a script signature using a generic signature creator. */
 bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreator& creator, const CScript& scriptPubKey, SignatureData& sigdata);
 
-<<<<<<< v29.0
-=======
 /**
  * Produce a satisfying script (scriptSig or witness).
  *
@@ -125,7 +123,6 @@ bool SignSignature(const SigningProvider &provider, const CScript& fromPubKey, C
 bool SignSignature(const SigningProvider &provider, const CTransaction& txFrom, CMutableTransaction& txTo,
                    unsigned int nIn, int nHashType, SignatureData& sig_data);
 
->>>>>>> tc-28.1
 /** Extract signature data from a transaction input, and insert it. */
 SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nIn, const CTxOut& txout, int64_t refheight);
 void UpdateInput(CTxIn& input, const SignatureData& data);
