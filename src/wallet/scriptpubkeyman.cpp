@@ -1801,14 +1801,6 @@ std::unordered_set<CScript, SaltedSipHasher> LegacyDataSPKM::GetScriptPubKeys() 
     // script to return.
     // This both filters out things that are not watched by the wallet, and things that are invalid.
     std::unordered_set<CScript, SaltedSipHasher> spks;
-<<<<<<< v29.0
-    for (const CScript& script : GetCandidateScriptPubKeys()) {
-        if (IsMine(script) != ISMINE_NO) {
-            spks.insert(script);
-        }
-    }
-
-=======
 
     // All keys have at least P2PK and P2PKH
     for (const auto& key_pair : mapKeys) {
@@ -1886,7 +1878,6 @@ std::unordered_set<CScript, SaltedSipHasher> LegacyDataSPKM::GetScriptPubKeys() 
         if (IsMine(script) != ISMINE_NO) spks.insert(script);
     }
 
->>>>>>> tc-28.1
     return spks;
 }
 
@@ -2152,26 +2143,6 @@ std::optional<MigrationData> LegacyDataSPKM::MigrateToDescriptor()
             creation_time = it->second.nCreateTime;
         }
 
-<<<<<<< v29.0
-        // InferDescriptor as that will get us all the solving info if it is there
-        std::unique_ptr<Descriptor> desc = InferDescriptor(script, *GetSolvingProvider(script));
-        if (!desc->IsSolvable()) {
-            // The wallet was able to provide some information, but not enough to make a descriptor that actually
-            // contains anything useful. This is probably because the script itself is actually unsignable (e.g. P2WSH-P2WSH).
-            continue;
-        }
-
-        // Past bugs in InferDescriptor have caused it to create descriptors which cannot be re-parsed
-        // Re-parse the descriptors to detect that, and skip any that do not parse.
-        {
-            std::string desc_str = desc->ToString();
-            FlatSigningProvider parsed_keys;
-            std::string parse_error;
-            std::vector<std::unique_ptr<Descriptor>> parsed_descs = Parse(desc_str, parsed_keys, parse_error, false);
-            if (parsed_descs.empty()) {
-                continue;
-            }
-=======
         std::vector<std::vector<unsigned char>> sols;
         TxoutType type = Solver(script, sols);
         if (type == TxoutType::MULTISIG) {
@@ -2202,7 +2173,6 @@ std::optional<MigrationData> LegacyDataSPKM::MigrateToDescriptor()
                 std::unique_ptr<Descriptor> wsh_desc = InferDescriptor(witprog, *GetSolvingProvider(witprog));
                 out.solvable_descs.emplace_back(wsh_desc->ToString(), creation_time);
             }
->>>>>>> tc-28.1
         }
 
         out.solvable_descs.emplace_back(desc->ToString(), creation_time);

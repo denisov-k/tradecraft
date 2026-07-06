@@ -1410,10 +1410,6 @@ util::Result<CreatedTransactionResult> CreateTransaction(
 
     LOCK(wallet.cs_wallet);
 
-<<<<<<< v29.0
-    auto res = CreateTransactionInternal(wallet, vecSend, change_pos, coin_control, sign);
-    TRACEPOINT(coin_selection, normal_create_tx_internal,
-=======
     if (!refheight.has_value()) {
         // A missing value means "set based on current chain tip."
         auto chain_height = wallet.chain().getHeight();
@@ -1424,8 +1420,7 @@ util::Result<CreatedTransactionResult> CreateTransaction(
     }
 
     auto res = CreateTransactionInternal(wallet, vecSend, refheight.value(), change_pos, coin_control, sign);
-    TRACE4(coin_selection, normal_create_tx_internal,
->>>>>>> tc-28.1
+    TRACEPOINT(coin_selection, normal_create_tx_internal,
            wallet.GetName().c_str(),
            bool(res),
            res ? res->fee : 0,
