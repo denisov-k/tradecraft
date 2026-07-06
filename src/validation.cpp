@@ -2156,7 +2156,13 @@ void UpdateCoins(const CTransaction& tx, CCoinsViewCache& inputs, CTxUndo &txund
 std::optional<std::pair<ScriptError, std::string>> CScriptCheck::operator()() {
     const CScript &scriptSig = ptxTo->vin[nIn].scriptSig;
     const CScriptWitness *witness = &ptxTo->vin[nIn].scriptWitness;
-    return VerifyScript(scriptSig, m_tx_out.scriptPubKey, witness, nFlags, CachingTransactionSignatureChecker(ptxTo, nIn, m_tx_out.GetReferenceValue(), refheight, cacheStore, *m_signature_cache, *txdata), &error);
+    ScriptError error{SCRIPT_ERR_UNKNOWN_ERROR};
+    if (VerifyScript(scriptSig, m_tx_out.scriptPubKey, witness, nFlags, CachingTransactionSignatureChecker(ptxTo, nIn, m_tx_out.GetReferenceValue(), refheight, cacheStore, *m_signature_cache, *txdata), &error)) {
+        return std::nullopt;
+    } else {
+        auto debug_str = strprintf("input %i of %s (wtxid %s), spending %s:%i", nIn, ptxTo->GetHash().ToString(), ptxTo->GetWitnessHash().ToString(), ptxTo->vin[nIn].prevout.hash.ToString(), ptxTo->vin[nIn].prevout.n);
+        return std::make_pair(error, std::move(debug_str));
+    }
 }
 
 ValidationCache::ValidationCache(const size_t script_execution_cache_bytes, const size_t signature_cache_bytes)
@@ -2352,7 +2358,7 @@ bool IsTriviallySpendable(const Coin& from, const COutPoint& prevout, unsigned i
     PrecomputedTransactionData txdata(to);
     // Must be able to spend the script with an empty scriptSig.
     CScriptCheck check(from.out, from.refheight, to, signature_cache, 0, flags, false, &txdata);
-    return check();
+    return !check().has_value();
 }
 
 bool IsTriviallySpendable(const CTransaction& txFrom, uint32_t n, unsigned int flags)
@@ -2654,7 +2660,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         // Check that the first output of the transaction is trivially
         // spendable.
         if (!IsTriviallySpendable(*block.vtx[0], 0, flags|SCRIPT_VERIFY_WITNESS|SCRIPT_VERIFY_CLEANSTACK)) {
-            return state.Invalid(BlockValidationResult::BLOCK_RECENT_CONSENSUS_CHANGE, "bad-cb-missing-initial-block-final-output", "block-final activation coinbase missing trivial output");
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-missing-initial-block-final-output", "block-final activation coinbase missing trivial output");
         }
         // Rules for the initial block final are different from those that are
         // enforced later.
@@ -2714,7 +2720,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         // coinbase can't have inputs, but for clarity we explicitly check and
         // fail with the relevant error message.
         if (block.vtx.size() < 2) {
-            return state.Invalid(BlockValidationResult::BLOCK_RECENT_CONSENSUS_CHANGE, "missing-block-final-tx", "missing block-final transaction");
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "missing-block-final-tx", "missing block-final transaction");
         }
         const CTransaction& final_tx = *block.vtx.back();
         // Make sure each txin comes from either the prior block-final
@@ -2742,7 +2748,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
             }
             // Otherwise we must be spending an already-matured coin which
             // doesn't fit into the above categories.
-            return state.Invalid(BlockValidationResult::BLOCK_RECENT_CONSENSUS_CHANGE, "block-final-spend-invalid", "block-final transaction makes invalid spend");
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "block-final-spend-invalid", "block-final transaction makes invalid spend");
         }
         // The very first output of the prior block-final transaction is certain
         // to be to be defined, even in the case of the initial output defined
@@ -2758,19 +2764,19 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         // single output of the prior block-final transaction, so that we don't
         // end up with coinbase-like reorg risk taint.
         if (!coin.IsCoinBase() && (spends_from_prior_tx < entry.size)) {
-            return state.Invalid(BlockValidationResult::BLOCK_RECENT_CONSENSUS_CHANGE, "block-final-missing-prior-input", "missing txin of prior block-final transaction");
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "block-final-missing-prior-input", "missing txin of prior block-final transaction");
         }
         // As a DoS prevention measure, the block-final transaction is only
         // allowed to have as many outputs as it has has inputs.
         if (final_tx.vout.size() > final_tx.vin.size()) {
-            return state.Invalid(BlockValidationResult::BLOCK_RECENT_CONSENSUS_CHANGE, "block-final-excess-output", "too many outputs for block-final transaction");
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "block-final-excess-output", "too many outputs for block-final transaction");
         }
         // Every output of the block-final transaction must be trivially
         // spendable (with current validation flags, without providing a
         // scriptSig or witness).
         for (size_t n = 0; n < final_tx.vout.size(); ++n) {
             if (!IsTriviallySpendable(final_tx, static_cast<uint32_t>(n), flags|SCRIPT_VERIFY_WITNESS|SCRIPT_VERIFY_CLEANSTACK)) {
-                return state.Invalid(BlockValidationResult::BLOCK_RECENT_CONSENSUS_CHANGE, "block-final-nontrivial-ouput", "block-final txout not trivially spendable");
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "block-final-nontrivial-ouput", "block-final txout not trivially spendable");
             }
         }
     }
@@ -6289,8 +6295,7 @@ util::Result<void> ChainstateManager::PopulateAndValidateSnapshot(
                               coins_count - coins_left))};
                 }
                 if (!MoneyRange(coin.out.GetReferenceValue())) {
-                    return util::Error{strprintf(Untranslated("Bad snapshot data after deserializing %d coins - bad tx out value"),
-                              coins_count - coins_left)};
+                    return util::Error{Untranslated(strprintf("Bad snapshot data after deserializing %d coins - bad tx out value", coins_count - coins_left))};
                 }
                 coins_cache.EmplaceCoinInternalDANGER(std::move(outpoint), std::move(coin));
 
@@ -6339,19 +6344,19 @@ util::Result<void> ChainstateManager::PopulateAndValidateSnapshot(
     // Check that the block-final transaction entry is valid and reflects the
     // coin database.
     if (final_tx.hash.IsNull() && final_tx.size != 0) {
-        return util::Error{strprintf(Untranslated("Bad snapshot: final_tx hash is null, but non-zero size (%d)"), final_tx.size)};
+        return util::Error{Untranslated(strprintf("Bad snapshot: final_tx hash is null, but non-zero size (%d)", final_tx.size))};
     }
 
     for (uint32_t i = 0; i < final_tx.size; ++i) {
         COutPoint outpoint(final_tx.hash, i);
-        Coin coin;
-        if (!coins_cache.GetCoin(outpoint, coin)) {
-            return util::Error{strprintf(Untranslated("Bad snapshot - final_tx outpoint %s not found"),
-                outpoint.ToString())};
+        std::optional<Coin> coin{coins_cache.GetCoin(outpoint)};
+        if (!coin) {
+            return util::Error{Untranslated(strprintf("Bad snapshot - final_tx outpoint %s not found",
+                outpoint.ToString()))};
         }
-        if (!IsTriviallySpendable(coin, outpoint, MANDATORY_SCRIPT_VERIFY_FLAGS|SCRIPT_VERIFY_WITNESS|SCRIPT_VERIFY_CLEANSTACK)) {
-            return util::Error{strprintf(Untranslated("Bad snapshot - final_tx outpoint %s is not trivially spendable"),
-                outpoint.ToString())};
+        if (!IsTriviallySpendable(*coin, outpoint, MANDATORY_SCRIPT_VERIFY_FLAGS|SCRIPT_VERIFY_WITNESS|SCRIPT_VERIFY_CLEANSTACK)) {
+            return util::Error{Untranslated(strprintf("Bad snapshot - final_tx outpoint %s is not trivially spendable",
+                outpoint.ToString()))};
         }
     }
 

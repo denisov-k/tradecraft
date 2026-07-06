@@ -190,34 +190,10 @@ static UniValue generateBlocks(ChainstateManager& chainman, Mining& miner, const
 static bool getScriptFromDescriptor(const std::string& descriptor, CScript& script, std::string& error)
 {
     FlatSigningProvider key_provider;
-    const auto desc = Parse(descriptor, key_provider, error, /* require_checksum = */ false);
-    if (desc) {
-        if (desc->IsRange()) {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Ranged descriptor not accepted. Maybe pass through deriveaddresses first?");
-        }
-
-        FlatSigningProvider provider;
-        std::vector<CScript> scripts;
-        if (!desc->Expand(0, key_provider, scripts, provider)) {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot derive script without private keys");
-        }
-
-        // Combo descriptors can have 2 or 3 scripts, so we can't just check scripts.size() == 1
-        CHECK_NONFATAL(scripts.size() > 0 && scripts.size() <= 3);
-
-        if (scripts.size() == 1) {
-            script = scripts.at(0);
-        } else if (scripts.size() == 3) {
-            // For uncompressed keys, take the 3rd script, since it is p2wpk
-            script = scripts.at(2);
-        } else {
-            // Else take the 2nd script, since it is p2pkh
-            script = scripts.at(1);
-        }
-
-        return true;
-    } else {
-        return false;
+    const auto descs = Parse(descriptor, key_provider, error, /* require_checksum = */ false);
+    if (descs.empty()) return false;
+    if (descs.size() > 1) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Multipath descriptor not accepted");
     }
     const auto& desc = descs.at(0);
     if (desc->IsRange()) {
@@ -230,13 +206,13 @@ static bool getScriptFromDescriptor(const std::string& descriptor, CScript& scri
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot derive script without private keys");
     }
 
-    // Combo descriptors can have 2 or 4 scripts, so we can't just check scripts.size() == 1
-    CHECK_NONFATAL(scripts.size() > 0 && scripts.size() <= 4);
+    // Combo descriptors can have 2 or 3 scripts, so we can't just check scripts.size() == 1
+    CHECK_NONFATAL(scripts.size() > 0 && scripts.size() <= 3);
 
     if (scripts.size() == 1) {
         script = scripts.at(0);
-    } else if (scripts.size() == 4) {
-        // For uncompressed keys, take the 3rd script, since it is p2wpkh
+    } else if (scripts.size() == 3) {
+        // For compressed keys, take the 3rd script, since it is p2wpk
         script = scripts.at(2);
     } else {
         // Else take the 2nd script, since it is p2pkh
@@ -308,7 +284,7 @@ static RPCHelpMan generatetoaddress()
          RPCExamples{
             "\nGenerate 11 blocks to myaddress\n"
             + HelpExampleCli("generatetoaddress", "11 \"myaddress\"")
-            + "If you are using the " PACKAGE_NAME " wallet, you can get a new address to send the newly generated freicoin to with:\n"
+            + "If you are using the " CLIENT_NAME " wallet, you can get a new address to send the newly generated freicoin to with:\n"
             + HelpExampleCli("getnewaddress", "")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
@@ -407,15 +383,15 @@ static RPCHelpMan generateblock()
     {
         LOCK(chainman.GetMutex());
         {
-            std::unique_ptr<CBlockTemplate> blocktemplate{miner.createNewBlock(coinbase_script, {.use_mempool = false})};
-            if (!blocktemplate) {
-                throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");
-            }
-            block = blocktemplate->block;
-            has_block_final_tx = blocktemplate->has_block_final_tx;
+            std::unique_ptr<BlockTemplate> block_template{miner.createNewBlock({.use_mempool = false, .coinbase_output_script = coinbase_output_script})};
+            CHECK_NONFATAL(block_template);
+            block = block_template->getBlock();
         }
 
-        CHECK_NONFATAL(block.vtx.size() == (1U + !!has_block_final_tx));
+        // The template block contains just the coinbase and, if the
+        // block-final rules are active, the block-final transaction.
+        CHECK_NONFATAL(block.vtx.size() >= 1 && block.vtx.size() <= 2);
+        has_block_final_tx = block.vtx.size() > 1;
 
         // Add transactions
         block.vtx.insert(block.vtx.end() - !!has_block_final_tx, txs.begin(), txs.end());
@@ -900,6 +876,9 @@ static RPCHelpMan getblocktemplate()
     }
     CHECK_NONFATAL(pindexPrev);
     CBlock block{block_template->getBlock()};
+    const bool has_block_final_tx{block_template->hasBlockFinalTx()};
+    const std::vector<CAmount> tx_fees{block_template->getTxFees()};
+    const std::vector<int64_t> tx_sigops{block_template->getTxSigops()};
 
     // Update nTime
     UpdateTime(&block, consensusParams, pindexPrev);
@@ -912,8 +891,8 @@ static RPCHelpMan getblocktemplate()
 
     UniValue transactions(UniValue::VARR);
     std::map<uint256, int64_t> setTxIndex;
-    for (size_t i = 0; i < pblock->vtx.size() - !!pblocktemplate->has_block_final_tx; ++i) {
-        const CTransaction& tx = *pblock->vtx[i];
+    for (size_t i = 0; i < block.vtx.size() - !!has_block_final_tx; ++i) {
+        const CTransaction& tx = *block.vtx[i];
         uint256 txHash = tx.GetHash();
         setTxIndex[txHash] = i;
 
@@ -935,8 +914,8 @@ static RPCHelpMan getblocktemplate()
         entry.pushKV("depends", std::move(deps));
 
         int index_in_template = i;
-        entry.pushKV("fee", pblocktemplate->vTxFees[index_in_template]);
-        int64_t nTxSigOps = pblocktemplate->vTxSigOpsCost[index_in_template];
+        entry.pushKV("fee", tx_fees.at(index_in_template));
+        int64_t nTxSigOps = tx_sigops.at(index_in_template);
         if (fPreSegWit) {
             CHECK_NONFATAL(nTxSigOps % WITNESS_SCALE_FACTOR == 0);
             nTxSigOps /= WITNESS_SCALE_FACTOR;
@@ -1016,13 +995,16 @@ static RPCHelpMan getblocktemplate()
     result.pushKV("previousblockhash", block.hashPrevBlock.GetHex());
     result.pushKV("transactions", std::move(transactions));
     result.pushKV("coinbaseaux", std::move(aux));
-    CAmount finaltx_fee = pblocktemplate->has_block_final_tx
-                           ? pblocktemplate->vTxFees.back()
+    CAmount finaltx_fee = has_block_final_tx
+                           ? tx_fees.back()
                            : 0;
-    result.pushKV("coinbasevalue", (int64_t)pblock->vtx[0]->GetValueOut() - finaltx_fee);
+    result.pushKV("coinbasevalue", (int64_t)block.vtx[0]->GetValueOut() - finaltx_fee);
     result.pushKV("longpollid", tip.GetHex() + ToString(nTransactionsUpdatedLast));
     result.pushKV("target", hashTarget.GetHex());
-    result.pushKV("mintime", GetMinimumTime(pindexPrev, consensusParams.DifficultyAdjustmentInterval()));
+    // Freicoin: BIP94 timewarp mitigation is expressed relative to the
+    // original (pre-fork) difficulty adjustment interval; see the note on
+    // enforce_BIP94 in consensus/params.h.
+    result.pushKV("mintime", GetMinimumTime(pindexPrev, consensusParams.original_adjust_interval));
     result.pushKV("mutable", std::move(aMutable));
     result.pushKV("noncerange", "00000000ffffffff");
     int64_t nSigOpLimit = MAX_BLOCK_SIGOPS_COST;
@@ -1038,18 +1020,19 @@ static RPCHelpMan getblocktemplate()
     if (!fPreSegWit) {
         result.pushKV("weightlimit", (int64_t)MAX_BLOCK_WEIGHT);
     }
-    result.pushKV("curtime", pblock->GetBlockTime());
-    result.pushKV("bits", strprintf("%08x", pblock->nBits));
+    result.pushKV("curtime", block.GetBlockTime());
+    result.pushKV("bits", strprintf("%08x", block.nBits));
     result.pushKV("locktime", (int64_t)(pindexPrev->GetMedianTimePast()));
     result.pushKV("height", (int64_t)(pindexPrev->nHeight+1));
-    if (pblocktemplate->has_block_final_tx) {
+    if (has_block_final_tx) {
+        const std::map<COutPoint, Coin> block_final_tx_coin_map{block_template->getBlockFinalTxCoinMap()};
         UniValue finaltx_prevout(UniValue::VARR);
-        for (const CTxIn& txin : pblock->vtx.back()->vin) {
+        for (const CTxIn& txin : block.vtx.back()->vin) {
             UniValue in(UniValue::VOBJ);
             in.pushKV("txid", txin.prevout.hash.GetHex());
             in.pushKV("vout", (int64_t)txin.prevout.n);
-            const auto& pcoin = pblocktemplate->block_final_tx_coin_map.find(txin.prevout);
-            if (pcoin == pblocktemplate->block_final_tx_coin_map.end() || pcoin->second.IsSpent()) {
+            const auto& pcoin = block_final_tx_coin_map.find(txin.prevout);
+            if (pcoin == block_final_tx_coin_map.end() || pcoin->second.IsSpent()) {
                 // This should never happen
                 in.pushKV("amount", strprintf("Error: UTXO record for block-final input '%s:%d' not found", txin.prevout.hash.GetHex(), txin.prevout.n));
             } else {

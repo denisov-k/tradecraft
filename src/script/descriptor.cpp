@@ -951,6 +951,11 @@ public:
     }
 
     std::optional<int64_t> MaxSatisfactionElems() const override { return 3; }
+
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        return std::make_unique<WPKDescriptor>(m_pubkey_args.at(0)->Clone());
+    }
 };
 
 /** A parsed combo(P) descriptor. */
@@ -1418,7 +1423,8 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkeyInner(uint32_t key_exp_i
             if (permit_uncompressed || key.IsCompressed()) {
                 CPubKey pubkey = key.GetPubKey();
                 out.keys.emplace(pubkey.GetID(), key);
-                return std::make_unique<ConstPubkeyProvider>(key_exp_index, pubkey, false);
+                ret.emplace_back(std::make_unique<ConstPubkeyProvider>(key_exp_index, pubkey, false));
+                return ret;
             } else {
                 error = "Uncompressed keys are not allowed";
                 return {};
@@ -1571,7 +1577,8 @@ struct KeyParser {
         Key key = m_keys.size();
         CPubKey pubkey(begin, end);
         if (auto pubkey_provider = InferPubkey(pubkey, ParseContext(), *m_in)) {
-            m_keys.push_back(std::move(pubkey_provider));
+            m_keys.emplace_back();
+            m_keys.back().push_back(std::move(pubkey_provider));
             return key;
         }
         return {};
@@ -1606,7 +1613,7 @@ struct KeyParser {
 std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index, Span<const char>& sp, ParseScriptContext ctx, FlatSigningProvider& out, std::string& error)
 {
     using namespace script;
-    Assume(ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH || ctx == ParseScriptContext::P2WSH || ctx == ParseScriptContext::P2TR);
+    Assume(ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH || ctx == ParseScriptContext::P2WSH);
     std::vector<std::unique_ptr<DescriptorImpl>> ret;
     auto expr = Expr(sp);
     if (Func("pk", expr)) {
@@ -1616,7 +1623,10 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
             return {};
         }
         ++key_exp_index;
-        return std::make_unique<PKDescriptor>(std::move(pubkey), false);
+        for (auto& pubkey : pubkeys) {
+            ret.emplace_back(std::make_unique<PKDescriptor>(std::move(pubkey), false));
+        }
+        return ret;
     }
     if ((ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH || ctx == ParseScriptContext::P2WSH) && Func("pkh", expr)) {
         auto pubkeys = ParsePubkey(key_exp_index, expr, ctx, out, error);
@@ -1625,7 +1635,10 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
             return {};
         }
         ++key_exp_index;
-        return std::make_unique<PKHDescriptor>(std::move(pubkey));
+        for (auto& pubkey : pubkeys) {
+            ret.emplace_back(std::make_unique<PKHDescriptor>(std::move(pubkey)));
+        }
+        return ret;
     }
     if (ctx == ParseScriptContext::TOP && Func("combo", expr)) {
         auto pubkeys = ParsePubkey(key_exp_index, expr, ctx, out, error);
@@ -1735,16 +1748,19 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         return {};
     }
     if (ctx == ParseScriptContext::TOP && Func("wpk", expr)) {
-        auto pubkey = ParsePubkey(key_exp_index, expr, ParseScriptContext::P2WPK, out, error);
-        if (!pubkey) {
+        auto pubkeys = ParsePubkey(key_exp_index, expr, ParseScriptContext::P2WPK, out, error);
+        if (pubkeys.empty()) {
             error = strprintf("wpk(): %s", error);
-            return nullptr;
+            return {};
         }
         key_exp_index++;
-        return std::make_unique<WPKDescriptor>(std::move(pubkey));
+        for (auto& pubkey : pubkeys) {
+            ret.emplace_back(std::make_unique<WPKDescriptor>(std::move(pubkey)));
+        }
+        return ret;
     } else if (Func("wpk", expr)) {
         error = "Can only have wpk() at top level";
-        return nullptr;
+        return {};
     }
     if (ctx == ParseScriptContext::TOP && Func("sh", expr)) {
         auto descs = ParseScript(key_exp_index, expr, ParseScriptContext::P2SH, out, error);
@@ -1760,12 +1776,15 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         return {};
     }
     if (ctx == ParseScriptContext::TOP && Func("wsh", expr)) {
-        auto desc = ParseScript(key_exp_index, expr, ParseScriptContext::P2WSH, out, error);
-        if (!desc || expr.size()) return nullptr;
-        return std::make_unique<WSHDescriptor>(std::move(desc));
+        auto descs = ParseScript(key_exp_index, expr, ParseScriptContext::P2WSH, out, error);
+        if (descs.empty() || expr.size()) return {};
+        for (auto& desc : descs) {
+            ret.emplace_back(std::make_unique<WSHDescriptor>(std::move(desc)));
+        }
+        return ret;
     } else if (Func("wsh", expr)) {
         error = "Can only have wsh() at top level";
-        return nullptr;
+        return {};
     }
     if (ctx == ParseScriptContext::TOP && Func("addr", expr)) {
         CTxDestination dest = DecodeDestination(std::string(expr.begin(), expr.end()));
@@ -1804,7 +1823,7 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         if (node) {
             if (ctx != ParseScriptContext::P2WSH) {
                 error = "Miniscript expressions can only be used in wsh.";
-                return nullptr;
+                return {};
             }
             if (!node->IsSane() || node->IsNotSatisfiable()) {
                 // Try to find the first insane sub for better error reporting.

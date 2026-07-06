@@ -578,7 +578,7 @@ RPCHelpMan importwallet()
                 keys.emplace_back(key, nTime, fLabel, strLabel);
             } else if(IsHex(vstr[0])) {
                 std::vector<unsigned char> vData(ParseHex(vstr[0]));
-                int64_t birth_time = ParseISO8601DateTime(vstr[1]);
+                int64_t birth_time{ParseISO8601DateTime(vstr[1]).value_or(0)};
                 if (birth_time > 0) nTimeBegin = std::min(nTimeBegin, birth_time);
                 if (vstr[2] == "script=1") {
                     CScript script = CScript(vData.begin(), vData.end());
@@ -1054,7 +1054,7 @@ static UniValue ProcessImportLegacy(ImportData& import_data, std::map<CKeyID, CP
     for (size_t i = 0; i < pubKeys.size(); ++i) {
         CPubKey pubkey = HexToPubKey(pubKeys[i].get_str());
         pubkey_map.emplace(pubkey.GetID(), pubkey);
-        ordered_pubkeys.push_back(pubkey.GetID());
+        ordered_pubkeys.emplace_back(pubkey.GetID(), internal);
         if (!import_data.witnessscript) {
             CScript p2pk = GetScriptForRawPubKey(pubkey);
             WitnessV0ScriptEntry entry(0 /* version */, p2pk);
@@ -1203,22 +1203,16 @@ static UniValue ProcessImportDescriptor(ImportData& import_data, std::map<CKeyID
                 import_data.import_scripts.emplace(x.second);
             }
 
+            for (const auto& x : out_keys.witscripts) {
+                import_data.import_witscripts.emplace(x.second);
+            }
+
             parsed_desc->ExpandPrivate(i, keys, out_keys);
 
             std::copy(out_keys.pubkeys.begin(), out_keys.pubkeys.end(), std::inserter(pubkey_map, pubkey_map.end()));
             std::copy(out_keys.keys.begin(), out_keys.keys.end(), std::inserter(privkey_map, privkey_map.end()));
             import_data.key_origins.insert(out_keys.origins.begin(), out_keys.origins.end());
         }
-
-        for (const auto& x : out_keys.witscripts) {
-            import_data.import_witscripts.emplace(x.second);
-        }
-
-        parsed_desc->ExpandPrivate(i, keys, out_keys);
-
-        std::copy(out_keys.pubkeys.begin(), out_keys.pubkeys.end(), std::inserter(pubkey_map, pubkey_map.end()));
-        std::copy(out_keys.keys.begin(), out_keys.keys.end(), std::inserter(privkey_map, privkey_map.end()));
-        import_data.key_origins.insert(out_keys.origins.begin(), out_keys.origins.end());
     }
 
     for (size_t i = 0; i < priv_keys.size(); ++i) {

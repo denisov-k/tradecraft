@@ -122,6 +122,7 @@ int fork_daemon(bool nochdir, bool noclose, TokenPipeEnd& endpoint)
 
 static bool ParseArgs(NodeContext& node, int argc, char* argv[])
 {
+    ArgsManager& args = *Assert(node.args);
     // If Qt is used, parameters/freicoin.conf are parsed in qt/freicoin.cpp's main()
     SetupServerArgs(args);
     std::string error;
@@ -151,7 +152,7 @@ static bool ProcessInitCommands(ArgsManager& args)
         if (args.GetBoolArg("-version", false)) {
             strUsage += FormatParagraph(LicenseInfo());
         } else {
-            strUsage += "\nUsage:  freicoind [options]                     Start " PACKAGE_NAME "\n"
+            strUsage += "\nUsage:  freicoind [options]                     Start " CLIENT_NAME "\n"
                 "\n";
             strUsage += args.GetHelpMessage();
         }

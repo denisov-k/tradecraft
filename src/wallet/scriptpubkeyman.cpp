@@ -1754,14 +1754,18 @@ std::unordered_set<CScript, SaltedSipHasher> LegacyDataSPKM::GetCandidateScriptP
     LOCK(cs_KeyStore);
     std::unordered_set<CScript, SaltedSipHasher> candidate_spks;
 
-    // For every private key in the wallet, there should be a P2PK, P2PKH, P2WPKH, and P2SH-P2WPKH
+    // For every private key in the wallet, there should be a P2PK, P2PKH, P2WPK, and P2SH-P2WPK
     const auto& add_pubkey = [&candidate_spks](const CPubKey& pub) -> void {
         candidate_spks.insert(GetScriptForRawPubKey(pub));
         candidate_spks.insert(GetScriptForDestination(PKHash(pub)));
 
-        CScript wpkh = GetScriptForDestination(WitnessV0KeyHash(pub));
-        candidate_spks.insert(wpkh);
-        candidate_spks.insert(GetScriptForDestination(ScriptHash(wpkh)));
+        WitnessV0ScriptEntry entry(0 /* version */, GetScriptForRawPubKey(pub));
+        CScript wpk_short = GetScriptForDestination(entry.GetShortHash());
+        candidate_spks.insert(wpk_short);
+        candidate_spks.insert(GetScriptForDestination(ScriptHash(wpk_short)));
+        CScript wpk_long = GetScriptForDestination(entry.GetLongHash());
+        candidate_spks.insert(wpk_long);
+        candidate_spks.insert(GetScriptForDestination(ScriptHash(wpk_long)));
     };
     for (const auto& [_, key] : mapKeys) {
         add_pubkey(key.GetPubKey());
@@ -1778,9 +1782,13 @@ std::unordered_set<CScript, SaltedSipHasher> LegacyDataSPKM::GetCandidateScriptP
         candidate_spks.insert(script);
         candidate_spks.insert(GetScriptForDestination(ScriptHash(script)));
 
-        CScript wsh = GetScriptForDestination(WitnessV0ScriptHash(script));
-        candidate_spks.insert(wsh);
-        candidate_spks.insert(GetScriptForDestination(ScriptHash(wsh)));
+        WitnessV0ScriptEntry entry(0 /* version */, script);
+        CScript wsh_short = GetScriptForDestination(entry.GetShortHash());
+        candidate_spks.insert(wsh_short);
+        candidate_spks.insert(GetScriptForDestination(ScriptHash(wsh_short)));
+        CScript wsh_long = GetScriptForDestination(entry.GetLongHash());
+        candidate_spks.insert(wsh_long);
+        candidate_spks.insert(GetScriptForDestination(ScriptHash(wsh_long)));
     };
     for (const auto& [_, script] : mapScripts) {
         add_script(script);
@@ -2143,35 +2151,23 @@ std::optional<MigrationData> LegacyDataSPKM::MigrateToDescriptor()
             creation_time = it->second.nCreateTime;
         }
 
-        std::vector<std::vector<unsigned char>> sols;
-        TxoutType type = Solver(script, sols);
-        if (type == TxoutType::MULTISIG) {
-            CScript sh_spk = GetScriptForDestination(ScriptHash(script));
-            CTxDestination witdest = WitnessV0LongHash(/*version=*/0, script);
-            CScript witprog = GetScriptForDestination(witdest);
+        // InferDescriptor as that will get us all the solving info if it is there
+        std::unique_ptr<Descriptor> desc = InferDescriptor(script, *GetSolvingProvider(script));
+        if (!desc->IsSolvable()) {
+            // The wallet was able to provide some information, but not enough to make a descriptor that actually
+            // contains anything useful. This is probably because the script itself is actually unsignable (e.g. P2WSH-P2WSH).
+            continue;
+        }
 
-            // We only want the multisigs that we have not already seen, i.e. they are not watchonly and not spendable
-            // For P2SH, a multisig is not ISMINE_NO when:
-            // * All keys are in the wallet
-            // * The multisig itself is watch only
-            // * The P2SH is watch only
-            // For P2WSH, a multisig is not ISMINE_NO when, other than the P2SH conditions:
-            // * The P2WSH script is in the wallet and it is being watched
-            std::vector<std::vector<unsigned char>> keys(sols.begin() + 1, sols.begin() + sols.size() - 1);
-            if (HaveWatchOnly(sh_spk) || HaveWatchOnly(script) || HaveKeys(keys, *this) || HaveWatchOnly(witprog)) {
-                // The above emulates IsMine for these 3 scriptPubKeys, so double check that by running IsMine
-                assert(IsMine(sh_spk) != ISMINE_NO || IsMine(witprog) != ISMINE_NO);
+        // Past bugs in InferDescriptor have caused it to create descriptors which cannot be re-parsed
+        // Re-parse the descriptors to detect that, and skip any that do not parse.
+        {
+            std::string desc_str = desc->ToString();
+            FlatSigningProvider parsed_keys;
+            std::string parse_error;
+            std::vector<std::unique_ptr<Descriptor>> parsed_descs = Parse(desc_str, parsed_keys, parse_error, false);
+            if (parsed_descs.empty()) {
                 continue;
-            }
-            assert(IsMine(sh_spk) == ISMINE_NO && IsMine(witprog) == ISMINE_NO);
-
-            std::unique_ptr<Descriptor> sh_desc = InferDescriptor(sh_spk, *GetSolvingProvider(sh_spk));
-            out.solvable_descs.emplace_back(sh_desc->ToString(), creation_time);
-
-            const auto desc = InferDescriptor(witprog, *this);
-            if (desc->IsSolvable()) {
-                std::unique_ptr<Descriptor> wsh_desc = InferDescriptor(witprog, *GetSolvingProvider(witprog));
-                out.solvable_descs.emplace_back(wsh_desc->ToString(), creation_time);
             }
         }
 

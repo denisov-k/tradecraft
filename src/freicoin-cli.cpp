@@ -169,8 +169,8 @@ static int AppInitRPC(int argc, char* argv[])
             strUsage += FormatParagraph(LicenseInfo());
         } else {
             strUsage += "\n"
-                "Usage:  freicoin-cli [options] <command> [params]  Send command to " PACKAGE_NAME "\n"
-                "or:     freicoin-cli [options] -named <command> [name=value]...  Send command to " PACKAGE_NAME " (with named arguments)\n"
+                "Usage:  freicoin-cli [options] <command> [params]  Send command to " CLIENT_NAME "\n"
+                "or:     freicoin-cli [options] -named <command> [name=value]...  Send command to " CLIENT_NAME " (with named arguments)\n"
                 "or:     freicoin-cli [options] help                List commands\n"
                 "or:     freicoin-cli [options] help <command>      Get help for a command\n";
             strUsage += "\n" + gArgs.GetHelpMessage();
@@ -736,9 +736,9 @@ public:
         "The same, preceded by a peers listing without address and version columns\n"
         "> freicoin-cli -netinfo 1\n\n"
         "Full dashboard\n"
-        + strprintf("> freicoin-cli -netinfo %d\n\n", MAX_DETAIL_LEVEL) +
+        + strprintf("> freicoin-cli -netinfo %d\n\n", NETINFO_MAX_LEVEL) +
         "Full live dashboard, adjust --interval or --no-title as needed (Linux)\n"
-        + strprintf("> watch --interval 1 --no-title freicoin-cli -netinfo %d\n\n", MAX_DETAIL_LEVEL) +
+        + strprintf("> watch --interval 1 --no-title freicoin-cli -netinfo %d\n\n", NETINFO_MAX_LEVEL) +
         "See this help\n"
         "> freicoin-cli -netinfo help\n"};
 };

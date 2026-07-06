@@ -925,12 +925,33 @@ public:
 
     int getWitnessCommitmentIndex() override
     {
-        return GetWitnessCommitmentIndex(m_block_template->block);
+        // Freicoin: the upstream segwit coinbase witness commitment (0xaa21a9ed
+        // marker) does not exist; the commitment scheme differs (block-final /
+        // aux-pow commitments). This Mining-IPC interface is upstream Stratum-v2
+        // plumbing which Freicoin's built-in stratum server does not use.
+        return -1;
+    }
+
+    bool hasBlockFinalTx() override
+    {
+        return m_block_template->has_block_final_tx;
+    }
+
+    std::map<COutPoint, Coin> getBlockFinalTxCoinMap() override
+    {
+        return m_block_template->block_final_tx_coin_map;
     }
 
     std::vector<uint256> getCoinbaseMerklePath() override
     {
-        return TransactionMerklePath(m_block_template->block, 0);
+        // Freicoin: same computation as upstream TransactionMerklePath, using
+        // the retained ComputeMerkleBranch API.
+        std::vector<uint256> leaves;
+        leaves.resize(m_block_template->block.vtx.size());
+        for (size_t s = 0; s < m_block_template->block.vtx.size(); s++) {
+            leaves[s] = m_block_template->block.vtx[s]->GetHash();
+        }
+        return ComputeMerkleBranch(leaves, 0);
     }
 
     bool submitSolution(uint32_t version, uint32_t timestamp, uint32_t nonce, CTransactionRef coinbase) override
