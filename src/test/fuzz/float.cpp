@@ -1,8 +1,3 @@
-<<<<<<< v29.0
-// Copyright (c) 2020-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
-=======
 // Copyright (c) 2020-2021 The Bitcoin Core developers
 // Copyright (c) 2011-2024 The Freicoin Developers
 //
@@ -17,7 +12,6 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
->>>>>>> tc-28.1
 
 #include <memusage.h>
 #include <test/fuzz/FuzzedDataProvider.h>

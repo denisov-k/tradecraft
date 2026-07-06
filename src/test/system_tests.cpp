@@ -14,11 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-<<<<<<< v29.0
-#include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
 #include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1
 #include <test/util/setup_common.h>
 #include <common/run_command.h>
 #include <univalue.h>

@@ -14,7 +14,7 @@ BEGIN
     BEGIN
         BLOCK "040904E4" // U.S. English - multilingual (hex)
         BEGIN
-<<<<<<< v29.0:src/bitcoin-wallet-res.rc
+<<<<<<< v29.0
             VALUE "CompanyName",        "Bitcoin"
             VALUE "FileDescription",    "bitcoin-wallet (CLI tool for " CLIENT_NAME " wallets)"
             VALUE "FileVersion",        CLIENT_VERSION_STRING
@@ -34,7 +34,7 @@ BEGIN
             VALUE "OriginalFilename",   "freicoin-cli.exe"
             VALUE "ProductName",        "freicoin-cli"
             VALUE "ProductVersion",     PACKAGE_VERSION
->>>>>>> tc-28.1:src/freicoin-cli-res.rc
+>>>>>>> tc-28.1
         END
     END
 

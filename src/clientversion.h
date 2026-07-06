@@ -18,19 +18,11 @@
 
 #include <util/macros.h>
 
-<<<<<<< v29.0
-#include <bitcoin-build-config.h> // IWYU pragma: keep
-
-// Check that required client information is defined
-#if !defined(CLIENT_VERSION_MAJOR) || !defined(CLIENT_VERSION_MINOR) || !defined(CLIENT_VERSION_BUILD) || !defined(CLIENT_VERSION_IS_RELEASE) || !defined(COPYRIGHT_YEAR)
-#error Client version information missing: version is not defined by bitcoin-build-config.h or in any other way
-=======
 #include <config/freicoin-config.h> // IWYU pragma: keep
 
 // Check that required client information is defined
 #if !defined(CLIENT_VERSION_MAJOR) || !defined(CLIENT_VERSION_MINOR) || !defined(CLIENT_VERSION_REVISION) || !defined(CLIENT_VERSION_PATCH) || !defined(CLIENT_VERSION_BUILD) || !defined(CLIENT_VERSION_IS_RELEASE) || !defined(COPYRIGHT_YEAR)
 #error Client version information missing: version is not defined by freicoin-config.h or in any other way
->>>>>>> tc-28.1
 #endif
 
 //! Copyright string used in Windows .rc files

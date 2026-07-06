@@ -14,7 +14,7 @@ BEGIN
     BEGIN
         BLOCK "040904E4" // U.S. English - multilingual (hex)
         BEGIN
-<<<<<<< v29.0:src/bitcoin-util-res.rc
+<<<<<<< v29.0
             VALUE "CompanyName",        "Bitcoin"
             VALUE "FileDescription",    "bitcoin-util (CLI Bitcoin utility)"
             VALUE "FileVersion",        CLIENT_VERSION_STRING
@@ -34,7 +34,7 @@ BEGIN
             VALUE "OriginalFilename",   "freicoind.exe"
             VALUE "ProductName",        "freicoind"
             VALUE "ProductVersion",     PACKAGE_VERSION
->>>>>>> tc-28.1:src/freicoind-res.rc
+>>>>>>> tc-28.1
         END
     END
 

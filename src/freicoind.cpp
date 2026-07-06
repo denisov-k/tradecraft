@@ -14,11 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-<<<<<<< v29.0:src/bitcoind.cpp
-#include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
 #include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1:src/freicoind.cpp
 
 #include <chainparams.h>
 #include <clientversion.h>
@@ -126,14 +122,14 @@ int fork_daemon(bool nochdir, bool noclose, TokenPipeEnd& endpoint)
 
 static bool ParseArgs(NodeContext& node, int argc, char* argv[])
 {
-<<<<<<< v29.0:src/bitcoind.cpp
+<<<<<<< v29.0
     ArgsManager& args{*Assert(node.args)};
     // If Qt is used, parameters/bitcoin.conf are parsed in qt/bitcoin.cpp's main()
     SetupServerArgs(args, node.init->canListenIpc());
 =======
     // If Qt is used, parameters/freicoin.conf are parsed in qt/freicoin.cpp's main()
     SetupServerArgs(args);
->>>>>>> tc-28.1:src/freicoind.cpp
+>>>>>>> tc-28.1
     std::string error;
     if (!args.ParseParameters(argc, argv, error)) {
         return InitError(Untranslated(strprintf("Error parsing command line arguments: %s", error)));
@@ -161,7 +157,7 @@ static bool ProcessInitCommands(ArgsManager& args)
         if (args.GetBoolArg("-version", false)) {
             strUsage += FormatParagraph(LicenseInfo());
         } else {
-<<<<<<< v29.0:src/bitcoind.cpp
+<<<<<<< v29.0
             strUsage += "\n"
                 "The " CLIENT_NAME " daemon (bitcoind) is a headless program that connects to the Bitcoin network to validate and relay transactions and blocks, as well as relaying addresses.\n\n"
                 "It provides the backbone of the Bitcoin network and its RPC, REST and ZMQ services can provide various transaction, block and address-related services.\n\n"
@@ -171,7 +167,7 @@ static bool ProcessInitCommands(ArgsManager& args)
                 "Usage: bitcoind [options]\n"
 =======
             strUsage += "\nUsage:  freicoind [options]                     Start " PACKAGE_NAME "\n"
->>>>>>> tc-28.1:src/freicoind.cpp
+>>>>>>> tc-28.1
                 "\n";
             strUsage += args.GetHelpMessage();
         }

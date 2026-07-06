@@ -1,10 +1,3 @@
-<<<<<<< v29.0
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
-
-#include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
 // Copyright (c) 2009-2022 The Bitcoin Core developers
 // Copyright (c) 2011-2024 The Freicoin Developers
 //
@@ -21,7 +14,6 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1
 
 #include <chain.h>
 #include <clientversion.h>

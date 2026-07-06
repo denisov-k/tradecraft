@@ -16,11 +16,7 @@
 
 #include <wallet/wallet.h>
 
-<<<<<<< v29.0
-#include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
 #include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1
 #include <addresstype.h>
 #include <blockfilter.h>
 #include <chain.h>
