@@ -16,7 +16,7 @@
 #ifndef FREICOIN_UTIL_TRACE_H
 #define FREICOIN_UTIL_TRACE_H
 
-#include <config/freicoin-config.h> // IWYU pragma: keep
+#include <bitcoin-build-config.h> // IWYU pragma: keep
 
 #ifdef ENABLE_TRACING
 

@@ -54,13 +54,8 @@ uint32_t CalculateNextWorkRequiredAux(const CBlockIndex* pindexLast, const Conse
 bool CheckNextWorkRequiredAux(const CBlockIndex* pindexLast, const CBlockHeader& block, const Consensus::Params&);
 
 /** Check whether a block hash satisfies the proof-of-work requirement specified by nBits */
-<<<<<<< v29.0
-bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&);
-bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, const Consensus::Params&);
-=======
 bool CheckAuxiliaryProofOfWork(const CBlockHeader& block, const Consensus::Params&);
 bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params&);
->>>>>>> tc-28.1
 
 /**
  * Return false if the proof-of-work requirement specified by new_nbits at a

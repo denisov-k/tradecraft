@@ -15,7 +15,7 @@
 
 #include <common/settings.h>
 
-#include <config/freicoin-config.h> // IWYU pragma: keep
+#include <bitcoin-build-config.h> // IWYU pragma: keep
 
 #include <tinyformat.h>
 #include <univalue.h>

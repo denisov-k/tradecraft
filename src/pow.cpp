@@ -234,21 +234,6 @@ bool PermittedDifficultyTransition(const Consensus::Params& params, int64_t heig
     return true;
 }
 
-<<<<<<< v29.0
-// Bypasses the actual proof of work check during fuzz testing with a simplified validation checking whether
-// the most significant bit of the last byte of the hash is set.
-bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params& params)
-{
-    if constexpr (G_FUZZING) return (hash.data()[31] & 0x80) == 0;
-    return CheckProofOfWorkImpl(hash, nBits, params);
-}
-
-std::optional<arith_uint256> DeriveTarget(unsigned int nBits, const uint256 pow_limit)
-{
-    bool fNegative;
-    bool fOverflow;
-    arith_uint256 bnTarget;
-=======
 int64_t GetFilteredTimeAux(const CBlockIndex* pindexLast, const Consensus::Params& params)
 {
     // Unfortunately pretty much all digital control code looks like arcane
@@ -288,7 +273,6 @@ int64_t GetFilteredTimeAux(const CBlockIndex* pindexLast, const Consensus::Param
     // second-order equation above) is a 32.32 fixed-point number.
     std::array<int64_t, 3> x = { 0, 0, 0 };
     int64_t y = 0;
->>>>>>> tc-28.1
 
     auto pitr = pindexLast;
     for (size_t idx = 0; idx != x.size(); ++idx) {
@@ -522,21 +506,8 @@ bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params
     target.SetCompact(block.nBits, &negative, &overflow);
 
     // Check range
-<<<<<<< v29.0
-    if (fNegative || bnTarget == 0 || fOverflow || bnTarget > UintToArith256(pow_limit))
-        return {};
-
-    return bnTarget;
-}
-
-bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, const Consensus::Params& params)
-{
-    auto bnTarget{DeriveTarget(nBits, params.powLimit)};
-    if (!bnTarget) return false;
-=======
     if (negative || target == 0 || overflow || target > UintToArith256(params.powLimit))
         return false;
->>>>>>> tc-28.1
 
     // Check proof of work matches claimed amount
     if (UintToArith256(hash) > target)

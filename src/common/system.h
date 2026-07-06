@@ -17,7 +17,7 @@
 #ifndef FREICOIN_COMMON_SYSTEM_H
 #define FREICOIN_COMMON_SYSTEM_H
 
-#include <config/freicoin-config.h> // IWYU pragma: keep
+#include <bitcoin-build-config.h> // IWYU pragma: keep
 
 #include <cstdint>
 #include <string>

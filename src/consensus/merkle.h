@@ -184,19 +184,6 @@ uint256 BlockTemplateMerkleRoot(const CBlock& block, bool* mutated = NULL);
  */
 uint256 BlockWitnessMerkleRoot(const CBlock& block);
 
-<<<<<<< v29.0
-/**
- * Compute merkle path to the specified transaction
- *
- * @param[in] block the block
- * @param[in] position transaction for which to calculate the merkle path (0 is the coinbase)
- *
- * @return merkle path ordered from the deepest
- */
-std::vector<uint256> TransactionMerklePath(const CBlock& block, uint32_t position);
-
-#endif // BITCOIN_CONSENSUS_MERKLE_H
-=======
 /*
  * Compute the Merkle branch for the tree of transactions in a block, for a
  * given position.
@@ -205,4 +192,3 @@ std::vector<uint256> TransactionMerklePath(const CBlock& block, uint32_t positio
 std::vector<uint256> BlockMerkleBranch(const CBlock& block, uint32_t position);
 
 #endif // FREICOIN_CONSENSUS_MERKLE_H
->>>>>>> tc-28.1

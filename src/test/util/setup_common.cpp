@@ -15,7 +15,7 @@
 
 <<<<<<< v29.0
 =======
-#include <config/freicoin-config.h> // IWYU pragma: keep
+#include <bitcoin-build-config.h> // IWYU pragma: keep
 
 >>>>>>> tc-28.1
 #include <test/util/setup_common.h>

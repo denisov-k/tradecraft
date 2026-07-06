@@ -8,7 +8,7 @@
 #include <chainparams.h>
 #include <chainparamsbase.h>
 #include <common/args.h>
-#include <config/freicoin-config.h>
+#include <bitcoin-build-config.h>
 #include <consensus/merkle.h>
 #include <consensus/validation.h>
 #include <crypto/sha256.h>

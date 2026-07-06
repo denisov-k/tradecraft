@@ -197,8 +197,8 @@ if(ENABLE_WALLET)
 
   if(BUILD_WALLET_TOOL)
     add_executable(bitcoin-wallet
-      bitcoin-wallet.cpp
-      init/bitcoin-wallet.cpp
+      freicoin-wallet.cpp
+      init/freicoin-wallet.cpp
       wallet/wallettool.cpp
     )
     add_windows_resources(bitcoin-wallet bitcoin-wallet-res.rc)
@@ -337,8 +337,8 @@ target_link_libraries(bitcoin_node
 # Bitcoin Core bitcoind.
 if(BUILD_DAEMON)
   add_executable(bitcoind
-    bitcoind.cpp
-    init/bitcoind.cpp
+    freicoind.cpp
+    init/freicoind.cpp
   )
   add_windows_resources(bitcoind bitcoind-res.rc)
   target_link_libraries(bitcoind
@@ -350,8 +350,8 @@ if(BUILD_DAEMON)
 endif()
 if(WITH_MULTIPROCESS AND BUILD_DAEMON)
   add_executable(bitcoin-node
-    bitcoind.cpp
-    init/bitcoin-node.cpp
+    freicoind.cpp
+    init/freicoin-node.cpp
   )
   target_link_libraries(bitcoin-node
     core_interface
@@ -392,7 +392,7 @@ target_link_libraries(bitcoin_cli
 
 # Bitcoin Core RPC client
 if(BUILD_CLI)
-  add_executable(bitcoin-cli bitcoin-cli.cpp)
+  add_executable(bitcoin-cli freicoin-cli.cpp)
   add_windows_resources(bitcoin-cli bitcoin-cli-res.rc)
   target_link_libraries(bitcoin-cli
     core_interface
@@ -407,7 +407,7 @@ endif()
 
 
 if(BUILD_TX)
-  add_executable(bitcoin-tx bitcoin-tx.cpp)
+  add_executable(bitcoin-tx freicoin-tx.cpp)
   add_windows_resources(bitcoin-tx bitcoin-tx-res.rc)
   target_link_libraries(bitcoin-tx
     core_interface
@@ -420,7 +420,7 @@ endif()
 
 
 if(BUILD_UTIL)
-  add_executable(bitcoin-util bitcoin-util.cpp)
+  add_executable(bitcoin-util freicoin-util.cpp)
   add_windows_resources(bitcoin-util bitcoin-util-res.rc)
   target_link_libraries(bitcoin-util
     core_interface
@@ -442,7 +442,7 @@ endif()
 
 if(BUILD_UTIL_CHAINSTATE)
   add_executable(bitcoin-chainstate
-    bitcoin-chainstate.cpp
+    freicoin-chainstate.cpp
   )
   # TODO: The `SKIP_BUILD_RPATH` property setting can be deleted
   #       in the future after reordering Guix script commands to

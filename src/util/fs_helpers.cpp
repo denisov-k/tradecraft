@@ -16,7 +16,7 @@
 
 #include <util/fs_helpers.h>
 
-#include <config/freicoin-config.h> // IWYU pragma: keep
+#include <bitcoin-build-config.h> // IWYU pragma: keep
 
 #include <logging.h>
 #include <sync.h>

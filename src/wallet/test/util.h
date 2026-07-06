@@ -16,7 +16,7 @@
 #ifndef FREICOIN_WALLET_TEST_UTIL_H
 #define FREICOIN_WALLET_TEST_UTIL_H
 
-#include <config/freicoin-config.h> // IWYU pragma: keep
+#include <bitcoin-build-config.h> // IWYU pragma: keep
 
 #include <addresstype.h>
 #include <wallet/db.h>
