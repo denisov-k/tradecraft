@@ -71,32 +71,18 @@ static std::optional<int> WalletAppInit(ArgsManager& args, int argc, char* argv[
         return EXIT_FAILURE;
     }
     const bool missing_args{argc < 2};
-<<<<<<< v29.0
-    if (missing_args || HelpRequested(args) || args.GetBoolArg("-version", false)) {
-        std::string strUsage = strprintf("%s bitcoin-wallet utility version", CLIENT_NAME) + " " + FormatFullVersion() + "\n";
-=======
     if (missing_args || HelpRequested(args) || args.IsArgSet("-version")) {
         std::string strUsage = strprintf("%s freicoin-wallet version", PACKAGE_NAME) + " " + FormatFullVersion() + "\n";
->>>>>>> tc-28.1
 
         if (args.GetBoolArg("-version", false)) {
             strUsage += FormatParagraph(LicenseInfo());
         } else {
             strUsage += "\n"
-<<<<<<< v29.0
-                "bitcoin-wallet is an offline tool for creating and interacting with " CLIENT_NAME " wallet files.\n\n"
-                "By default bitcoin-wallet will act on wallets in the default mainnet wallet directory in the datadir.\n\n"
-                "To change the target wallet, use the -datadir, -wallet and (test)chain selection arguments.\n"
-                "\n"
-                "Usage: bitcoin-wallet [options] <command>\n"
-                "\n";
-=======
                         "freicoin-wallet is an offline tool for creating and interacting with " PACKAGE_NAME " wallet files.\n"
                         "By default freicoin-wallet will act on wallets in the default mainnet wallet directory in the datadir.\n"
                         "To change the target wallet, use the -datadir, -wallet and -regtest/-signet/-testnet arguments.\n\n"
                         "Usage:\n"
                         "  freicoin-wallet [options] <command>\n";
->>>>>>> tc-28.1
             strUsage += "\n" + args.GetHelpMessage();
         }
         tfm::format(std::cout, "%s", strUsage);

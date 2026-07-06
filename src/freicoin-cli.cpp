@@ -91,13 +91,8 @@ static void SetupCliArgs(ArgsManager& argsman)
     const auto regtestBaseParams = CreateBaseChainParams(ChainType::REGTEST);
 
     argsman.AddArg("-version", "Print version and exit", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-<<<<<<< v29.0
-    argsman.AddArg("-conf=<file>", strprintf("Specify configuration file. Relative paths will be prefixed by datadir location. (default: %s)", BITCOIN_CONF_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-datadir=<dir>", "Specify data directory", ArgsManager::ALLOW_ANY | ArgsManager::DISALLOW_NEGATION, OptionsCategory::OPTIONS);
-=======
     argsman.AddArg("-conf=<file>", strprintf("Specify configuration file. Relative paths will be prefixed by datadir location. (default: %s)", FREICOIN_CONF_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-datadir=<dir>", "Specify data directory", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
->>>>>>> tc-28.1
     argsman.AddArg("-generate",
                    strprintf("Generate blocks, equivalent to RPC getnewaddress followed by RPC generatetoaddress. Optional positional integer "
                              "arguments are number of blocks to generate (default: %s) and maximum iterations to try (default: %s), equivalent to "
@@ -174,23 +169,10 @@ static int AppInitRPC(int argc, char* argv[])
             strUsage += FormatParagraph(LicenseInfo());
         } else {
             strUsage += "\n"
-<<<<<<< v29.0
-                "The bitcoin-cli utility provides a command line interface to interact with a " CLIENT_NAME " RPC server.\n"
-                "\nIt can be used to query network information, manage wallets, create or broadcast transactions, and control the " CLIENT_NAME " server.\n"
-                "\nUse the \"help\" command to list all commands. Use \"help <command>\" to show help for that command.\n"
-                "The -named option allows you to specify parameters using the key=value format, eliminating the need to pass unused positional parameters.\n"
-                "\n"
-                "Usage: bitcoin-cli [options] <command> [params]\n"
-                "or:    bitcoin-cli [options] -named <command> [name=value]...\n"
-                "or:    bitcoin-cli [options] help\n"
-                "or:    bitcoin-cli [options] help <command>\n"
-                "\n";
-=======
                 "Usage:  freicoin-cli [options] <command> [params]  Send command to " PACKAGE_NAME "\n"
                 "or:     freicoin-cli [options] -named <command> [name=value]...  Send command to " PACKAGE_NAME " (with named arguments)\n"
                 "or:     freicoin-cli [options] help                List commands\n"
                 "or:     freicoin-cli [options] help <command>      Get help for a command\n";
->>>>>>> tc-28.1
             strUsage += "\n" + gArgs.GetHelpMessage();
         }
 
@@ -513,20 +495,7 @@ public:
             if (ParseUInt8(args.at(0), &n)) {
                 m_details_level = std::min(n, NETINFO_MAX_LEVEL);
             } else {
-<<<<<<< v29.0
-                throw std::runtime_error(strprintf("invalid -netinfo level argument: %s\nFor more information, run: bitcoin-cli -netinfo help", args.at(0)));
-            }
-            if (args.size() > 1) {
-                if (std::string_view s{args.at(1)}; n && (s == "o" || s == "outonly")) {
-                    m_outbound_only_selected = true;
-                } else if (n) {
-                    throw std::runtime_error(strprintf("invalid -netinfo outonly argument: %s\nFor more information, run: bitcoin-cli -netinfo help", s));
-                } else {
-                    throw std::runtime_error(strprintf("invalid -netinfo outonly argument: %s\nThe outonly argument is only valid for a level greater than 0 (the first argument). For more information, run: bitcoin-cli -netinfo help", s));
-                }
-=======
                 throw std::runtime_error(strprintf("invalid -netinfo argument: %s\nFor more information, run: freicoin-cli -netinfo help", args.at(0)));
->>>>>>> tc-28.1
             }
         }
         UniValue result(UniValue::VARR);
@@ -767,17 +736,9 @@ public:
         "The same, preceded by a peers listing without address and version columns\n"
         "> freicoin-cli -netinfo 1\n\n"
         "Full dashboard\n"
-<<<<<<< v29.0
-        + strprintf("> bitcoin-cli -netinfo %d\n\n", NETINFO_MAX_LEVEL) +
-        "Full dashboard, but with outbound peers only\n"
-        + strprintf("> bitcoin-cli -netinfo %d outonly\n\n", NETINFO_MAX_LEVEL) +
-        "Full live dashboard, adjust --interval or --no-title as needed (Linux)\n"
-        + strprintf("> watch --interval 1 --no-title bitcoin-cli -netinfo %d\n\n", NETINFO_MAX_LEVEL) +
-=======
         + strprintf("> freicoin-cli -netinfo %d\n\n", MAX_DETAIL_LEVEL) +
         "Full live dashboard, adjust --interval or --no-title as needed (Linux)\n"
         + strprintf("> watch --interval 1 --no-title freicoin-cli -netinfo %d\n\n", MAX_DETAIL_LEVEL) +
->>>>>>> tc-28.1
         "See this help\n"
         "> freicoin-cli -netinfo help\n"};
 };
@@ -1033,12 +994,7 @@ static void ParseError(const UniValue& error, std::string& strPrint, int& nRet)
             strPrint += ("error message:\n" + err_msg.get_str());
         }
         if (err_code.isNum() && err_code.getInt<int>() == RPC_WALLET_NOT_SPECIFIED) {
-<<<<<<< v29.0
-            strPrint += " Or for the CLI, specify the \"-rpcwallet=<walletname>\" option before the command";
-            strPrint += " (run \"bitcoin-cli -h\" for help or \"bitcoin-cli listwallets\" to see which wallets are currently loaded).";
-=======
             strPrint += "\nTry adding \"-rpcwallet=<filename>\" option to freicoin-cli command line.";
->>>>>>> tc-28.1
         }
     } else {
         strPrint = "error: " + error.write();
