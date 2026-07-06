@@ -578,12 +578,7 @@ RPCHelpMan importwallet()
                 keys.emplace_back(key, nTime, fLabel, strLabel);
             } else if(IsHex(vstr[0])) {
                 std::vector<unsigned char> vData(ParseHex(vstr[0]));
-<<<<<<< v29.0
-                CScript script = CScript(vData.begin(), vData.end());
-                int64_t birth_time{ParseISO8601DateTime(vstr[1]).value_or(0)};
-=======
                 int64_t birth_time = ParseISO8601DateTime(vstr[1]);
->>>>>>> tc-28.1
                 if (birth_time > 0) nTimeBegin = std::min(nTimeBegin, birth_time);
                 if (vstr[2] == "script=1") {
                     CScript script = CScript(vData.begin(), vData.end());
@@ -1059,9 +1054,6 @@ static UniValue ProcessImportLegacy(ImportData& import_data, std::map<CKeyID, CP
     for (size_t i = 0; i < pubKeys.size(); ++i) {
         CPubKey pubkey = HexToPubKey(pubKeys[i].get_str());
         pubkey_map.emplace(pubkey.GetID(), pubkey);
-<<<<<<< v29.0
-        ordered_pubkeys.emplace_back(pubkey.GetID(), internal);
-=======
         ordered_pubkeys.push_back(pubkey.GetID());
         if (!import_data.witnessscript) {
             CScript p2pk = GetScriptForRawPubKey(pubkey);
@@ -1073,7 +1065,6 @@ static UniValue ProcessImportLegacy(ImportData& import_data, std::map<CKeyID, CP
                 import_data.used_keys[pubkey.GetID()] = true;
             }
         }
->>>>>>> tc-28.1
     }
     for (size_t i = 0; i < keys.size(); ++i) {
         const auto& str = keys[i].get_str();
@@ -1166,12 +1157,6 @@ static UniValue ProcessImportDescriptor(ImportData& import_data, std::map<CKeyID
     if (parsed_descs.empty()) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, error);
     }
-<<<<<<< v29.0
-    if (parsed_descs.at(0)->GetOutputType() == OutputType::BECH32M) {
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Bech32m descriptors cannot be imported into legacy wallets");
-    }
-=======
->>>>>>> tc-28.1
 
     std::optional<bool> internal;
     if (data.exists("internal")) {
@@ -1224,8 +1209,6 @@ static UniValue ProcessImportDescriptor(ImportData& import_data, std::map<CKeyID
             std::copy(out_keys.keys.begin(), out_keys.keys.end(), std::inserter(privkey_map, privkey_map.end()));
             import_data.key_origins.insert(out_keys.origins.begin(), out_keys.origins.end());
         }
-<<<<<<< v29.0
-=======
 
         for (const auto& x : out_keys.witscripts) {
             import_data.import_witscripts.emplace(x.second);
@@ -1236,7 +1219,6 @@ static UniValue ProcessImportDescriptor(ImportData& import_data, std::map<CKeyID
         std::copy(out_keys.pubkeys.begin(), out_keys.pubkeys.end(), std::inserter(pubkey_map, pubkey_map.end()));
         std::copy(out_keys.keys.begin(), out_keys.keys.end(), std::inserter(privkey_map, privkey_map.end()));
         import_data.key_origins.insert(out_keys.origins.begin(), out_keys.origins.end());
->>>>>>> tc-28.1
     }
 
     for (size_t i = 0; i < priv_keys.size(); ++i) {
@@ -1884,9 +1866,6 @@ RPCHelpMan importdescriptors()
 
                     UniValue result = UniValue(UniValue::VOBJ);
                     result.pushKV("success", UniValue(false));
-<<<<<<< v29.0
-                    result.pushKV("error", JSONRPCError(RPC_MISC_ERROR, error_msg));
-=======
                     result.pushKV(
                         "error",
                         JSONRPCError(
@@ -1899,7 +1878,6 @@ RPCHelpMan importdescriptors()
                                       "be dealt with by downloading and rescanning the relevant blocks (see -reindex "
                                       "option and rescanblockchain RPC).",
                                 GetImportTimestamp(request, now), scanned_time - TIMESTAMP_WINDOW - 1, TIMESTAMP_WINDOW)));
->>>>>>> tc-28.1
                     response.push_back(std::move(result));
                 }
             }
