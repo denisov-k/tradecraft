@@ -168,7 +168,7 @@ add_library(bitcoin_common STATIC EXCLUDE_FROM_ALL
   policy/policy.cpp
   pow.cpp
   protocol.cpp
-  psbt.cpp
+  pst.cpp
   rpc/rawtransaction_util.cpp
   rpc/request.cpp
   rpc/util.cpp
