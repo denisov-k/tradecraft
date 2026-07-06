@@ -60,7 +60,6 @@ template <class T>
     return i + j;
 }
 
-<<<<<<< v29.0
 /**
  * @brief Left bit shift with overflow checking.
  * @param input The input value to be left shifted.
@@ -96,6 +95,3 @@ constexpr T SaturatingLeftShift(T input, unsigned shift) noexcept
 }
 
 #endif // BITCOIN_UTIL_OVERFLOW_H
-=======
-#endif // FREICOIN_UTIL_OVERFLOW_H
->>>>>>> tc-28.1

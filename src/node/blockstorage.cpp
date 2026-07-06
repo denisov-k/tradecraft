@@ -1124,12 +1124,6 @@ bool BlockManager::ReadRawBlock(std::vector<uint8_t>& block, const FlatFilePos& 
 
 FlatFilePos BlockManager::WriteBlock(const CBlock& block, int nHeight)
 {
-<<<<<<< v29.0
-    const unsigned int block_size{static_cast<unsigned int>(GetSerializeSize(TX_WITH_WITNESS(block)))};
-    FlatFilePos pos{FindNextBlockPos(block_size + BLOCK_SERIALIZATION_HEADER_SIZE, nHeight, block.GetBlockTime())};
-    if (pos.IsNull()) {
-        LogError("FindNextBlockPos failed");
-=======
     unsigned int nBlockSize = ::GetSerializeSize(TX_WITH_WITNESS(block));
     // Account for the 4 magic message start bytes + the 4 length bytes (8 bytes total,
     // defined as BLOCK_SERIALIZATION_HEADER_SIZE)
@@ -1137,7 +1131,6 @@ FlatFilePos BlockManager::WriteBlock(const CBlock& block, int nHeight)
     FlatFilePos blockPos{FindNextBlockPos(nBlockSize, GetParams().GetConsensus(), nHeight, block.GetBlockTime())};
     if (blockPos.IsNull()) {
         LogError("%s: FindNextBlockPos failed\n", __func__);
->>>>>>> tc-28.1
         return FlatFilePos();
     }
     AutoFile fileout{OpenBlockFile(pos)};

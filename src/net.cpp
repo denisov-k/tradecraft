@@ -821,13 +821,8 @@ int V1Transport::readHeader(Span<const uint8_t> msg_bytes)
     }
 
     // reject messages larger than MAX_SIZE or MAX_PROTOCOL_MESSAGE_LENGTH
-<<<<<<< v29.0
     if (hdr.nMessageSize > MAX_SIZE || hdr.nMessageSize > MAX_PROTOCOL_MESSAGE_LENGTH) {
         LogDebug(BCLog::NET, "Header error: Size too large (%s, %u bytes), peer=%d\n", SanitizeString(hdr.GetMessageType()), hdr.nMessageSize, m_node_id);
-=======
-    if (hdr.nMessageSize > MAX_SIZE || hdr.nMessageSize > max_message_length) {
-        LogPrint(BCLog::NET, "Header error: Size too large (%s, %u bytes), peer=%d\n", SanitizeString(hdr.GetCommand()), hdr.nMessageSize, m_node_id);
->>>>>>> tc-28.1
         return -1;
     }
 

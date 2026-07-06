@@ -93,12 +93,6 @@ bool ExternalSigner::SignTransaction(PartiallySignedTransaction& pstx, std::stri
         for (const auto& entry : input.hd_keypaths) {
             if (std::ranges::equal(parsed_m_fingerprint, entry.second.fingerprint)) return true;
         }
-<<<<<<< v29.0
-        for (const auto& entry : input.m_tap_bip32_paths) {
-            if (std::ranges::equal(parsed_m_fingerprint, entry.second.second.fingerprint)) return true;
-        }
-=======
->>>>>>> tc-28.1
         return false;
     };
 
