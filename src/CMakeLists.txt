@@ -216,6 +216,13 @@ endif()
 
 # P2P and RPC server functionality used by `bitcoind` and `bitcoin-qt` executables.
 add_library(bitcoin_node STATIC EXCLUDE_FROM_ALL
+  # Freicoin: built-in stratum mining server, MAST merkle-proof RPC, and the
+  # PST (partially-signed transaction) module. NB: node/pst.cpp is Freicoin's
+  # rename of upstream node/psbt.cpp; whether the rebase keeps the PST rename or
+  # reverts to upstream PSBT is a maintainer decision (as with BIP94).
+  stratum.cpp
+  rpc/merkleproof.cpp
+  node/pst.cpp
   addrdb.cpp
   addrman.cpp
   banman.cpp
@@ -268,7 +275,7 @@ add_library(bitcoin_node STATIC EXCLUDE_FROM_ALL
   node/mini_miner.cpp
   node/minisketchwrapper.cpp
   node/peerman_args.cpp
-  node/psbt.cpp
+  # node/psbt.cpp renamed to node/pst.cpp by Freicoin (added above).
   node/timeoffsets.cpp
   node/transaction.cpp
   node/txdownloadman_impl.cpp
