@@ -13,11 +13,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-<<<<<<< v29.0
-=======
 #include <config/freicoin-config.h> // IWYU pragma: keep
 
->>>>>>> tc-28.1
 #include <httpserver.h>
 
 #include <chainparamsbase.h>
@@ -244,23 +241,12 @@ bool InitSubnetAllowList(const std::string which, std::vector<CSubNet>& allowed_
         const CSubNet subnet{LookupSubNet(strAllow)};
         if (!subnet.IsValid()) {
             uiInterface.ThreadSafeMessageBox(
-<<<<<<< v29.0
-                Untranslated(strprintf("Invalid -rpcallowip subnet specification: %s. Valid are a single IP (e.g. 1.2.3.4), a network/netmask (e.g. 1.2.3.4/255.255.255.0) or a network/CIDR (e.g. 1.2.3.4/24).", strAllow)),
-=======
                 strprintf(Untranslated("Invalid %s subnet specification: %s. Valid are a single IP (e.g. 1.2.3.4), a network/netmask (e.g. 1.2.3.4/255.255.255.0) or a network/CIDR (e.g. 1.2.3.4/24)."), opt_allowip, strAllow),
->>>>>>> tc-28.1
                 "", CClientUIInterface::MSG_ERROR);
             return false;
         }
         allowed_subnets.push_back(subnet);
     }
-<<<<<<< v29.0
-    std::string strAllowed;
-    for (const CSubNet& subnet : rpc_allow_subnets)
-        strAllowed += subnet.ToString() + " ";
-    LogDebug(BCLog::HTTP, "Allowing HTTP connections from: %s\n", strAllowed);
-=======
->>>>>>> tc-28.1
     return true;
 }
 
@@ -311,13 +297,8 @@ static void http_request_cb(struct evhttp_request* req, void* arg)
     auto hreq{std::make_unique<HTTPRequest>(req, *static_cast<const util::SignalInterrupt*>(arg))};
 
     // Early address-based allow check
-<<<<<<< v29.0
-    if (!ClientAllowed(hreq->GetPeer())) {
-        LogDebug(BCLog::HTTP, "HTTP request from %s rejected: Client network is not allowed RPC access\n",
-=======
     if (!ClientAllowed(rpc_allow_subnets, hreq->GetPeer())) {
         LogPrint(BCLog::HTTP, "HTTP request from %s rejected: Client network is not allowed RPC access\n",
->>>>>>> tc-28.1
                  hreq->GetPeer().ToStringAddrPort());
         hreq->WriteReply(HTTP_FORBIDDEN);
         return;
@@ -390,24 +371,6 @@ bool InitEndpointList(const std::string& which, uint16_t default_port, std::vect
     endpoints.clear();
 
     // Determine what addresses to bind to
-<<<<<<< v29.0
-    // To prevent misconfiguration and accidental exposure of the RPC
-    // interface, require -rpcallowip and -rpcbind to both be specified
-    // together. If either is missing, ignore both values, bind to localhost
-    // instead, and log warnings.
-    if (gArgs.GetArgs("-rpcallowip").empty() || gArgs.GetArgs("-rpcbind").empty()) { // Default to loopback if not allowing external IPs
-        endpoints.emplace_back("::1", http_port);
-        endpoints.emplace_back("127.0.0.1", http_port);
-        if (!gArgs.GetArgs("-rpcallowip").empty()) {
-            LogPrintf("WARNING: option -rpcallowip was specified without -rpcbind; this doesn't usually make sense\n");
-        }
-        if (!gArgs.GetArgs("-rpcbind").empty()) {
-            LogPrintf("WARNING: option -rpcbind was ignored because -rpcallowip was not specified, refusing to allow everyone to connect\n");
-        }
-    } else { // Specific bind addresses
-        for (const std::string& strRPCBind : gArgs.GetArgs("-rpcbind")) {
-            uint16_t port{http_port};
-=======
     const std::string opt_allowip = "-" + which + "allowip";
     const std::string opt_bind = "-" + which + "bind";
     if (!(gArgs.IsArgSet(opt_allowip) && gArgs.IsArgSet(opt_bind))) { // Default to loopback if not allowing external IPs
@@ -422,7 +385,6 @@ bool InitEndpointList(const std::string& which, uint16_t default_port, std::vect
     } else if (gArgs.IsArgSet(opt_bind)) { // Specific bind address
         for (const std::string& strRPCBind : gArgs.GetArgs(opt_bind)) {
             uint16_t port{default_port};
->>>>>>> tc-28.1
             std::string host;
             if (!SplitHostPort(strRPCBind, port, host)) {
                 LogError("%s\n", InvalidPortErrMsg("-rpcbind", strRPCBind).original);

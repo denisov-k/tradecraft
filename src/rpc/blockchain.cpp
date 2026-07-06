@@ -157,9 +157,6 @@ static const CBlockIndex* ParseHashOrHeight(const UniValue& param, ChainstateMan
     }
 }
 
-<<<<<<< v29.0
-UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex, const uint256 pow_limit)
-=======
 /* Calculate the difficulty for a given block index.
  */
 double GetDifficulty(const CBlockIndex& blockindex)
@@ -175,7 +172,6 @@ double GetAuxiliaryDifficulty(const CBlockIndex& blockindex)
 }
 
 UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex)
->>>>>>> tc-28.1
 {
     // Serialize passed information without accessing chain state of the active chain!
     AssertLockNotHeld(cs_main); // For performance reasons
@@ -1221,21 +1217,13 @@ static RPCHelpMan gettxout()
     } else {
         ret.pushKV("confirmations", (int64_t)(pindex->nHeight - coin->nHeight + 1));
     }
-<<<<<<< v29.0
-    ret.pushKV("value", ValueFromAmount(coin->out.nValue));
-=======
     ret.pushKV("value", ValueFromAmount(coin.out.GetReferenceValue()));
     ret.pushKV("amount", ValueFromAmount(coin.GetPresentValue(pindex->nHeight + 1)));
->>>>>>> tc-28.1
     UniValue o(UniValue::VOBJ);
     ScriptToUniv(coin->out.scriptPubKey, /*out=*/o, /*include_hex=*/true, /*include_address=*/true);
     ret.pushKV("scriptPubKey", std::move(o));
-<<<<<<< v29.0
-    ret.pushKV("coinbase", (bool)coin->fCoinBase);
-=======
     ret.pushKV("coinbase", (bool)coin.fCoinBase);
     ret.pushKV("refheight", (int64_t)coin.refheight);
->>>>>>> tc-28.1
 
     return ret;
 },
