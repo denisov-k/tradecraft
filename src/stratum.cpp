@@ -19,6 +19,7 @@
 #include <netbase.h>
 #include <net.h>
 #include <node/context.h>
+#include <node/kernel_notifications.h>
 #include <node/miner.h>
 #include <pow.h>
 #include <random.h>
@@ -549,8 +550,11 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
         // Update block template
         const CScript script = CScript() << OP_FALSE;
         node::BlockAssembler::Options assembler_options;
+        // Core 29: the coinbase script is passed via options rather than as a
+        // CreateNewBlock() argument.
+        assembler_options.coinbase_output_script = script;
         std::unique_ptr<node::CBlockTemplate> new_work;
-        new_work = node::BlockAssembler(g_context->chainman->ActiveChainstate(), &mempool, assembler_options).CreateNewBlock(script);
+        new_work = node::BlockAssembler(g_context->chainman->ActiveChainstate(), &mempool, assembler_options).CreateNewBlock();
         if (!new_work) {
             throw JSONRPCError(RPC_OUT_OF_MEMORY, "Out of memory");
         }
@@ -1557,7 +1561,7 @@ static void stratum_accept_conn_cb(evconnlistener *listener, evutil_socket_t fd,
     LOCK(cs_stratum);
     // Parse the return address
     CService from;
-    from.SetSockAddr(address);
+    from.SetSockAddr(address, static_cast<socklen_t>(socklen));
     // Early address-based allow check
     if (!ClientAllowed(stratum_allow_subnets, from)) {
         evconnlistener_free(listener);
@@ -1628,9 +1632,12 @@ void BlockWatcher()
     unsigned int txns_updated_last = 0;
     while (true) {
         {
-            WAIT_LOCK(g_best_block_mutex, lock);
+            // Core 29 moved tip-change signalling from the g_best_block_*
+            // globals into node::KernelNotifications.
+            node::KernelNotifications& notifications = *Assert(g_context->notifications);
+            WAIT_LOCK(notifications.m_tip_block_mutex, lock);
             checktxtime += std::chrono::seconds(15);
-            if (g_best_block_cv.wait_until(lock, checktxtime) == std::cv_status::timeout) {
+            if (notifications.m_tip_block_cv.wait_until(lock, checktxtime) == std::cv_status::timeout) {
                 // Timeout: Check to see if mempool was updated.
                 unsigned int txns_updated_next = g_context->mempool ? g_context->mempool->GetTransactionsUpdated() : txns_updated_last;
                 if (txns_updated_last == txns_updated_next)
@@ -1786,7 +1793,10 @@ void StopStratumServer()
 {
     g_shutdown = true;
     /* Wake up the block watcher thread. */
-    g_best_block_cv.notify_all();
+    if (g_context && g_context->notifications) {
+        LOCK(g_context->notifications->m_tip_block_mutex);
+        g_context->notifications->m_tip_block_cv.notify_all();
+    }
     if (block_watcher_thread.joinable()) {
         block_watcher_thread.join();
     }
