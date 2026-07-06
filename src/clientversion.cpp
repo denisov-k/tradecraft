@@ -1,17 +1,6 @@
-// Copyright (c) 2012-2022 The Freicoin developers
-// Copyright (c) 2011-2024 The Freicoin Developers
-//
-// This program is free software: you can redistribute it and/or modify it under
-// the terms of version 3 of the GNU Affero General Public License as published
-// by the Free Software Foundation.
-//
-// This program is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
-// details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright (c) 2012-2022 The Bitcoin Core developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 
@@ -28,7 +17,7 @@ using util::Join;
 
 /**
  * Name of client reported in the 'version' message. Report the same name
- * for both freicoind and freicoin-qt, to make it harder for attackers to
+ * for both bitcoind and bitcoin-qt, to make it harder for attackers to
  * target servers or GUI users specifically.
  */
 const std::string UA_NAME("Satoshi");
@@ -47,7 +36,7 @@ const std::string UA_NAME("Satoshi");
     #define BUILD_DESC BUILD_GIT_TAG
     #define BUILD_SUFFIX ""
 #else
-    #define BUILD_DESC "v" STRINGIZE(CLIENT_RELEASE_STRING)
+    #define BUILD_DESC "v" CLIENT_VERSION_STRING
     #if CLIENT_VERSION_IS_RELEASE
         #define BUILD_SUFFIX ""
     #elif defined(BUILD_GIT_COMMIT)
@@ -61,13 +50,7 @@ const std::string UA_NAME("Satoshi");
 
 static std::string FormatVersion(int nVersion)
 {
-    if (nVersion % 10000 == 0) {
-        return strprintf("%d", nVersion / 10000);
-    } if (nVersion % 100 == 0) {
-        return strprintf("%d.%d", nVersion / 10000, (nVersion / 100) % 100);
-    } else {
-        return strprintf("%d.%d.%d", nVersion / 10000, (nVersion / 100) % 100, nVersion % 100);
-    }
+    return strprintf("%d.%d.%d", nVersion / 10000, (nVersion / 100) % 100, nVersion % 100);
 }
 
 std::string FormatFullVersion()
@@ -91,16 +74,16 @@ std::string CopyrightHolders(const std::string& strPrefix)
     const auto copyright_devs = strprintf(_(COPYRIGHT_HOLDERS), COPYRIGHT_HOLDERS_SUBSTITUTION).translated;
     std::string strCopyrightHolders = strPrefix + copyright_devs;
 
-    // Make sure Freicoin copyright is not removed by accident
+    // Make sure Bitcoin Core copyright is not removed by accident
     if (copyright_devs.find("Bitcoin Core") == std::string::npos) {
-        strCopyrightHolders += "\n" + strPrefix + "The Freicoin developers";
+        strCopyrightHolders += "\n" + strPrefix + "The Bitcoin Core developers";
     }
     return strCopyrightHolders;
 }
 
 std::string LicenseInfo()
 {
-    const std::string URL_SOURCE_CODE = "<https://github.com/tradecraftio/tradecraft>";
+    const std::string URL_SOURCE_CODE = "<https://github.com/bitcoin/bitcoin>";
 
     return CopyrightHolders(strprintf(_("Copyright (C) %i-%i"), 2009, COPYRIGHT_YEAR).translated + " ") + "\n" +
            "\n" +
@@ -112,7 +95,7 @@ std::string LicenseInfo()
            strprintf(_("The source code is available from %s."), URL_SOURCE_CODE).translated +
            "\n" +
            "\n" +
-           _("This is experimental software.").translated + "\n" +
-           strprintf(_("Distributed under the GNU Affero General Purpose License v3.0, see the accompanying file %s or %s").translated, "COPYING", "<https://www.gnu.org/licenses/agpl-3.0.en.html>") +
+           _("This is experimental software.") + "\n" +
+           strprintf(_("Distributed under the MIT software license, see the accompanying file %s or %s"), "COPYING", "<https://opensource.org/licenses/MIT>").translated +
            "\n";
 }
