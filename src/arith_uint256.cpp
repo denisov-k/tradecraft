@@ -241,11 +241,10 @@ arith_uint256 UintToArith256(const uint256 &a)
     return b;
 }
 
-<<<<<<< v29.0
 // Explicit instantiations for base_uint<6144> (used in test/fuzz/muhash.cpp).
 template base_uint<6144>& base_uint<6144>::operator*=(const base_uint<6144>& b);
 template base_uint<6144>& base_uint<6144>::operator/=(const base_uint<6144>& b);
-=======
+
 // Explicit instantiations for base_uint<320>
 template base_uint<320>& base_uint<320>::operator<<=(unsigned int);
 template base_uint<320>& base_uint<320>::operator>>=(unsigned int);
@@ -279,4 +278,3 @@ bool arith_uint320::TruncateTo256(arith_uint256 &ret)
         bits |= pn[i];
     return !bits;
 }
->>>>>>> tc-28.1

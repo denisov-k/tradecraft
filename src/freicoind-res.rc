@@ -14,17 +14,6 @@ BEGIN
     BEGIN
         BLOCK "040904E4" // U.S. English - multilingual (hex)
         BEGIN
-<<<<<<< v29.0
-            VALUE "CompanyName",        "Bitcoin"
-            VALUE "FileDescription",    "bitcoin-util (CLI Bitcoin utility)"
-            VALUE "FileVersion",        CLIENT_VERSION_STRING
-            VALUE "InternalName",       "bitcoin-util"
-            VALUE "LegalCopyright",     COPYRIGHT_STR
-            VALUE "LegalTrademarks1",   "Distributed under the MIT software license, see the accompanying file COPYING or http://www.opensource.org/licenses/mit-license.php."
-            VALUE "OriginalFilename",   "bitcoin-util.exe"
-            VALUE "ProductName",        "bitcoin-util"
-            VALUE "ProductVersion",     CLIENT_VERSION_STRING
-=======
             VALUE "CompanyName",        "Freicoin"
             VALUE "FileDescription",    "freicoind (Freicoin node with a JSON-RPC server)"
             VALUE "FileVersion",        PACKAGE_VERSION
@@ -34,7 +23,6 @@ BEGIN
             VALUE "OriginalFilename",   "freicoind.exe"
             VALUE "ProductName",        "freicoind"
             VALUE "ProductVersion",     PACKAGE_VERSION
->>>>>>> tc-28.1
         END
     END
 

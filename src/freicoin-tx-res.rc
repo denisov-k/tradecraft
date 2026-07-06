@@ -14,17 +14,6 @@ BEGIN
     BEGIN
         BLOCK "040904E4" // U.S. English - multilingual (hex)
         BEGIN
-<<<<<<< v29.0
-            VALUE "CompanyName",        "Bitcoin"
-            VALUE "FileDescription",    "bitcoin-tx (CLI Bitcoin transaction editor utility)"
-            VALUE "FileVersion",        CLIENT_VERSION_STRING
-            VALUE "InternalName",       "bitcoin-tx"
-            VALUE "LegalCopyright",     COPYRIGHT_STR
-            VALUE "LegalTrademarks1",   "Distributed under the MIT software license, see the accompanying file COPYING or http://www.opensource.org/licenses/mit-license.php."
-            VALUE "OriginalFilename",   "bitcoin-tx.exe"
-            VALUE "ProductName",        "bitcoin-tx"
-            VALUE "ProductVersion",     CLIENT_VERSION_STRING
-=======
             VALUE "CompanyName",        "Freicoin"
             VALUE "FileDescription",    "freicoin-tx (CLI Freicoin transaction editor utility)"
             VALUE "FileVersion",        PACKAGE_VERSION
@@ -34,7 +23,6 @@ BEGIN
             VALUE "OriginalFilename",   "freicoin-tx.exe"
             VALUE "ProductName",        "freicoin-tx"
             VALUE "ProductVersion",     PACKAGE_VERSION
->>>>>>> tc-28.1
         END
     END
 
