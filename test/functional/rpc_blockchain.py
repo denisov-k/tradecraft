@@ -417,11 +417,11 @@ class BlockchainTest(FreicoinTestFramework):
         self.log.info("Validating gettxout RPC response")
         node = self.nodes[0]
 
-        # Get the best block hash and the block, which
-        # should only include the coinbase transaction.
+        # Get the best block hash and the block, which should include the
+        # coinbase transaction and (Freicoin) the block-final transaction.
         best_block_hash = node.getbestblockhash()
         block = node.getblock(best_block_hash)
-        assert_equal(block['nTx'], 1)
+        assert_equal(block['nTx'], 2)
 
         # Get the transaction ID of the coinbase tx and
         # the transaction output.
