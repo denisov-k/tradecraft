@@ -1,6 +1,17 @@
 // Copyright (c) 2020 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
@@ -25,18 +36,12 @@ FUZZ_TARGET(script_interpreter)
             const CTransaction tx_to{*mtx};
             const unsigned int in = fuzzed_data_provider.ConsumeIntegral<unsigned int>();
             if (in < tx_to.vin.size()) {
-                auto n_hash_type = fuzzed_data_provider.ConsumeIntegral<int>();
-                auto amount = ConsumeMoney(fuzzed_data_provider);
-                auto sigversion = fuzzed_data_provider.PickValueInArray({SigVersion::BASE, SigVersion::WITNESS_V0});
-                (void)SignatureHash(script_code, tx_to, in, n_hash_type, amount, sigversion, nullptr);
+                (void)SignatureHash(script_code, tx_to, in, fuzzed_data_provider.ConsumeIntegral<int>(), ConsumeMoney(fuzzed_data_provider), fuzzed_data_provider.ConsumeIntegral<uint32_t>(), fuzzed_data_provider.PickValueInArray({SigVersion::BASE, SigVersion::WITNESS_V0}), nullptr);
                 const std::optional<CMutableTransaction> mtx_precomputed = ConsumeDeserializable<CMutableTransaction>(fuzzed_data_provider, TX_WITH_WITNESS);
                 if (mtx_precomputed) {
                     const CTransaction tx_precomputed{*mtx_precomputed};
                     const PrecomputedTransactionData precomputed_transaction_data{tx_precomputed};
-                    n_hash_type = fuzzed_data_provider.ConsumeIntegral<int>();
-                    amount = ConsumeMoney(fuzzed_data_provider);
-                    sigversion = fuzzed_data_provider.PickValueInArray({SigVersion::BASE, SigVersion::WITNESS_V0});
-                    (void)SignatureHash(script_code, tx_to, in, n_hash_type, amount, sigversion, &precomputed_transaction_data);
+                    (void)SignatureHash(script_code, tx_to, in, fuzzed_data_provider.ConsumeIntegral<int>(), ConsumeMoney(fuzzed_data_provider), fuzzed_data_provider.ConsumeIntegral<uint32_t>(), fuzzed_data_provider.PickValueInArray({SigVersion::BASE, SigVersion::WITNESS_V0}), &precomputed_transaction_data);
                 }
             }
         }

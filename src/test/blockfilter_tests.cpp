@@ -1,6 +1,17 @@
 // Copyright (c) 2018-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <test/data/blockfilters.json.h>
 #include <test/util/setup_common.h>
@@ -95,9 +106,9 @@ BOOST_AUTO_TEST_CASE(blockfilter_basic_test)
 
     CBlockUndo block_undo;
     block_undo.vtxundo.emplace_back();
-    block_undo.vtxundo.back().vprevout.emplace_back(CTxOut(500, included_scripts[3]), 1000, true);
-    block_undo.vtxundo.back().vprevout.emplace_back(CTxOut(600, included_scripts[4]), 10000, false);
-    block_undo.vtxundo.back().vprevout.emplace_back(CTxOut(700, excluded_scripts[3]), 100000, false);
+    block_undo.vtxundo.back().vprevout.emplace_back(CTxOut(500, included_scripts[3]), 0, 1000, true);
+    block_undo.vtxundo.back().vprevout.emplace_back(CTxOut(600, included_scripts[4]), 0, 10000, false);
+    block_undo.vtxundo.back().vprevout.emplace_back(CTxOut(700, excluded_scripts[3]), 0, 100000, false);
 
     BlockFilter block_filter(BlockFilterType::BASIC, block, block_undo);
     const GCSFilter& filter = block_filter.GetFilter();
@@ -161,7 +172,7 @@ BOOST_AUTO_TEST_CASE(blockfilters_json_test)
         for (unsigned int ii = 0; ii < prev_scripts.size(); ii++) {
             std::vector<unsigned char> raw_script = ParseHex(prev_scripts[ii].get_str());
             CTxOut txout(0, CScript(raw_script.begin(), raw_script.end()));
-            tx_undo.vprevout.emplace_back(txout, 0, false);
+            tx_undo.vprevout.emplace_back(txout, 0, 0, false);
         }
 
         uint256 prev_filter_header_basic{*Assert(uint256::FromHex(test[pos++].get_str()))};

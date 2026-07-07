@@ -1,7 +1,19 @@
 // Copyright (c) 2020-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include <chainparams.h>
 #include <coins.h>
 #include <consensus/amount.h>
 #include <consensus/tx_check.h>
@@ -148,7 +160,7 @@ FUZZ_TARGET(coins_view, .init = initialize_coins_view)
                 bool expected_code_path = false;
                 try {
                     auto cursor{CoinsViewCacheCursor(usage, sentinel, coins_map, /*will_erase=*/true)};
-                    coins_view_cache.BatchWrite(cursor, fuzzed_data_provider.ConsumeBool() ? ConsumeUInt256(fuzzed_data_provider) : coins_view_cache.GetBestBlock());
+                    coins_view_cache.BatchWrite(cursor, fuzzed_data_provider.ConsumeBool() ? ConsumeUInt256(fuzzed_data_provider) : coins_view_cache.GetBestBlock(), fuzzed_data_provider.ConsumeBool() ? BlockFinalTxEntry(Txid::FromUint256(ConsumeUInt256(fuzzed_data_provider)), 1) : coins_view_cache.GetFinalTx());
                     expected_code_path = true;
                 } catch (const std::logic_error& e) {
                     if (e.what() == std::string{"FRESH flag misapplied to coin that exists in parent cache"}) {
@@ -215,7 +227,7 @@ FUZZ_TARGET(coins_view, .init = initialize_coins_view)
                 const CTransaction transaction{random_mutable_transaction};
                 bool is_spent = false;
                 for (const CTxOut& tx_out : transaction.vout) {
-                    if (Coin{tx_out, 0, transaction.IsCoinBase()}.IsSpent()) {
+                    if (Coin{tx_out, 0, 0, transaction.IsCoinBase()}.IsSpent()) {
                         is_spent = true;
                     }
                 }
@@ -251,11 +263,11 @@ FUZZ_TARGET(coins_view, .init = initialize_coins_view)
                     return;
                 }
                 TxValidationState dummy;
-                if (!CheckTransaction(transaction, dummy)) {
+                if (!CheckTransaction(transaction, dummy, Consensus::NONE)) {
                     // It is not allowed to call CheckTxInputs if CheckTransaction failed
                     return;
                 }
-                if (Consensus::CheckTxInputs(transaction, state, coins_view_cache, fuzzed_data_provider.ConsumeIntegralInRange<int>(0, std::numeric_limits<int>::max()), tx_fee_out)) {
+                if (Consensus::CheckTxInputs(transaction, state, coins_view_cache, Params().GetConsensus(), fuzzed_data_provider.ConsumeIntegralInRange<size_t>(0, transaction.vin.size() + 1), fuzzed_data_provider.ConsumeIntegralInRange<int>(0, std::numeric_limits<int>::max()), Consensus::NONE, tx_fee_out)) {
                     assert(MoneyRange(tx_fee_out));
                 }
             },

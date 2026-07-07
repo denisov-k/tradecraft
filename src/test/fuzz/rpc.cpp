@@ -1,13 +1,24 @@
 // Copyright (c) 2021-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <base58.h>
 #include <key.h>
 #include <key_io.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
-#include <psbt.h>
+#include <pst.h>
 #include <rpc/client.h>
 #include <rpc/request.h>
 #include <rpc/server.h>
@@ -92,25 +103,26 @@ const std::vector<std::string> RPC_COMMANDS_NOT_SAFE_FOR_FUZZING{
 
 // RPC commands which are safe for fuzzing.
 const std::vector<std::string> RPC_COMMANDS_SAFE_FOR_FUZZING{
-    "analyzepsbt",
+    "analyzepst",
     "clearbanned",
-    "combinepsbt",
+    "combinepst",
     "combinerawtransaction",
-    "converttopsbt",
+    "converttopst",
+    "createmerkleproof",
     "createmultisig",
-    "createpsbt",
+    "createpst",
     "createrawtransaction",
-    "decodepsbt",
+    "decodepst",
     "decoderawtransaction",
     "decodescript",
     "deriveaddresses",
-    "descriptorprocesspsbt",
+    "descriptorprocesspst",
     "disconnectnode",
     "echo",
     "echojson",
     "estimaterawfee",
     "estimatesmartfee",
-    "finalizepsbt",
+    "finalizepst",
     "generate",
     "generateblock",
     "getaddednodeinfo",
@@ -147,6 +159,7 @@ const std::vector<std::string> RPC_COMMANDS_SAFE_FOR_FUZZING{
     "getorphantxs",
     "getpeerinfo",
     "getprioritisedtransactions",
+    "getstratuminfo",
     "getrawaddrman",
     "getrawmempool",
     "getrawtransaction",
@@ -156,7 +169,7 @@ const std::vector<std::string> RPC_COMMANDS_SAFE_FOR_FUZZING{
     "gettxspendingprevout",
     "help",
     "invalidateblock",
-    "joinpsbts",
+    "joinpsts",
     "listbanned",
     "logging",
     "mockscheduler",
@@ -179,7 +192,7 @@ const std::vector<std::string> RPC_COMMANDS_SAFE_FOR_FUZZING{
     "syncwithvalidationinterfacequeue",
     "testmempoolaccept",
     "uptime",
-    "utxoupdatepsbt",
+    "utxoupdatepst",
     "validateaddress",
     "verifychain",
     "verifymessage",
@@ -287,14 +300,14 @@ std::string ConsumeScalarRPCArgument(FuzzedDataProvider& fuzzed_data_provider, b
             r = HexStr(data_stream);
         },
         [&] {
-            // base64 encoded psbt
-            std::optional<PartiallySignedTransaction> opt_psbt = ConsumeDeserializable<PartiallySignedTransaction>(fuzzed_data_provider);
-            if (!opt_psbt) {
+            // base64 encoded pst
+            std::optional<PartiallySignedTransaction> opt_pst = ConsumeDeserializable<PartiallySignedTransaction>(fuzzed_data_provider);
+            if (!opt_pst) {
                 good_data = false;
                 return;
             }
             DataStream data_stream{};
-            data_stream << *opt_psbt;
+            data_stream << *opt_pst;
             r = EncodeBase64(data_stream);
         },
         [&] {

@@ -1,6 +1,17 @@
 // Copyright (c) 2012-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <net_permissions.h>
 #include <netaddress.h>
@@ -84,20 +95,20 @@ bool static TestSplitHost(const std::string& test, const std::string& host, uint
 
 BOOST_AUTO_TEST_CASE(netbase_splithost)
 {
-    BOOST_CHECK(TestSplitHost("www.bitcoincore.org", "www.bitcoincore.org", 0));
-    BOOST_CHECK(TestSplitHost("[www.bitcoincore.org]", "www.bitcoincore.org", 0));
-    BOOST_CHECK(TestSplitHost("www.bitcoincore.org:80", "www.bitcoincore.org", 80));
-    BOOST_CHECK(TestSplitHost("[www.bitcoincore.org]:80", "www.bitcoincore.org", 80));
+    BOOST_CHECK(TestSplitHost("www.freico.in", "www.freico.in", 0));
+    BOOST_CHECK(TestSplitHost("[www.freico.in]", "www.freico.in", 0));
+    BOOST_CHECK(TestSplitHost("www.freico.in:80", "www.freico.in", 80));
+    BOOST_CHECK(TestSplitHost("[www.freico.in]:80", "www.freico.in", 80));
     BOOST_CHECK(TestSplitHost("127.0.0.1", "127.0.0.1", 0));
-    BOOST_CHECK(TestSplitHost("127.0.0.1:8333", "127.0.0.1", 8333));
+    BOOST_CHECK(TestSplitHost("127.0.0.1:8639", "127.0.0.1", 8639));
     BOOST_CHECK(TestSplitHost("[127.0.0.1]", "127.0.0.1", 0));
-    BOOST_CHECK(TestSplitHost("[127.0.0.1]:8333", "127.0.0.1", 8333));
+    BOOST_CHECK(TestSplitHost("[127.0.0.1]:8639", "127.0.0.1", 8639));
     BOOST_CHECK(TestSplitHost("::ffff:127.0.0.1", "::ffff:127.0.0.1", 0));
-    BOOST_CHECK(TestSplitHost("[::ffff:127.0.0.1]:8333", "::ffff:127.0.0.1", 8333));
-    BOOST_CHECK(TestSplitHost("[::]:8333", "::", 8333));
-    BOOST_CHECK(TestSplitHost("::8333", "::8333", 0));
-    BOOST_CHECK(TestSplitHost(":8333", "", 8333));
-    BOOST_CHECK(TestSplitHost("[]:8333", "", 8333));
+    BOOST_CHECK(TestSplitHost("[::ffff:127.0.0.1]:8639", "::ffff:127.0.0.1", 8639));
+    BOOST_CHECK(TestSplitHost("[::]:8639", "::", 8639));
+    BOOST_CHECK(TestSplitHost("::8639", "::8639", 0));
+    BOOST_CHECK(TestSplitHost(":8639", "", 8639));
+    BOOST_CHECK(TestSplitHost("[]:8639", "", 8639));
     BOOST_CHECK(TestSplitHost("", "", 0));
     BOOST_CHECK(TestSplitHost(":65535", "", 65535));
     BOOST_CHECK(TestSplitHost(":65536", ":65536", 0, false));
@@ -113,9 +124,9 @@ BOOST_AUTO_TEST_CASE(netbase_splithost)
     BOOST_CHECK(TestSplitHost("127.0.0.1:", "127.0.0.1:", 0, false));
     BOOST_CHECK(TestSplitHost("127.0.0.1:1/2", "127.0.0.1:1/2", 0, false));
     BOOST_CHECK(TestSplitHost("127.0.0.1:1E2", "127.0.0.1:1E2", 0, false));
-    BOOST_CHECK(TestSplitHost("www.bitcoincore.org:65536", "www.bitcoincore.org:65536", 0, false));
-    BOOST_CHECK(TestSplitHost("www.bitcoincore.org:0", "www.bitcoincore.org", 0, false));
-    BOOST_CHECK(TestSplitHost("www.bitcoincore.org:", "www.bitcoincore.org:", 0, false));
+    BOOST_CHECK(TestSplitHost("www.freico.in:65536", "www.freico.in:65536", 0, false));
+    BOOST_CHECK(TestSplitHost("www.freico.in:0", "www.freico.in", 0, false));
+    BOOST_CHECK(TestSplitHost("www.freico.in:", "www.freico.in:", 0, false));
 }
 
 bool static TestParse(std::string src, std::string canon)
@@ -127,10 +138,10 @@ bool static TestParse(std::string src, std::string canon)
 BOOST_AUTO_TEST_CASE(netbase_lookupnumeric)
 {
     BOOST_CHECK(TestParse("127.0.0.1", "127.0.0.1:65535"));
-    BOOST_CHECK(TestParse("127.0.0.1:8333", "127.0.0.1:8333"));
+    BOOST_CHECK(TestParse("127.0.0.1:8639", "127.0.0.1:8639"));
     BOOST_CHECK(TestParse("::ffff:127.0.0.1", "127.0.0.1:65535"));
     BOOST_CHECK(TestParse("::", "[::]:65535"));
-    BOOST_CHECK(TestParse("[::]:8333", "[::]:8333"));
+    BOOST_CHECK(TestParse("[::]:8639", "[::]:8639"));
     BOOST_CHECK(TestParse("[127.0.0.1]", "127.0.0.1:65535"));
     BOOST_CHECK(TestParse(":::", "[::]:0"));
 
@@ -601,7 +612,7 @@ BOOST_AUTO_TEST_CASE(isbadport)
 
     BOOST_CHECK(!IsBadPort(80));
     BOOST_CHECK(!IsBadPort(443));
-    BOOST_CHECK(!IsBadPort(8333));
+    BOOST_CHECK(!IsBadPort(8639));
 
     // Check all ports, there must be 80 bad ports in total.
     size_t total_bad_ports{0};

@@ -1,6 +1,17 @@
 // Copyright (c) 2020-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <addrdb.h>
 #include <addrman.h>
@@ -95,7 +106,7 @@ void FillAddrman(AddrMan& addrman, FuzzedDataProvider& fuzzed_data_provider)
         const size_t num_addresses = fast_random_context.randrange(500) + 1; // [1..500]
 
         for (size_t j = 0; j < num_addresses; ++j) {
-            const auto addr = CAddress{CService{RandAddr(fuzzed_data_provider, fast_random_context), 8333}, NODE_NETWORK};
+            const auto addr = CAddress{CService{RandAddr(fuzzed_data_provider, fast_random_context), 8639}, NODE_NETWORK};
             const std::chrono::seconds time_penalty{fast_random_context.randrange(100000001)};
             addrman.Add({addr}, source, time_penalty);
 

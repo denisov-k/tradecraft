@@ -1,6 +1,17 @@
 // Copyright (c) 2021-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <chain.h>
 #include <chainparams.h>
@@ -92,8 +103,9 @@ void utxo_snapshot_fuzz(FuzzBufferType buffer)
             auto msg_start = chainman.GetParams().MessageStart();
             int base_blockheight{fuzzed_data_provider.ConsumeIntegralInRange<int>(1, 2 * COINBASE_MATURITY)};
             uint256 base_blockhash{g_chain->at(base_blockheight - 1)->GetHash()};
+            BlockFinalTxEntry final_tx(Txid::FromUint256(base_blockhash), 1);
             uint64_t m_coins_count{fuzzed_data_provider.ConsumeIntegralInRange<uint64_t>(1, 3 * COINBASE_MATURITY)};
-            SnapshotMetadata metadata{msg_start, base_blockhash, m_coins_count};
+            SnapshotMetadata metadata{msg_start, base_blockhash, final_tx, m_coins_count};
             outfile << metadata;
         }
         // Coins
@@ -107,7 +119,7 @@ void utxo_snapshot_fuzz(FuzzBufferType buffer)
                 outfile << coinbase->GetHash();
                 WriteCompactSize(outfile, 1); // number of coins for the hash
                 WriteCompactSize(outfile, 0); // index of coin
-                outfile << Coin(coinbase->vout[0], height, /*fCoinBaseIn=*/1);
+                outfile << Coin(coinbase->vout[0], coinbase->lock_height, height, /*fCoinBaseIn=*/1);
                 height++;
             }
         }
@@ -119,7 +131,7 @@ void utxo_snapshot_fuzz(FuzzBufferType buffer)
             outfile << coinbase->GetHash();
             WriteCompactSize(outfile, 1);   // number of coins for the hash
             WriteCompactSize(outfile, 999); // index of coin
-            outfile << Coin{coinbase->vout[0], /*nHeightIn=*/999, /*fCoinBaseIn=*/0};
+            outfile << Coin{coinbase->vout[0], coinbase->lock_height, /*nHeightIn=*/999, /*fCoinBaseIn=*/0};
         }
     }
 

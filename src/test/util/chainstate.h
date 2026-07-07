@@ -1,9 +1,20 @@
 // Copyright (c) 2021-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
 //
-#ifndef BITCOIN_TEST_UTIL_CHAINSTATE_H
-#define BITCOIN_TEST_UTIL_CHAINSTATE_H
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+#ifndef FREICOIN_TEST_UTIL_CHAINSTATE_H
+#define FREICOIN_TEST_UTIL_CHAINSTATE_H
 
 #include <clientversion.h>
 #include <logging.h>
@@ -73,6 +84,7 @@ CreateAndActivateUTXOSnapshot(
             LOCK(::cs_main);
             CBlockIndex *orig_tip = node.chainman->ActiveChainstate().m_chain.Tip();
             uint256 gen_hash = node.chainman->ActiveChainstate().m_chain[0]->GetBlockHash();
+            BlockFinalTxEntry finaltx = node.chainman->ActiveChainstate().CoinsTip().GetFinalTx();
             node.chainman->ResetChainstates();
             node.chainman->InitializeChainstate(node.mempool.get());
             Chainstate& chain = node.chainman->ActiveChainstate();
@@ -81,6 +93,7 @@ CreateAndActivateUTXOSnapshot(
             chain.InitCoinsDB(1 << 20, true, false, "");
             chain.InitCoinsCache(1 << 20);
             chain.CoinsTip().SetBestBlock(gen_hash);
+            chain.CoinsTip().SetFinalTx(finaltx);
             chain.setBlockIndexCandidates.insert(node.chainman->m_blockman.LookupBlockIndex(gen_hash));
             chain.LoadChainTip();
             node.chainman->MaybeRebalanceCaches();
@@ -132,4 +145,4 @@ CreateAndActivateUTXOSnapshot(
 }
 
 
-#endif // BITCOIN_TEST_UTIL_CHAINSTATE_H
+#endif // FREICOIN_TEST_UTIL_CHAINSTATE_H

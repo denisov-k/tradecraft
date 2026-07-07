@@ -1,6 +1,17 @@
 // Copyright (c) 2020-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 #include <chainparams.h>
 #include <consensus/validation.h>
@@ -77,9 +88,9 @@ BOOST_FIXTURE_TEST_CASE(chainstate_update_tip, TestChain100Setup)
     }};
     uint256 curr_tip = get_notify_tip();
 
-    // Mine 10 more blocks, putting at us height 110 where a valid assumeutxo value can
+    // Mine 9 more blocks, putting at us height 110 where a valid assumeutxo value can
     // be found.
-    mineBlocks(10);
+    mineBlocks(9);
 
     // After adding some blocks to the tip, best block should have changed.
     BOOST_CHECK(get_notify_tip() != curr_tip);

@@ -1,14 +1,26 @@
 // Copyright (c) 2021-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#include <test/util/setup_common.h>
+
 #include <common/system.h>
 #include <policy/rbf.h>
 #include <random.h>
 #include <test/util/txmempool.h>
 #include <txmempool.h>
 #include <util/time.h>
-
-#include <test/util/setup_common.h>
 
 #include <boost/test/unit_test.hpp>
 #include <optional>
@@ -310,8 +322,8 @@ BOOST_FIXTURE_TEST_CASE(rbf_helper_functions, TestChain100Setup)
 
     // Tests for CheckConflictTopology
 
-    // Tx4 has 23 descendants
-    BOOST_CHECK_EQUAL(pool.CheckConflictTopology(set_34_cpfp).value(), strprintf("%s has 23 descendants, max 1 allowed", entry4_high->GetSharedTx()->GetHash().ToString()));
+    // Tx3 has 24 descendants
+    BOOST_CHECK_EQUAL(pool.CheckConflictTopology(set_34_cpfp).value(), strprintf("%s has 24 descendants, max 1 allowed", entry3_low->GetSharedTx()->GetHash().ToString()));
 
     // No descendants yet
     BOOST_CHECK(pool.CheckConflictTopology({entry9_unchained}) == std::nullopt);
@@ -390,7 +402,7 @@ BOOST_FIXTURE_TEST_CASE(improves_feerate, TestChain100Setup)
     BOOST_CHECK(res1.value().first == DiagramCheckError::FAILURE);
     BOOST_CHECK(res1.value().second == "insufficient feerate: does not improve feerate diagram");
 
-    // With one more satoshi it does
+    // With one more kria it does
     changeset.reset();
     changeset = pool.GetChangeSet();
     changeset->StageRemoval(entry1);
@@ -536,7 +548,15 @@ BOOST_FIXTURE_TEST_CASE(calc_feerate_diagram_rbf, TestChain100Setup)
         changeset->StageAddition(replacement_tx, high_fee, 0, 1, 0, false, 4, LockPoints());
         const auto replace_too_large{changeset->CalculateChunksForRBF()};
         BOOST_CHECK(!replace_too_large.has_value());
-        BOOST_CHECK_EQUAL(util::ErrorString(replace_too_large).original, strprintf("%s has 2 ancestors, max 1 allowed", normal_tx->GetHash().GetHex()));
+        // Which topology violation is reported first depends on the txid sort
+        // order of the conflict set, which differs from upstream because
+        // Freicoin txids commit to lock_height. Both diagnostics describe the
+        // same invalid 3-tx cluster.
+        const std::string topo_err{util::ErrorString(replace_too_large).original};
+        BOOST_CHECK_MESSAGE(
+            topo_err == strprintf("%s has 2 ancestors, max 1 allowed", normal_tx->GetHash().GetHex()) ||
+            topo_err == strprintf("%s has both ancestor and descendant, exceeding cluster limit of 2", high_tx->GetHash().GetHex()),
+            topo_err);
     }
 
     // Make a size 2 cluster that is itself two chunks; evict both txns

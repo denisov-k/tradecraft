@@ -50,7 +50,7 @@ static void MempoolCheckEphemeralSpends(benchmark::Bench& bench)
     for (size_t i = 0; i < tx1.vout.size(); i++) {
         tx1.vout[i].scriptPubKey = CScript();
         // Each output progressively larger
-        tx1.vout[i].nValue = i * CENT;
+        tx1.vout[i].SetReferenceValue(i * CENT);
     }
 
     const auto& parent_txid = tx1.GetHash();
