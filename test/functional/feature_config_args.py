@@ -56,7 +56,7 @@ class ConfArgsTest(FreicoinTestFramework):
 
     def test_dir_config(self):
         self.log.info('Error should be emitted if config file is a directory')
-        conf_path = self.nodes[0].datadir_path / 'bitcoin.conf'
+        conf_path = self.nodes[0].datadir_path / 'freicoin.conf'
         os.rename(conf_path, conf_path.with_suffix('.confbkp'))
         conf_path.mkdir()
         self.stop_node(0)
@@ -80,7 +80,7 @@ class ConfArgsTest(FreicoinTestFramework):
     def test_negated_config(self):
         self.log.info('Disabling configuration via -noconf')
 
-        conf_path = self.nodes[0].datadir_path / 'bitcoin.conf'
+        conf_path = self.nodes[0].datadir_path / 'freicoin.conf'
         with open(conf_path, encoding='utf-8') as conf:
             settings = [f'-{line.rstrip()}' for line in conf if len(line) > 1 and line[0] != '[']
         os.rename(conf_path, conf_path.with_suffix('.confbkp'))
@@ -95,7 +95,7 @@ class ConfArgsTest(FreicoinTestFramework):
 
         self.log.debug('Verifying that disabling of the config file means garbage inside of it does ' \
             'not prevent the node from starting, and message about existing config file is logged')
-        ignored_file_message = [f'[InitConfig] Data directory "{self.nodes[0].datadir_path}" contains a "bitcoin.conf" file which is explicitly ignored using -noconf.']
+        ignored_file_message = [f'[InitConfig] Data directory "{self.nodes[0].datadir_path}" contains a "freicoin.conf" file which is explicitly ignored using -noconf.']
         with self.nodes[0].assert_debug_log(timeout=60, expected_msgs=ignored_file_message):
             self.start_node(0, extra_args=settings + ['-noconf'])
         self.stop_node(0)

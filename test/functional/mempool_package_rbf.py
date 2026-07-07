@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import re
 from decimal import Decimal
 
 from test_framework.messages import (
@@ -48,6 +49,20 @@ class PackageRBFTest(FreicoinTestFramework):
             "-datacarriersize=100000",
             "-maxmempool=5",
         ]] * self.num_nodes
+
+    def assert_topology_violation(self, package_result):
+        """Check that package RBF failed due to an invalid cluster topology.
+
+        Which member of the invalid cluster is reported first depends on the
+        txid sort order of the conflict set, which differs from upstream
+        because Freicoin txids commit to lock_height. All the diagnostics
+        below describe the same class of failure."""
+        assert re.fullmatch(
+            r"package RBF failed: [0-9a-f]{64} ("
+            r"has \d+ (ancestors|descendants), max 1 allowed"
+            r"|has both ancestor and descendant, exceeding cluster limit of 2"
+            r"|is not the only (parent of child|child of parent) [0-9a-f]{64})",
+            package_result["package_msg"]), package_result["package_msg"]
 
     def assert_mempool_contents(self, expected=None):
         mempool_util.assert_mempool_contents(self, self.nodes[0], expected, sync=False)
@@ -344,15 +359,15 @@ class PackageRBFTest(FreicoinTestFramework):
         package_hex1, _package_txns1 = self.create_simple_package(coin1, DEFAULT_FEE, DEFAULT_CHILD_FEE)
 
         package_result = node.submitpackage(package_hex1)
-        assert_equal(f"package RBF failed: {parent_result['tx'].rehash()} has 2 descendants, max 1 allowed", package_result["package_msg"])
+        self.assert_topology_violation(package_result)
 
         package_hex2, _package_txns2 = self.create_simple_package(coin2, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex2)
-        assert_equal(f"package RBF failed: {child_result['tx'].rehash()} has both ancestor and descendant, exceeding cluster limit of 2", package_result["package_msg"])
+        self.assert_topology_violation(package_result)
 
         package_hex3, _package_txns3 = self.create_simple_package(coin3, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex3)
-        assert_equal(f"package RBF failed: {grandchild_result['tx'].rehash()} has 2 ancestors, max 1 allowed", package_result["package_msg"])
+        self.assert_topology_violation(package_result)
 
         # Check that replacements were actually rejected
         self.assert_mempool_contents(expected=expected_txns)
@@ -396,15 +411,15 @@ class PackageRBFTest(FreicoinTestFramework):
         # Now make conflicting packages for each coin
         package_hex1, _package_txns1 = self.create_simple_package(coin1, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex1)
-        assert_equal(f"package RBF failed: {child_result['tx'].rehash()} has 2 ancestors, max 1 allowed", package_result["package_msg"])
+        self.assert_topology_violation(package_result)
 
         package_hex2, _package_txns2 = self.create_simple_package(coin2, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex2)
-        assert_equal(f"package RBF failed: {child_result['tx'].rehash()} has 2 ancestors, max 1 allowed", package_result["package_msg"])
+        self.assert_topology_violation(package_result)
 
         package_hex3, _package_txns3 = self.create_simple_package(coin3, DEFAULT_FEE, DEFAULT_CHILD_FEE)
         package_result = node.submitpackage(package_hex3)
-        assert_equal(f"package RBF failed: {child_result['tx'].rehash()} has 2 ancestors, max 1 allowed", package_result["package_msg"])
+        self.assert_topology_violation(package_result)
 
         # Check that replacements were actually rejected
         self.assert_mempool_contents(expected=expected_txns)

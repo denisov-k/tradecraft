@@ -45,7 +45,7 @@ class EphemeralDustTest(FreicoinTestFramework):
             new_utxo["txid"] = new_txid
             new_utxo["wtxid"] = result["tx"].getwtxid()
 
-        result["new_utxos"].append({"txid": new_txid, "vout": len(result["tx"].vout) - 1, "value": Decimal(output_value) / COIN, "height": 0, "coinbase": False, "confirmations": 0})
+        result["new_utxos"].append({"txid": new_txid, "vout": len(result["tx"].vout) - 1, "value": Decimal(output_value) / COIN, "refheight": result["tx"].lock_height, "height": 0, "coinbase": False, "confirmations": 0})
 
     def create_ephemeral_dust_package(self, *, tx_version, dust_tx_fee=0, dust_value=0, num_dust_outputs=1, extra_sponsors=None):
         """Creates a 1P1C package containing ephemeral dust. By default, the parent transaction

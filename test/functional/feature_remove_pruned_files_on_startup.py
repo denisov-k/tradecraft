@@ -18,6 +18,7 @@
 import platform
 import os
 from test_framework.test_framework import FreicoinTestFramework
+from test_framework.util import assert_equal
 
 class FeatureRemovePrunedFilesOnStartupTest(FreicoinTestFramework):
     def set_test_params(self):

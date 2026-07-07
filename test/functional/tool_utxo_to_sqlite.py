@@ -25,7 +25,7 @@ from test_framework.script_util import (
     PAY_TO_ANCHOR,
     key_to_p2pk_script,
     key_to_p2pkh_script,
-    key_to_p2wpkh_script,
+    key_to_p2wpk_script,
     keys_to_multisig_script,
     output_key_to_p2tr_script,
     script_to_p2sh_script,
@@ -84,7 +84,7 @@ class UtxoToSqliteTest(FreicoinTestFramework):
 
                 keys_to_multisig_script([pubkey]*i),
                 keys_to_multisig_script([uncompressed_pubkey]*i),
-                key_to_p2wpkh_script(pubkey),
+                key_to_p2wpk_script(pubkey),
                 script_to_p2wsh_script(key_to_p2pkh_script(pubkey)),
                 output_key_to_p2tr_script(pubkey[1:]),
                 PAY_TO_ANCHOR,
