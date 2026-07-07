@@ -1,9 +1,20 @@
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_NETBASE_H
-#define BITCOIN_NETBASE_H
+#ifndef FREICOIN_NETBASE_H
+#define FREICOIN_NETBASE_H
 
 #include <compat/compat.h>
 #include <netaddress.h>
@@ -235,7 +246,7 @@ std::optional<CNetAddr> LookupHost(const std::string& name, bool fAllowLookup, D
  * @param name    The string representing a service. Could be a name or a
  *                numerical IP address (IPv6 addresses should be in their
  *                disambiguated bracketed form), optionally followed by a uint16_t port
- *                number. (e.g. example.com:8333 or
+ *                number. (e.g. example.com:8639 or
  *                [2001:db8:85a3:8d3:1319:8a2e:370:7348]:420)
  * @param portDefault The default port for resulting services if not specified
  *                    by the service string.
@@ -362,4 +373,4 @@ bool IsBadPort(uint16_t port);
  */
 CService MaybeFlipIPv6toCJDNS(const CService& service);
 
-#endif // BITCOIN_NETBASE_H
+#endif // FREICOIN_NETBASE_H
