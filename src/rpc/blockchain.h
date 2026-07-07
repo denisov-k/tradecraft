@@ -1,9 +1,20 @@
-// Copyright (c) 2017-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2017-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_RPC_BLOCKCHAIN_H
-#define BITCOIN_RPC_BLOCKCHAIN_H
+#ifndef FREICOIN_RPC_BLOCKCHAIN_H
+#define FREICOIN_RPC_BLOCKCHAIN_H
 
 #include <consensus/amount.h>
 #include <core_io.h>
@@ -35,6 +46,17 @@ static constexpr int NUM_GETBLOCKSTATS_PERCENTILES = 5;
  */
 double GetDifficulty(const CBlockIndex& blockindex);
 
+/**
+ * Get the merge-mining difficulty of the net wrt to the given block index.
+ *
+ * @return A floating point number that is a multiple of the main net minimum
+ * difficulty (4295032833 hashes).
+ */
+double GetAuxiliaryDifficulty(const CBlockIndex& blockindex);
+
+/** Callback for when block tip changed. */
+void RPCNotifyBlockChange(const CBlockIndex*);
+
 /** Block description to JSON */
 UniValue blockToJSON(node::BlockManager& blockman, const CBlock& block, const CBlockIndex& tip, const CBlockIndex& blockindex, TxVerbosity verbosity, const uint256 pow_limit) LOCKS_EXCLUDED(cs_main);
 
@@ -59,4 +81,4 @@ UniValue CreateUTXOSnapshot(
 std::optional<int> GetPruneHeight(const node::BlockManager& blockman, const CChain& chain) EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 void CheckBlockDataAvailability(node::BlockManager& blockman, const CBlockIndex& blockindex, bool check_for_undo) EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
-#endif // BITCOIN_RPC_BLOCKCHAIN_H
+#endif // FREICOIN_RPC_BLOCKCHAIN_H

@@ -1,9 +1,20 @@
 // Copyright (c) 2017-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_RPC_RAWTRANSACTION_UTIL_H
-#define BITCOIN_RPC_RAWTRANSACTION_UTIL_H
+#ifndef FREICOIN_RPC_RAWTRANSACTION_UTIL_H
+#define FREICOIN_RPC_RAWTRANSACTION_UTIL_H
 
 #include <addresstype.h>
 #include <consensus/amount.h>
@@ -53,6 +64,6 @@ std::vector<std::pair<CTxDestination, CAmount>> ParseOutputs(const UniValue& out
 void AddOutputs(CMutableTransaction& rawTx, const UniValue& outputs_in);
 
 /** Create a transaction from univalue parameters */
-CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, std::optional<bool> rbf, const uint32_t version);
+CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, const UniValue& lockheight, int current_height, std::optional<bool> rbf, const uint32_t version);
 
-#endif // BITCOIN_RPC_RAWTRANSACTION_UTIL_H
+#endif // FREICOIN_RPC_RAWTRANSACTION_UTIL_H

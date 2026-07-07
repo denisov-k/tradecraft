@@ -1,6 +1,17 @@
-// Copyright (c) 2017-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2017-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 
@@ -35,8 +46,8 @@
 #include <tuple>
 #include <utility>
 
-using common::PSBTError;
-using common::PSBTErrorString;
+using common::PSTError;
+using common::PSTErrorString;
 using common::TransactionErrorString;
 using node::TransactionError;
 using util::Join;
@@ -44,7 +55,7 @@ using util::SplitString;
 using util::TrimString;
 
 const std::string UNIX_EPOCH_TIME = "UNIX epoch time";
-const std::string EXAMPLE_ADDRESS[2] = {"bc1q09vm5lfy0j5reeulh4x5752q25uqqvz34hufdl", "bc1q02ad21edsxd23d32dfgqqsz4vv4nmtfzuklhy3"};
+const std::string EXAMPLE_ADDRESS[2] = {"fc1q09vm5lfy0j5reeulh4x5752q25uqqvz34hufdl", "fc1q02ad21edsxd23d32dfgqqsz4vv4nmtfzuklhy3"};
 
 std::string GetAllOutputTypes()
 {
@@ -113,7 +124,7 @@ CAmount AmountFromValue(const UniValue& value, int decimals)
 CFeeRate ParseFeeRate(const UniValue& json)
 {
     CAmount val{AmountFromValue(json)};
-    if (val >= COIN) throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee rates larger than or equal to 1BTC/kvB are not accepted");
+    if (val >= COIN) throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee rates larger than or equal to 1FRC/kvB are not accepted");
     return CFeeRate{val};
 }
 
@@ -185,12 +196,12 @@ std::string ShellQuoteIfNeeded(const std::string& s)
 
 std::string HelpExampleCli(const std::string& methodname, const std::string& args)
 {
-    return "> bitcoin-cli " + methodname + " " + args + "\n";
+    return "> freicoin-cli " + methodname + " " + args + "\n";
 }
 
 std::string HelpExampleCliNamed(const std::string& methodname, const RPCArgList& args)
 {
-    std::string result = "> bitcoin-cli -named " + methodname;
+    std::string result = "> freicoin-cli -named " + methodname;
     for (const auto& argpair: args) {
         const auto& value = argpair.second.isStr()
                 ? argpair.second.get_str()
@@ -204,7 +215,7 @@ std::string HelpExampleCliNamed(const std::string& methodname, const RPCArgList&
 std::string HelpExampleRpc(const std::string& methodname, const std::string& args)
 {
     return "> curl --user myusername --data-binary '{\"jsonrpc\": \"2.0\", \"id\": \"curltest\", "
-        "\"method\": \"" + methodname + "\", \"params\": [" + args + "]}' -H 'content-type: application/json' http://127.0.0.1:8332/\n";
+        "\"method\": \"" + methodname + "\", \"params\": [" + args + "]}' -H 'content-type: application/json' http://127.0.0.1:8638/\n";
 }
 
 std::string HelpExampleRpcNamed(const std::string& methodname, const RPCArgList& args)
@@ -215,7 +226,7 @@ std::string HelpExampleRpcNamed(const std::string& methodname, const RPCArgList&
     }
 
     return "> curl --user myusername --data-binary '{\"jsonrpc\": \"2.0\", \"id\": \"curltest\", "
-           "\"method\": \"" + methodname + "\", \"params\": " + params.write() + "}' -H 'content-type: application/json' http://127.0.0.1:8332/\n";
+           "\"method\": \"" + methodname + "\", \"params\": " + params.write() + "}' -H 'content-type: application/json' http://127.0.0.1:8638/\n";
 }
 
 // Converts a hex string to a public key if possible
@@ -280,7 +291,10 @@ public:
 
     UniValue operator()(const PubKeyDestination& dest) const
     {
-        return UniValue(UniValue::VOBJ);
+        UniValue obj(UniValue::VOBJ);
+        obj.pushKV("isscript", false);
+        obj.pushKV("iswitness", false);
+        return obj;
     }
 
     UniValue operator()(const PKHash& keyID) const
@@ -299,17 +313,7 @@ public:
         return obj;
     }
 
-    UniValue operator()(const WitnessV0KeyHash& id) const
-    {
-        UniValue obj(UniValue::VOBJ);
-        obj.pushKV("isscript", false);
-        obj.pushKV("iswitness", true);
-        obj.pushKV("witness_version", 0);
-        obj.pushKV("witness_program", HexStr(id));
-        return obj;
-    }
-
-    UniValue operator()(const WitnessV0ScriptHash& id) const
+    UniValue operator()(const WitnessV0ShortHash& id) const
     {
         UniValue obj(UniValue::VOBJ);
         obj.pushKV("isscript", true);
@@ -319,13 +323,13 @@ public:
         return obj;
     }
 
-    UniValue operator()(const WitnessV1Taproot& tap) const
+    UniValue operator()(const WitnessV0LongHash& id) const
     {
         UniValue obj(UniValue::VOBJ);
         obj.pushKV("isscript", true);
         obj.pushKV("iswitness", true);
-        obj.pushKV("witness_version", 1);
-        obj.pushKV("witness_program", HexStr(tap));
+        obj.pushKV("witness_version", 0);
+        obj.pushKV("witness_program", HexStr(id));
         return obj;
     }
 
@@ -379,12 +383,12 @@ unsigned int ParseConfirmTarget(const UniValue& value, unsigned int max_target)
     return unsigned_target;
 }
 
-RPCErrorCode RPCErrorFromPSBTError(PSBTError err)
+RPCErrorCode RPCErrorFromPSTError(PSTError err)
 {
     switch (err) {
-        case PSBTError::UNSUPPORTED:
+        case PSTError::UNSUPPORTED:
             return RPC_INVALID_PARAMETER;
-        case PSBTError::SIGHASH_MISMATCH:
+        case PSTError::SIGHASH_MISMATCH:
             return RPC_DESERIALIZATION_ERROR;
         default: break;
     }
@@ -403,9 +407,9 @@ RPCErrorCode RPCErrorFromTransactionError(TransactionError terr)
     return RPC_TRANSACTION_ERROR;
 }
 
-UniValue JSONRPCPSBTError(PSBTError err)
+UniValue JSONRPCPSTError(PSTError err)
 {
-    return JSONRPCError(RPCErrorFromPSBTError(err), PSBTErrorString(err).original);
+    return JSONRPCError(RPCErrorFromPSTError(err), PSTErrorString(err).original);
 }
 
 UniValue JSONRPCTransactionError(TransactionError terr, const std::string& err_string)
