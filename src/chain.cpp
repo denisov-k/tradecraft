@@ -1,7 +1,18 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <chain.h>
 #include <tinyformat.h>
@@ -130,7 +141,20 @@ arith_uint256 GetBitsProof(uint32_t bits)
     // as it's too large for an arith_uint256. However, as 2**256 is at least as large
     // as bnTarget+1, it is equal to ((2**256 - bnTarget - 1) / (bnTarget+1)) + 1,
     // or ~bnTarget / (bnTarget+1) + 1.
-    return (~bnTarget / (bnTarget + 1)) + 1;
+    arith_uint256 work = (~bnTarget / (bnTarget + 1)) + 1;
+    if (!block.m_aux_pow.IsNull()) {
+        bnTarget.SetCompact(block.m_aux_pow.m_commit_bits, &fNegative, &fOverflow);
+        if (fNegative || fOverflow || bnTarget == 0) {
+            return work;
+        }
+        arith_uint256 aux = (~bnTarget / (bnTarget + 1)) + 1;
+        arith_uint256 both = work + aux;
+        if (both < work) { // Overflow
+            return work;
+        }
+        work = both;
+    }
+    return work;
 }
 
 int64_t GetBlockProofEquivalentTime(const CBlockIndex& to, const CBlockIndex& from, const CBlockIndex& tip, const Consensus::Params& params)
@@ -143,7 +167,12 @@ int64_t GetBlockProofEquivalentTime(const CBlockIndex& to, const CBlockIndex& fr
         r = from.nChainWork - to.nChainWork;
         sign = -1;
     }
-    r = r * arith_uint256(params.nPowTargetSpacing) / GetBlockProof(tip);
+    if (tip.m_aux_pow.IsNull()) {
+        r = r * arith_uint256(params.nPowTargetSpacing);
+    } else {
+        r = r * arith_uint256(params.aux_pow_target_spacing);
+    }
+    r = r / GetBlockProof(tip);
     if (r.bits() > 63) {
         return sign * std::numeric_limits<int64_t>::max();
     }
