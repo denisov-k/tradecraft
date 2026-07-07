@@ -1,7 +1,18 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <chainparams.h>
 
@@ -23,6 +34,18 @@
 
 using util::SplitString;
 
+void ReadDeploymentArgs(CChainParams::BaseChainOptions& options, const ArgsManager& args);
+
+void ReadMainNetArgs(const ArgsManager& args, CChainParams::MainNetOptions& options)
+{
+    ReadDeploymentArgs(options, args);
+}
+
+void ReadTestNetArgs(const ArgsManager& args, CChainParams::TestNetOptions& options)
+{
+    ReadDeploymentArgs(options, args);
+}
+
 void ReadSigNetArgs(const ArgsManager& args, CChainParams::SigNetOptions& options)
 {
     if (!args.GetArgs("-signetseednode").empty()) {
@@ -39,6 +62,8 @@ void ReadSigNetArgs(const ArgsManager& args, CChainParams::SigNetOptions& option
         }
         options.challenge.emplace(*val);
     }
+
+    ReadDeploymentArgs(options, args);
 }
 
 void ReadRegTestArgs(const ArgsManager& args, CChainParams::RegTestOptions& options)
@@ -66,6 +91,13 @@ void ReadRegTestArgs(const ArgsManager& args, CChainParams::RegTestOptions& opti
         }
     }
 
+    if (!args.IsArgSet("-vbparams")) return;
+
+    ReadDeploymentArgs(options, args);
+}
+
+void ReadDeploymentArgs(CChainParams::BaseChainOptions& options, const ArgsManager& args)
+{
     for (const std::string& strDeployment : args.GetArgs("-vbparams")) {
         std::vector<std::string> vDeploymentParams = SplitString(strDeployment, ':');
         if (vDeploymentParams.size() < 3 || 4 < vDeploymentParams.size()) {
@@ -117,12 +149,16 @@ const CChainParams &Params() {
 std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, const ChainType chain)
 {
     switch (chain) {
-    case ChainType::MAIN:
-        return CChainParams::Main();
-    case ChainType::TESTNET:
-        return CChainParams::TestNet();
-    case ChainType::TESTNET4:
-        return CChainParams::TestNet4();
+    case ChainType::MAIN: {
+        auto opts = CChainParams::MainNetOptions{};
+        ReadMainNetArgs(args, opts);
+        return CChainParams::Main(opts);
+    }
+    case ChainType::TESTNET: {
+        auto opts = CChainParams::TestNetOptions{};
+        ReadTestNetArgs(args, opts);
+        return CChainParams::TestNet(opts);
+    }
     case ChainType::SIGNET: {
         auto opts = CChainParams::SigNetOptions{};
         ReadSigNetArgs(args, opts);
