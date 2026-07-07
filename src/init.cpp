@@ -1164,9 +1164,8 @@ bool AppInitParameterInteraction(const ArgsManager& args)
 
 static bool LockDirectory(const fs::path& dir, bool probeOnly)
 {
-    // Make sure only a single Freicoin process is using the data directory.
-    const fs::path& datadir = gArgs.GetDataDirNet();
-    switch (util::LockDirectory(datadir, ".lock", probeOnly)) {
+    // Make sure only a single Freicoin process is using the directory.
+    switch (util::LockDirectory(dir, ".lock", probeOnly)) {
     case util::LockResult::ErrorWrite:
         return InitError(strprintf(_("Cannot write to directory '%s'; check permissions."), fs::PathToString(dir)));
     case util::LockResult::ErrorLock:
