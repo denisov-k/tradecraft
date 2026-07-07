@@ -1,7 +1,18 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <wallet/wallet.h>
 
@@ -32,7 +43,7 @@
 #include <policy/feerate.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
-#include <psbt.h>
+#include <pst.h>
 #include <pubkey.h>
 #include <random.h>
 #include <script/descriptor.h>
@@ -84,7 +95,7 @@ struct KeyOriginInfo;
 
 using common::AmountErrMsg;
 using common::AmountHighWarn;
-using common::PSBTError;
+using common::PSTError;
 using interfaces::FoundBlock;
 using util::ReplaceAll;
 using util::ToString;
@@ -1052,13 +1063,25 @@ bool CWallet::IsSpentKey(const CScript& scriptPubKey) const
 
     if (LegacyScriptPubKeyMan* spk_man = GetLegacyScriptPubKeyMan()) {
         for (const auto& keyid : GetAffectedKeys(scriptPubKey, *spk_man)) {
-            WitnessV0KeyHash wpkh_dest(keyid);
-            if (IsAddressPreviouslySpent(wpkh_dest)) {
-                return true;
-            }
-            ScriptHash sh_wpkh_dest(GetScriptForDestination(wpkh_dest));
-            if (IsAddressPreviouslySpent(sh_wpkh_dest)) {
-                return true;
+            CPubKey pubkey;
+            if (spk_man->GetPubKey(keyid, pubkey)) {
+                CScript p2pk = GetScriptForRawPubKey(pubkey);
+                WitnessV0LongHash wsh_dest(/*version=*/0, p2pk);
+                if (IsAddressPreviouslySpent(wsh_dest)) {
+                    return true;
+                }
+                ScriptHash sh_wsh_dest(GetScriptForDestination(wsh_dest));
+                if (IsAddressPreviouslySpent(sh_wsh_dest)) {
+                    return true;
+                }
+                WitnessV0ShortHash wpk_dest(/*version=*/0, p2pk);
+                if (IsAddressPreviouslySpent(wpk_dest)) {
+                    return true;
+                }
+                ScriptHash sh_wpk_dest(GetScriptForDestination(wpk_dest));
+                if (IsAddressPreviouslySpent(sh_wpk_dest)) {
+                    return true;
+                }
             }
             PKHash pkh_dest(keyid);
             if (IsAddressPreviouslySpent(pkh_dest)) {
@@ -1204,7 +1227,7 @@ bool CWallet::LoadToWallet(const uint256& hash, const UpdateWalletTxFn& fill_wtx
     if (!fill_wtx(wtx, ins.second)) {
         return false;
     }
-    // If wallet doesn't have a chain (e.g when using bitcoin-wallet tool),
+    // If wallet doesn't have a chain (e.g when using freicoin-wallet tool),
     // don't bother to update txn.
     if (HaveChain()) {
       wtx.updateState(chain());
@@ -1492,7 +1515,7 @@ void CWallet::transactionRemovedFromMempool(const CTransactionRef& tx, MemPoolRe
         // when improving this code in the future. The wallet's heuristics for
         // distinguishing between conflicted and unconfirmed transactions are
         // imperfect, and could be improved in general, see
-        // https://github.com/bitcoin-core/bitcoin-devwiki/wiki/Wallet-Transaction-Conflict-Tracking
+        // https://github.com/tradecraftio/tradecraft-devwiki/wiki/Wallet-Transaction-Conflict-Tracking
         SyncTransaction(tx, TxStateInactive{});
     }
 
@@ -1593,6 +1616,27 @@ void CWallet::BlockUntilSyncedToCurrentChain() const {
     chain().waitForNotificationsIfTipChanged(last_block_hash);
 }
 
+bool CWallet::GetInputSplit(const CWalletTx& wtx, CAmount& value_in, CAmount& demurrage) const {
+    int missing = 0;
+    value_in = demurrage = 0;
+    for (const CTxIn& txin : wtx.tx->vin) {
+        const CWalletTx* prev = GetWalletTx(txin.prevout.hash);
+        if (prev == NULL) {
+            ++missing;
+            continue;
+        }
+        if (txin.prevout.n < prev->tx->vout.size()) {
+            const CTxOut& txout = prev->tx->vout[txin.prevout.n];
+            CAmount amount = prev->tx->GetPresentValueOfOutput(txin.prevout.n, wtx.tx->lock_height);
+            if (IsMine(txout)) {
+                demurrage += txout.GetReferenceValue() - amount;
+            }
+            value_in += amount;
+        }
+    }
+    return !!missing;
+}
+
 // Note that this function doesn't distinguish between a 0-valued input,
 // and a not-"is mine" (according to the filter) input.
 CAmount CWallet::GetDebit(const CTxIn &txin, const isminefilter& filter) const
@@ -1605,7 +1649,7 @@ CAmount CWallet::GetDebit(const CTxIn &txin, const isminefilter& filter) const
             const CWalletTx& prev = (*mi).second;
             if (txin.prevout.n < prev.tx->vout.size())
                 if (IsMine(prev.tx->vout[txin.prevout.n]) & filter)
-                    return prev.tx->vout[txin.prevout.n].nValue;
+                    return prev.tx->vout[txin.prevout.n].GetReferenceValue();
         }
     }
     return 0;
@@ -1783,6 +1827,16 @@ bool CWallet::ImportScripts(const std::set<CScript> scripts, int64_t timestamp)
     }
     LOCK(spk_man->cs_KeyStore);
     return spk_man->ImportScripts(scripts, timestamp);
+}
+
+bool CWallet::ImportWitnessV0Scripts(const std::set<WitnessV0ScriptEntry> witscripts, int64_t timestamp)
+{
+    auto spk_man = GetLegacyScriptPubKeyMan();
+    if (!spk_man) {
+        return false;
+    }
+    LOCK(spk_man->cs_KeyStore);
+    return spk_man->ImportWitnessV0Scripts(witscripts, timestamp);
 }
 
 bool CWallet::ImportPrivKeys(const std::map<CKeyID, CKey>& privkey_map, const int64_t timestamp)
@@ -2187,7 +2241,7 @@ bool CWallet::SignTransaction(CMutableTransaction& tx) const
         }
         const CWalletTx& wtx = mi->second;
         int prev_height = wtx.state<TxStateConfirmed>() ? wtx.state<TxStateConfirmed>()->confirmed_block_height : 0;
-        coins[input.prevout] = Coin(wtx.tx->vout[input.prevout.n], prev_height, wtx.IsCoinBase());
+        coins[input.prevout] = Coin(wtx.tx->vout[input.prevout.n], wtx.tx->lock_height, prev_height, wtx.IsCoinBase());
     }
     std::map<int, bilingual_str> input_errors;
     return SignTransaction(tx, coins, SIGHASH_DEFAULT, input_errors);
@@ -2208,18 +2262,18 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
     return false;
 }
 
-std::optional<PSBTError> CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& complete, int sighash_type, bool sign, bool bip32derivs, size_t * n_signed, bool finalize) const
+std::optional<PSTError> CWallet::FillPST(PartiallySignedTransaction& pstx, bool& complete, int sighash_type, bool sign, bool bip32derivs, size_t * n_signed, bool finalize) const
 {
     if (n_signed) {
         *n_signed = 0;
     }
     LOCK(cs_wallet);
     // Get all of the previous transactions
-    for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
-        const CTxIn& txin = psbtx.tx->vin[i];
-        PSBTInput& input = psbtx.inputs.at(i);
+    for (unsigned int i = 0; i < pstx.tx->vin.size(); ++i) {
+        const CTxIn& txin = pstx.tx->vin[i];
+        PSTInput& input = pstx.inputs.at(i);
 
-        if (PSBTInputSigned(input)) {
+        if (PSTInputSigned(input)) {
             continue;
         }
 
@@ -2236,12 +2290,12 @@ std::optional<PSBTError> CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bo
         }
     }
 
-    const PrecomputedTransactionData txdata = PrecomputePSBTData(psbtx);
+    const PrecomputedTransactionData txdata = PrecomputePSTData(pstx);
 
     // Fill in information from ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         int n_signed_this_spkm = 0;
-        const auto error{spk_man->FillPSBT(psbtx, txdata, sighash_type, sign, bip32derivs, &n_signed_this_spkm, finalize)};
+        const auto error{spk_man->FillPST(pstx, txdata, sighash_type, sign, bip32derivs, &n_signed_this_spkm, finalize)};
         if (error) {
             return error;
         }
@@ -2251,12 +2305,12 @@ std::optional<PSBTError> CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bo
         }
     }
 
-    RemoveUnnecessaryTransactions(psbtx, sighash_type);
+    RemoveUnnecessaryTransactions(pstx, sighash_type);
 
     // Complete if every input is now signed
     complete = true;
-    for (size_t i = 0; i < psbtx.inputs.size(); ++i) {
-        complete &= PSBTInputSignedAndVerified(psbtx, i, &txdata);
+    for (size_t i = 0; i < pstx.inputs.size(); ++i) {
+        complete &= PSTInputSignedAndVerified(pstx, i, &txdata);
     }
 
     return {};
@@ -2287,38 +2341,21 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
         return OutputType::LEGACY;
     }
 
-    bool any_tr{false};
-    bool any_wpkh{false};
-    bool any_sh{false};
+    bool any_wpk{false};
     bool any_pkh{false};
 
     for (const auto& recipient : vecSend) {
-        if (std::get_if<WitnessV1Taproot>(&recipient.dest)) {
-            any_tr = true;
-        } else if (std::get_if<WitnessV0KeyHash>(&recipient.dest)) {
-            any_wpkh = true;
-        } else if (std::get_if<ScriptHash>(&recipient.dest)) {
-            any_sh = true;
+        if (std::get_if<WitnessV0ShortHash>(&recipient.dest)) {
+            any_wpk = true;
         } else if (std::get_if<PKHash>(&recipient.dest)) {
             any_pkh = true;
         }
     }
 
-    const bool has_bech32m_spkman(GetScriptPubKeyMan(OutputType::BECH32M, /*internal=*/true));
-    if (has_bech32m_spkman && any_tr) {
-        // Currently tr is the only type supported by the BECH32M spkman
-        return OutputType::BECH32M;
-    }
     const bool has_bech32_spkman(GetScriptPubKeyMan(OutputType::BECH32, /*internal=*/true));
-    if (has_bech32_spkman && any_wpkh) {
-        // Currently wpkh is the only type supported by the BECH32 spkman
+    if (has_bech32_spkman && any_wpk) {
+        // Currently wpk is the only type supported by the BECH32 spkman
         return OutputType::BECH32;
-    }
-    const bool has_p2sh_segwit_spkman(GetScriptPubKeyMan(OutputType::P2SH_SEGWIT, /*internal=*/true));
-    if (has_p2sh_segwit_spkman && any_sh) {
-        // Currently sh_wpkh is the only type supported by the P2SH_SEGWIT spkman
-        // As of 2021 about 80% of all SH are wrapping WPKH, so use that
-        return OutputType::P2SH_SEGWIT;
     }
     const bool has_legacy_spkman(GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/true));
     if (has_legacy_spkman && any_pkh) {
@@ -2326,9 +2363,6 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
         return OutputType::LEGACY;
     }
 
-    if (has_bech32m_spkman) {
-        return OutputType::BECH32M;
-    }
     if (has_bech32_spkman) {
         return OutputType::BECH32;
     }
@@ -3276,7 +3310,7 @@ bool CWallet::AttachChain(const std::shared_ptr<CWallet>& walletInstance, interf
             // Wallet is assumed to be from another chain, if genesis block in the active
             // chain differs from the genesis block known to the wallet.
             if (chain.getBlockHash(0) != locator.vHave.back()) {
-                error = Untranslated("Wallet files should not be reused across chains. Restart bitcoind with -walletcrosschain to override.");
+                error = Untranslated("Wallet files should not be reused across chains. Restart freicoind with -walletcrosschain to override.");
                 return false;
             }
         }
@@ -4518,7 +4552,7 @@ util::Result<MigrationResult> MigrateLegacyToDescriptor(std::shared_ptr<CWallet>
         } else {
             return util::Error{Untranslated("Error: Wallet decryption failed, the wallet passphrase entered was incorrect. "
                                             "The passphrase contains a null character (ie - a zero byte). "
-                                            "If this passphrase was set with a version of this software prior to 25.0, "
+                                            "If this passphrase was set with a version of this software prior to v25, "
                                             "please try again with only the characters up to — but not including — "
                                             "the first null character.")};
         }

@@ -1,6 +1,20 @@
 // Copyright (c) 2012-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#include <test/util/setup_common.h>
+#include <wallet/test/wallet_test_fixture.h>
 
 #include <wallet/wallet.h>
 
@@ -18,7 +32,6 @@
 #include <script/solver.h>
 #include <test/util/logging.h>
 #include <test/util/random.h>
-#include <test/util/setup_common.h>
 #include <util/translation.h>
 #include <validation.h>
 #include <validationinterface.h>
@@ -27,7 +40,6 @@
 #include <wallet/receive.h>
 #include <wallet/spend.h>
 #include <wallet/test/util.h>
-#include <wallet/test/wallet_test_fixture.h>
 
 #include <boost/test/unit_test.hpp>
 #include <univalue.h>
@@ -51,6 +63,7 @@ static CMutableTransaction TestSimpleSpend(const CTransaction& from, uint32_t in
     CMutableTransaction mtx;
     mtx.vout.emplace_back(from.vout[index].nValue - DEFAULT_TRANSACTION_MAXFEE, pubkey);
     mtx.vin.push_back({CTxIn{from.GetHash(), index}});
+    mtx.lock_height = from.lock_height;
     FillableSigningProvider keystore;
     keystore.AddKey(key);
     std::map<COutPoint, Coin> coins;
@@ -127,7 +140,7 @@ BOOST_FIXTURE_TEST_CASE(scan_for_wallet_transactions, TestChain100Setup)
         BOOST_CHECK(result.last_failed_block.IsNull());
         BOOST_CHECK_EQUAL(result.last_scanned_block, newTip->GetBlockHash());
         BOOST_CHECK_EQUAL(*result.last_scanned_height, newTip->nHeight);
-        BOOST_CHECK_EQUAL(GetBalance(wallet).m_mine_immature, 100 * COIN);
+        BOOST_CHECK_EQUAL(GetBalance(wallet).m_mine_immature, GetTimeAdjustedValue(50 * COIN, 2) + GetTimeAdjustedValue(50 * COIN, 1));
 
         {
             CBlockLocator locator;
@@ -163,7 +176,7 @@ BOOST_FIXTURE_TEST_CASE(scan_for_wallet_transactions, TestChain100Setup)
         BOOST_CHECK_EQUAL(result.last_failed_block, oldTip->GetBlockHash());
         BOOST_CHECK_EQUAL(result.last_scanned_block, newTip->GetBlockHash());
         BOOST_CHECK_EQUAL(*result.last_scanned_height, newTip->nHeight);
-        BOOST_CHECK_EQUAL(GetBalance(wallet).m_mine_immature, 50 * COIN);
+        BOOST_CHECK_EQUAL(GetBalance(wallet).m_mine_immature, GetTimeAdjustedValue(50 * COIN, 1));
     }
 
     // Prune the remaining block file.
@@ -248,7 +261,7 @@ BOOST_FIXTURE_TEST_CASE(importmulti_rescan, TestChain100Setup)
                       "timestamp %d. There was an error reading a block from time %d, which is after or within %d "
                       "seconds of key creation, and could contain transactions pertaining to the key. As a result, "
                       "transactions and coins using this key may not appear in the wallet. This error could be caused "
-                      "by pruning or data corruption (see bitcoind log for details) and could be dealt with by "
+                      "by pruning or data corruption (see freicoind log for details) and could be dealt with by "
                       "downloading and rescanning the relevant blocks (see -reindex option and rescanblockchain "
                       "RPC).\"}},{\"success\":true}]",
                               0, oldTip->GetBlockTimeMax(), TIMESTAMP_WINDOW));
@@ -392,11 +405,12 @@ BOOST_FIXTURE_TEST_CASE(coin_mark_dirty_immature_credit, TestChain100Setup)
     BOOST_CHECK_EQUAL(CachedTxGetImmatureCredit(wallet, wtx, ISMINE_SPENDABLE), 50*COIN);
 }
 
-static int64_t AddTx(ChainstateManager& chainman, CWallet& wallet, uint32_t lockTime, int64_t mockTime, int64_t blockTime)
+static int64_t AddTx(ChainstateManager& chainman, CWallet& wallet, uint32_t lockTime, uint32_t lock_height, int64_t mockTime, int64_t blockTime)
 {
     CMutableTransaction tx;
     TxState state = TxStateInactive{};
     tx.nLockTime = lockTime;
+    tx.lock_height = lock_height;
     SetMockTime(mockTime);
     CBlockIndex* block = nullptr;
     if (blockTime > 0) {
@@ -423,24 +437,24 @@ static int64_t AddTx(ChainstateManager& chainman, CWallet& wallet, uint32_t lock
 BOOST_AUTO_TEST_CASE(ComputeTimeSmart)
 {
     // New transaction should use clock time if lower than block time.
-    BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 1, 100, 120), 100);
+    BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 1, /* refheight= */ 1, 100, 120), 100);
 
     // Test that updating existing transaction does not change smart time.
-    BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 1, 200, 220), 100);
+    BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 1, /* refheight= */ 1, 200, 220), 100);
 
     // New transaction should use clock time if there's no block time.
-    BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 2, 300, 0), 300);
+    BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 2, /* refheight= */ 1, 300, 0), 300);
 
     // New transaction should use block time if lower than clock time.
-    BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 3, 420, 400), 400);
+    BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 3, /* refheight= */ 1, 420, 400), 400);
 
     // New transaction should use latest entry time if higher than
     // min(block time, clock time).
-    BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 4, 500, 390), 400);
+    BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 4, /* refheight= */ 1, 500, 390), 400);
 
     // If there are future entries, new transaction should use time of the
     // newest entry that is no more than 300 seconds ahead of the clock time.
-    BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 5, 50, 600), 300);
+    BOOST_CHECK_EQUAL(AddTx(*m_node.chainman, m_wallet, 5, /* refheight= */ 1, 50, 600), 300);
 }
 
 void TestLoadWallet(const std::string& name, DatabaseFormat format, std::function<void(std::shared_ptr<CWallet>)> f)
@@ -595,7 +609,7 @@ public:
         CTransactionRef tx;
         CCoinControl dummy;
         {
-            auto res = CreateTransaction(*wallet, {recipient}, /*change_pos=*/std::nullopt, dummy);
+            auto res = CreateTransaction(*wallet, {recipient}, /*refheight=*/std::nullopt, /*change_pos=*/std::nullopt, dummy);
             BOOST_CHECK(res);
             tx = res->tx;
         }
@@ -623,6 +637,12 @@ BOOST_FIXTURE_TEST_CASE(ListCoinsTest, ListCoinsTestingSetup)
 {
     std::string coinbaseAddress = coinbaseKey.GetPubKey().GetID().ToString();
 
+    int next_height = -1;
+    {
+        LOCK(this->m_node.chainman->GetMutex());
+        next_height = this->m_node.chainman->ActiveChain().Height() + 1;
+    }
+
     // Confirm ListCoins initially returns 1 coin grouped under coinbaseKey
     // address.
     std::map<CTxDestination, std::vector<COutput>> list;
@@ -635,7 +655,7 @@ BOOST_FIXTURE_TEST_CASE(ListCoinsTest, ListCoinsTestingSetup)
     BOOST_CHECK_EQUAL(list.begin()->second.size(), 1U);
 
     // Check initial balance from one mature coinbase transaction.
-    BOOST_CHECK_EQUAL(50 * COIN, WITH_LOCK(wallet->cs_wallet, return AvailableCoins(*wallet).GetTotalAmount()));
+    BOOST_CHECK_EQUAL(GetTimeAdjustedValue(50 * COIN, 101), WITH_LOCK(wallet->cs_wallet, return AvailableCoins(*wallet, next_height).GetTotalAmount()));
 
     // Add a transaction creating a change address, and confirm ListCoins still
     // returns the coin associated with the change address underneath the
@@ -653,7 +673,7 @@ BOOST_FIXTURE_TEST_CASE(ListCoinsTest, ListCoinsTestingSetup)
     // Lock both coins. Confirm number of available coins drops to 0.
     {
         LOCK(wallet->cs_wallet);
-        BOOST_CHECK_EQUAL(AvailableCoinsListUnspent(*wallet).Size(), 2U);
+        BOOST_CHECK_EQUAL(AvailableCoinsListUnspent(*wallet, next_height).Size(), 2U);
     }
     for (const auto& group : list) {
         for (const auto& coin : group.second) {
@@ -663,7 +683,7 @@ BOOST_FIXTURE_TEST_CASE(ListCoinsTest, ListCoinsTestingSetup)
     }
     {
         LOCK(wallet->cs_wallet);
-        BOOST_CHECK_EQUAL(AvailableCoinsListUnspent(*wallet).Size(), 0U);
+        BOOST_CHECK_EQUAL(AvailableCoinsListUnspent(*wallet, next_height).Size(), 0U);
     }
     // Confirm ListCoins still returns same result as before, despite coins
     // being locked.
@@ -684,7 +704,12 @@ void TestCoinsResult(ListCoinsTest& context, OutputType out_type, CAmount amount
     CWalletTx& wtx = context.AddTx(CRecipient{*dest, amount, /*fSubtractFeeFromAmount=*/true});
     CoinFilterParams filter;
     filter.skip_locked = false;
-    CoinsResult available_coins = AvailableCoins(*context.wallet, nullptr, std::nullopt, filter);
+    int next_height = -1;
+    {
+        LOCK(context.m_node.chainman->GetMutex());
+        next_height = context.m_node.chainman->ActiveChain().Height() + 1;
+    }
+    CoinsResult available_coins = AvailableCoins(*context.wallet, next_height, nullptr, std::nullopt, filter);
     // Lock outputs so they are not spent in follow-up transactions
     for (uint32_t i = 0; i < wtx.tx->vout.size(); i++) context.wallet->LockCoin({wtx.GetHash(), i});
     for (const auto& [type, size] : expected_coins_sizes) BOOST_CHECK_EQUAL(size, available_coins.coins[type].size());
@@ -695,10 +720,16 @@ BOOST_FIXTURE_TEST_CASE(BasicOutputTypesTest, ListCoinsTest)
     std::map<OutputType, size_t> expected_coins_sizes;
     for (const auto& out_type : OUTPUT_TYPES) { expected_coins_sizes[out_type] = 0U; }
 
+    int next_height = -1;
+    {
+        LOCK(this->m_node.chainman->GetMutex());
+        next_height = this->m_node.chainman->ActiveChain().Height() + 1;
+    }
+
     // Verify our wallet has one usable coinbase UTXO before starting
     // This UTXO is a P2PK, so it should show up in the Other bucket
     expected_coins_sizes[OutputType::UNKNOWN] = 1U;
-    CoinsResult available_coins = WITH_LOCK(wallet->cs_wallet, return AvailableCoins(*wallet));
+    CoinsResult available_coins = WITH_LOCK(wallet->cs_wallet, return AvailableCoins(*wallet, next_height));
     BOOST_CHECK_EQUAL(available_coins.Size(), expected_coins_sizes[OutputType::UNKNOWN]);
     BOOST_CHECK_EQUAL(available_coins.coins[OutputType::UNKNOWN].size(), expected_coins_sizes[OutputType::UNKNOWN]);
 
@@ -738,25 +769,24 @@ BOOST_FIXTURE_TEST_CASE(wallet_disableprivkeys, TestChain100Setup)
 
 // Explicit calculation which is used to test the wallet constant
 // We get the same virtual size due to rounding(weight/4) for both use_max_sig values
-static size_t CalculateNestedKeyhashInputSize(bool use_max_sig)
+static size_t CalculateP2WPKInputSize(bool use_max_sig)
 {
     // Generate ephemeral valid pubkey
     CKey key = GenerateRandomKey();
     CPubKey pubkey = key.GetPubKey();
 
-    // Generate pubkey hash
-    uint160 key_hash(Hash160(pubkey));
+    // Generate pay-to-pubkey script
+    CScript p2pk = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
+    WitnessV0ShortHash key_hash((unsigned char)0, p2pk);
 
     // Create inner-script to enter into keystore. Key hash can't be 0...
-    CScript inner_script = CScript() << OP_0 << std::vector<unsigned char>(key_hash.begin(), key_hash.end());
-
-    // Create outer P2SH script for the output
-    uint160 script_id(Hash160(inner_script));
-    CScript script_pubkey = CScript() << OP_HASH160 << std::vector<unsigned char>(script_id.begin(), script_id.end()) << OP_EQUAL;
+    CScript script_pubkey = CScript() << OP_0 << std::vector<unsigned char>(key_hash.begin(), key_hash.end());
 
     // Add inner-script to key store and key to watchonly
     FillableSigningProvider keystore;
-    keystore.AddCScript(inner_script);
+    std::vector<unsigned char> witscript{0x00};
+    witscript.insert(witscript.end(), p2pk.begin(), p2pk.end());
+    keystore.AddWitnessV0Script(WitnessV0ScriptEntry(witscript));
     keystore.AddKeyPubKey(key, pubkey);
 
     // Fill in dummy signatures for fee calculation.
@@ -774,8 +804,8 @@ static size_t CalculateNestedKeyhashInputSize(bool use_max_sig)
 
 BOOST_FIXTURE_TEST_CASE(dummy_input_size_test, TestChain100Setup)
 {
-    BOOST_CHECK_EQUAL(CalculateNestedKeyhashInputSize(false), DUMMY_NESTED_P2WPKH_INPUT_SIZE);
-    BOOST_CHECK_EQUAL(CalculateNestedKeyhashInputSize(true), DUMMY_NESTED_P2WPKH_INPUT_SIZE);
+    BOOST_CHECK_EQUAL(CalculateP2WPKInputSize(false), DUMMY_P2WPK_INPUT_SIZE);
+    BOOST_CHECK_EQUAL(CalculateP2WPKInputSize(true), DUMMY_P2WPK_INPUT_SIZE);
 }
 
 bool malformed_descriptor(std::ios_base::failure e)
@@ -975,7 +1005,7 @@ BOOST_FIXTURE_TEST_CASE(wallet_sync_tx_invalid_state_test, TestingSetup)
     }
 
     // Add tx to wallet
-    const auto op_dest{*Assert(wallet.GetNewDestination(OutputType::BECH32M, ""))};
+    const auto op_dest{*Assert(wallet.GetNewDestination(OutputType::BECH32, ""))};
 
     CMutableTransaction mtx;
     mtx.vout.emplace_back(COIN, GetScriptForDestination(op_dest));

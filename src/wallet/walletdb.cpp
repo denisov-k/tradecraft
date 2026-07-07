@@ -1,12 +1,24 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 
 #include <wallet/walletdb.h>
 
+#include <addresstype.h>
 #include <common/system.h>
 #include <key_io.h>
 #include <protocol.h>
@@ -64,7 +76,8 @@ const std::string WALLETDESCRIPTORCKEY{"walletdescriptorckey"};
 const std::string WALLETDESCRIPTORKEY{"walletdescriptorkey"};
 const std::string WATCHMETA{"watchmeta"};
 const std::string WATCHS{"watchs"};
-const std::unordered_set<std::string> LEGACY_TYPES{CRYPTED_KEY, CSCRIPT, DEFAULTKEY, HDCHAIN, KEYMETA, KEY, OLD_KEY, POOL, WATCHMETA, WATCHS};
+const std::string WITNESS_V0{"witv0"};
+const std::unordered_set<std::string> LEGACY_TYPES{CRYPTED_KEY, CSCRIPT, DEFAULTKEY, HDCHAIN, KEYMETA, KEY, OLD_KEY, POOL, WATCHMETA, WATCHS, WITNESS_V0};
 } // namespace DBKeys
 
 //
@@ -162,6 +175,11 @@ bool WalletBatch::EraseMasterKey(unsigned int id)
 bool WalletBatch::WriteCScript(const uint160& hash, const CScript& redeemScript)
 {
     return WriteIC(std::make_pair(DBKeys::CSCRIPT, hash), redeemScript, false);
+}
+
+bool WalletBatch::WriteWitnessV0Script(const WitnessV0ShortHash& scriptid, const WitnessV0ScriptEntry& entry)
+{
+    return WriteIC(std::make_pair(DBKeys::WITNESS_V0, scriptid), entry, false);
 }
 
 bool WalletBatch::WriteWatchOnly(const CScript &dest, const CKeyMetadata& keyMeta)
@@ -716,6 +734,21 @@ static DBErrors LoadLegacyWalletRecords(CWallet* pwallet, DatabaseBatch& batch, 
         return DBErrors::LOAD_OK;
     });
     result = std::max(result, watch_script_res.m_result);
+
+    // Load witnessv0 scripts
+    LoadResult witnessv0_script_res = LoadRecords(pwallet, batch, DBKeys::WITNESS_V0,
+        [] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
+        WitnessV0ShortHash shorthash;
+        key >> shorthash;
+        WitnessV0ScriptEntry entry;
+        value >> entry;
+        if (!pwallet->GetOrCreateLegacyDataSPKM()->LoadWitnessV0Script(entry)) {
+            pwallet->WalletLogPrintf("Error reading wallet database: LoadWitnessV0Script failed");
+            return DBErrors::CORRUPT;
+        }
+        return DBErrors::LOAD_OK;
+    });
+    result = std::max(result, witnessv0_script_res.m_result);
 
     // Load watchonly meta
     LoadResult watch_meta_res = LoadRecords(pwallet, batch, DBKeys::WATCHMETA,

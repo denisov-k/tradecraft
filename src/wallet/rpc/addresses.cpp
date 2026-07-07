@@ -1,6 +1,17 @@
 // Copyright (c) 2011-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 
@@ -21,15 +32,15 @@ namespace wallet {
 RPCHelpMan getnewaddress()
 {
     return RPCHelpMan{"getnewaddress",
-                "\nReturns a new Bitcoin address for receiving payments.\n"
+                "\nReturns a new Freicoin address for receiving payments.\n"
                 "If 'label' is specified, it is added to the address book \n"
                 "so payments received with the address will be associated with 'label'.\n",
                 {
                     {"label", RPCArg::Type::STR, RPCArg::Default{""}, "The label name for the address to be linked to. It can also be set to the empty string \"\" to represent the default label. The label does not need to exist, it will be created if there is no label by the given name."},
-                    {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -addresstype"}, "The address type to use. Options are \"legacy\", \"p2sh-segwit\", \"bech32\", and \"bech32m\"."},
+                    {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -addresstype"}, "The address type to use. Options are \"legacy\" or \"bech32\"."},
                 },
                 RPCResult{
-                    RPCResult::Type::STR, "address", "The new bitcoin address"
+                    RPCResult::Type::STR, "address", "The new freicoin address"
                 },
                 RPCExamples{
                     HelpExampleCli("getnewaddress", "")
@@ -54,8 +65,6 @@ RPCHelpMan getnewaddress()
         std::optional<OutputType> parsed = ParseOutputType(request.params[1].get_str());
         if (!parsed) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Unknown address type '%s'", request.params[1].get_str()));
-        } else if (parsed.value() == OutputType::BECH32M && pwallet->GetLegacyScriptPubKeyMan()) {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Legacy wallets cannot provide bech32m addresses");
         }
         output_type = parsed.value();
     }
@@ -73,10 +82,10 @@ RPCHelpMan getnewaddress()
 RPCHelpMan getrawchangeaddress()
 {
     return RPCHelpMan{"getrawchangeaddress",
-                "\nReturns a new Bitcoin address, for receiving change.\n"
+                "\nReturns a new Freicoin address, for receiving change.\n"
                 "This is for use with raw transactions, NOT normal use.\n",
                 {
-                    {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -changetype"}, "The address type to use. Options are \"legacy\", \"p2sh-segwit\", \"bech32\", and \"bech32m\"."},
+                    {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -changetype"}, "The address type to use. Options are \"legacy\" or \"bech32\"."},
                 },
                 RPCResult{
                     RPCResult::Type::STR, "address", "The address"
@@ -101,8 +110,6 @@ RPCHelpMan getrawchangeaddress()
         std::optional<OutputType> parsed = ParseOutputType(request.params[0].get_str());
         if (!parsed) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Unknown address type '%s'", request.params[0].get_str()));
-        } else if (parsed.value() == OutputType::BECH32M && pwallet->GetLegacyScriptPubKeyMan()) {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Legacy wallets cannot provide bech32m addresses");
         }
         output_type = parsed.value();
     }
@@ -122,7 +129,7 @@ RPCHelpMan setlabel()
     return RPCHelpMan{"setlabel",
                 "\nSets the label associated with the given address.\n",
                 {
-                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The bitcoin address to be associated with a label."},
+                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The freicoin address to be associated with a label."},
                     {"label", RPCArg::Type::STR, RPCArg::Optional::NO, "The label to assign to the address."},
                 },
                 RPCResult{RPCResult::Type::NONE, "", ""},
@@ -139,7 +146,7 @@ RPCHelpMan setlabel()
 
     CTxDestination dest = DecodeDestination(request.params[0].get_str());
     if (!IsValidDestination(dest)) {
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address");
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Freicoin address");
     }
 
     const std::string label{LabelFromValue(request.params[1])};
@@ -169,7 +176,7 @@ RPCHelpMan listaddressgroupings()
                         {
                             {RPCResult::Type::ARR_FIXED, "", "",
                             {
-                                {RPCResult::Type::STR, "address", "The bitcoin address"},
+                                {RPCResult::Type::STR, "address", "The freicoin address"},
                                 {RPCResult::Type::STR_AMOUNT, "amount", "The amount in " + CURRENCY_UNIT},
                                 {RPCResult::Type::STR, "label", /*optional=*/true, "The label"},
                             }},
@@ -219,20 +226,20 @@ RPCHelpMan addmultisigaddress()
 {
     return RPCHelpMan{"addmultisigaddress",
                 "\nAdd an nrequired-to-sign multisignature address to the wallet. Requires a new wallet backup.\n"
-                "Each key is a Bitcoin address or hex-encoded public key.\n"
+                "Each key is a Freicoin address or hex-encoded public key.\n"
                 "This functionality is only intended for use with non-watchonly addresses.\n"
                 "See `importaddress` for watchonly p2sh address support.\n"
                 "If 'label' is specified, assign address to that label.\n"
                 "Note: This command is only compatible with legacy wallets.\n",
                 {
                     {"nrequired", RPCArg::Type::NUM, RPCArg::Optional::NO, "The number of required signatures out of the n keys or addresses."},
-                    {"keys", RPCArg::Type::ARR, RPCArg::Optional::NO, "The bitcoin addresses or hex-encoded public keys",
+                    {"keys", RPCArg::Type::ARR, RPCArg::Optional::NO, "The freicoin addresses or hex-encoded public keys",
                         {
-                            {"key", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "bitcoin address or hex-encoded public key"},
+                            {"key", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "freicoin address or hex-encoded public key"},
                         },
                         },
                     {"label", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "A label to assign the addresses to."},
-                    {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -addresstype"}, "The address type to use. Options are \"legacy\", \"p2sh-segwit\", and \"bech32\"."},
+                    {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -addresstype"}, "The address type to use. Options are \"legacy\" or \"bech32\"."},
                 },
                 RPCResult{
                     RPCResult::Type::OBJ, "", "",
@@ -281,8 +288,6 @@ RPCHelpMan addmultisigaddress()
         std::optional<OutputType> parsed = ParseOutputType(request.params[3].get_str());
         if (!parsed) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Unknown address type '%s'", request.params[3].get_str()));
-        } else if (parsed.value() == OutputType::BECH32M) {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Bech32m multisig addresses cannot be created with legacy wallets");
         }
         output_type = parsed.value();
     }
@@ -294,12 +299,12 @@ RPCHelpMan addmultisigaddress()
 
     // Import scripts into the wallet
     for (const auto& [id, script] : provider.scripts) {
-        // Due to a bug in the legacy wallet, the p2sh maximum script size limit is also imposed on 'p2sh-segwit' and 'bech32' redeem scripts.
+        // Due to a bug in the legacy wallet, the p2sh maximum script size limit is also imposed on 'bech32' redeem scripts.
         // Even when redeem scripts over MAX_SCRIPT_ELEMENT_SIZE bytes are valid for segwit output types, we don't want to
         // enable it because:
         // 1) It introduces a compatibility-breaking change requiring downgrade protection; older wallets would be unable to interact with these "new" legacy wallets.
         // 2) Considering the ongoing deprecation of the legacy spkm, this issue adds another good reason to transition towards descriptors.
-        if (script.size() > MAX_SCRIPT_ELEMENT_SIZE) throw JSONRPCError(RPC_WALLET_ERROR, "Unsupported multisig script size for legacy wallet. Upgrade to descriptors to overcome this limitation for p2sh-segwit or bech32 scripts");
+        if (script.size() > MAX_SCRIPT_ELEMENT_SIZE) throw JSONRPCError(RPC_WALLET_ERROR, "Unsupported multisig script size for legacy wallet. Upgrade to descriptors to overcome this limitation for bech32 scripts");
 
         if (!spk_man.AddCScript(script)) {
             if (CScript inner_script; spk_man.GetCScript(CScriptID(script), inner_script)) {
@@ -307,6 +312,17 @@ RPCHelpMan addmultisigaddress()
                 continue;
             }
             throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Error importing script into the wallet"));
+        }
+    }
+
+    // Import witscripts into wallet
+    for (const auto& [id, entry] : provider.witscripts) {
+        if (!spk_man.AddWitnessV0Script(entry)) {
+            if (WitnessV0ScriptEntry inner_entry; spk_man.GetWitnessV0Script(id, inner_entry)) {
+                CHECK_NONFATAL(inner_entry == entry); // Nothing to add, script already contained by the wallet
+                continue;
+            }
+            throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Error importing witness script into the wallet"));
         }
     }
 
@@ -318,7 +334,23 @@ RPCHelpMan addmultisigaddress()
 
     UniValue result(UniValue::VOBJ);
     result.pushKV("address", EncodeDestination(dest));
+#if 0
+    // FIXME: We should be using this logic for Freicoin, since witnessScript
+    // and redeemScript are not the same thing.  However it breaks many of the
+    // RPC tests.
+    switch (output_type) {
+    case OutputType::LEGACY:
+        result.pushKV("redeemScript", HexStr(inner));
+        break;
+    case OutputType::BECH32:
+        result.pushKV("witnessScript", "00" + HexStr(inner));
+        break;
+    default:
+        break;
+    }
+#else
     result.pushKV("redeemScript", HexStr(inner));
+#endif
     result.pushKV("descriptor", descriptor->ToString());
 
     UniValue warnings(UniValue::VARR);
@@ -329,6 +361,178 @@ RPCHelpMan addmultisigaddress()
     PushWarnings(warnings, result);
 
     return result;
+},
+    };
+}
+
+class Witnessifier : public boost::static_visitor<bool>
+{
+public:
+    std::shared_ptr<CWallet> pwallet;
+    WitnessV0ScriptEntry entry;
+    CTxDestination result;
+    bool already_witness;
+
+    Witnessifier(std::shared_ptr<CWallet> &_pwallet, const std::vector<uint256>& branchIn, uint32_t pathIn) : pwallet(_pwallet), entry(std::vector<unsigned char>(), branchIn, pathIn), already_witness(false) { }
+    Witnessifier(std::shared_ptr<CWallet> &_pwallet, std::vector<uint256>&& branchIn, uint32_t pathIn) : pwallet(_pwallet), entry(std::vector<unsigned char>(), branchIn, pathIn), already_witness(false) { }
+
+    explicit Witnessifier(std::shared_ptr<CWallet> &_pwallet) : pwallet(_pwallet), already_witness(false) {}
+
+    bool operator()(const PKHash &pkhash) {
+        if (pwallet) {
+            CScript script = GetScriptForDestination(pkhash);
+            std::unique_ptr<SigningProvider> provider = pwallet->GetSolvingProvider(script);
+            if (!provider) {
+                return false;
+            }
+            CPubKey pubkey;
+            CKeyID keyID{ToKeyID(pkhash)};
+            if (!provider->GetPubKey(keyID, pubkey)) {
+                return false;
+            }
+            CScript basescript = GetScriptForRawPubKey(pubkey);
+            WitnessV0ScriptEntry other(0 /* version */, basescript);
+            entry.m_script = std::move(other.m_script);
+            LegacyScriptPubKeyMan* spkm = pwallet->GetLegacyScriptPubKeyMan();
+            if (!spkm) {
+                return false;
+            }
+            spkm->AddWitnessV0Script(entry);
+            CScript witscript = GetScriptForDestination(entry.m_branch.empty() ? CTxDestination(entry.GetShortHash()) : CTxDestination(entry.GetLongHash()));
+            if (!InferDescriptor(witscript, *provider)->IsSolvable()) {
+                return false;
+            }
+            return ExtractDestination(witscript, result);
+        }
+        return false;
+    }
+
+    bool operator()(const ScriptHash &scripthash) {
+        if (pwallet) {
+            CScript script = GetScriptForDestination(scripthash);
+            std::unique_ptr<SigningProvider> provider = pwallet->GetSolvingProvider(script);
+            CScript subscript;
+            if (provider && provider->GetCScript(ToScriptID(scripthash), subscript)) {
+                std::vector<std::vector<unsigned char>> vSolutions;
+                TxoutType typ = Solver(subscript, vSolutions);
+                bool allow_short = false;
+                if (typ == TxoutType::PUBKEY) {
+                    WitnessV0ScriptEntry other(0 /* version */, GetScriptForRawPubKey(CPubKey(vSolutions[0])));
+                    entry.m_script = std::move(other.m_script);
+                    allow_short = true;
+                } else if (typ == TxoutType::PUBKEYHASH) {
+                    CKeyID keyID = ToKeyID(PKHash{uint160{vSolutions[0]}});
+                    CPubKey pubkey;
+                    if (!provider || !provider->GetPubKey(keyID, pubkey)) {
+                        // The witness version of this script has the pubkey
+                        // explicitly in it.  If we can't lookup the pubkey, we
+                        // can't witnessify this script.
+                        return false;
+                    }
+                    WitnessV0ScriptEntry other(0 /* version */, GetScriptForRawPubKey(pubkey));
+                    entry.m_script = std::move(other.m_script);
+                    allow_short = true;
+                } else {
+                    WitnessV0ScriptEntry other(0 /* version */, subscript);
+                    entry.m_script = std::move(other.m_script);
+                }
+                CScript witscript = GetScriptForDestination((allow_short && entry.m_branch.empty()) ? CTxDestination(entry.GetShortHash()) : CTxDestination(entry.GetLongHash()));
+                LegacyScriptPubKeyMan* spkm = pwallet->GetLegacyScriptPubKeyMan();
+                if (!spkm) {
+                    return false;
+                }
+                spkm->AddWitnessV0Script(entry);
+                if (!InferDescriptor(witscript, *provider)->IsSolvable()) {
+                    return false;
+                }
+                return ExtractDestination(witscript, result);
+            }
+        }
+        return false;
+    }
+
+    bool operator()(const WitnessV0ShortHash& id)
+    {
+        already_witness = true;
+        result = id;
+        return true;
+    }
+
+    bool operator()(const WitnessV0LongHash& id)
+    {
+        already_witness = true;
+        result = id;
+        return true;
+    }
+
+    template<typename T>
+    bool operator()(const T& dest) { return false; }
+};
+
+RPCHelpMan addwitnessaddress()
+{
+    return RPCHelpMan{"addwitnessaddress",
+                      "\nAdd a witness address for a script (with pubkey or redeemscript known).\n"
+                      "Requires a new wallet backup.  It returns the witness script.\n",
+                      {
+                          {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "A freicoin address known to the wallet."},
+                          {"label", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "The label to assign to the address."},
+                          {"proof", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "A hexadecimal representation of the Merkle proof structure."},
+                      },
+                      RPCResult{
+                          RPCResult::Type::STR, "witnessaddress", "The new witness address (BIP173)."
+                      },
+                      RPCExamples{
+                          HelpExampleCli("addwitnessaddress", "1Q5GLnvfuTSppvWrxNJ81wc9dB8WXgYP6Y")
+                        + HelpExampleRpc("addwitnessaddress", "1Q5GLnvfuTSppvWrxNJ81wc9dB8WXgYP6Y")
+                      },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return NullUniValue;
+
+    CTxDestination dest = DecodeDestination(request.params[0].get_str());
+    if (!IsValidDestination(dest)) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Freicoin address");
+    }
+
+    std::string label;
+    if (request.params.size() > 1 && !request.params[1].isNull()) {
+        label = LabelFromValue(request.params[2]);
+    }
+
+    WitnessV0ScriptEntry entry;
+    if (request.params.size() > 1) {
+        std::vector<unsigned char> proof = ParseHexV(request.params[1].get_str(), "proof");
+        proof.insert(proof.begin(), 0x00);
+        DataStream ds(proof);
+        ds >> entry;
+        if (!ds.empty()) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "unrecognized extra data in proof: \"" + HexStr(ds.str()) + "\"");
+        }
+    }
+
+    Witnessifier w(pwallet, std::move(entry.m_branch), entry.m_path);
+    bool ret = std::visit(w, dest);
+    if (!ret) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Public key or redeemscript not known to wallet, or the key is uncompressed");
+    }
+
+    CScript witprogram = GetScriptForDestination(w.result);
+
+    if (w.already_witness) {
+        if (!(dest == w.result)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Cannot convert between witness address types");
+        }
+    } else {
+        auto spk_man = pwallet->GetLegacyScriptPubKeyMan();
+        if (!spk_man) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Wallet does not have a legacy script pubkey manager");
+        }
+        pwallet->SetAddressBook(w.result, label, AddressPurpose::RECEIVE);
+    }
+
+    return EncodeDestination(w.result);
 },
     };
 }
@@ -424,14 +628,16 @@ public:
         obj.pushKV("hex", HexStr(subscript));
 
         CTxDestination embedded;
-        if (ExtractDestination(subscript, embedded)) {
+        if (ExtractDestination(subscript, embedded) || which_type == TxoutType::PUBKEY) {
             // Only when the script corresponds to an address.
             UniValue subobj(UniValue::VOBJ);
             UniValue detail = DescribeAddress(embedded);
             subobj.pushKVs(std::move(detail));
             UniValue wallet_detail = std::visit(*this, embedded);
             subobj.pushKVs(std::move(wallet_detail));
-            subobj.pushKV("address", EncodeDestination(embedded));
+            if (which_type != TxoutType::PUBKEY) {
+                subobj.pushKV("address", EncodeDestination(embedded));
+            }
             subobj.pushKV("scriptPubKey", HexStr(subscript));
             // Always report the pubkey at the top level, so that `getnewaddress()['pubkey']` always works.
             if (subobj.exists("pubkey")) obj.pushKV("pubkey", subobj["pubkey"]);
@@ -451,7 +657,15 @@ public:
     explicit DescribeWalletAddressVisitor(const SigningProvider* _provider) : provider(_provider) {}
 
     UniValue operator()(const CNoDestination& dest) const { return UniValue(UniValue::VOBJ); }
-    UniValue operator()(const PubKeyDestination& dest) const { return UniValue(UniValue::VOBJ); }
+
+    UniValue operator()(const PubKeyDestination& dest) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        CPubKey pubkey = dest.GetPubKey();
+        obj.pushKV("pubkey", HexStr(pubkey));
+        obj.pushKV("iscompressed", pubkey.IsCompressed());
+        return obj;
+    }
 
     UniValue operator()(const PKHash& pkhash) const
     {
@@ -476,31 +690,34 @@ public:
         return obj;
     }
 
-    UniValue operator()(const WitnessV0KeyHash& id) const
-    {
-        UniValue obj(UniValue::VOBJ);
-        CPubKey pubkey;
-        if (provider && provider->GetPubKey(ToKeyID(id), pubkey)) {
-            obj.pushKV("pubkey", HexStr(pubkey));
-        }
-        return obj;
-    }
-
     // NOLINTNEXTLINE(misc-no-recursion)
-    UniValue operator()(const WitnessV0ScriptHash& id) const
+    UniValue operator()(const WitnessV0ShortHash& id) const
     {
         UniValue obj(UniValue::VOBJ);
-        CScript subscript;
-        CRIPEMD160 hasher;
-        uint160 hash;
-        hasher.Write(id.begin(), 32).Finalize(hash.begin());
-        if (provider && provider->GetCScript(CScriptID(hash), subscript)) {
-            ProcessSubScript(subscript, obj);
+        WitnessV0ScriptEntry entry;
+        if (provider && provider->GetWitnessV0Script(id, entry)) {
+            if (!entry.m_script.empty()) {
+                obj.pushKV("witscript_version", (int64_t)entry.m_script[0]);
+                if (entry.m_script[0] == 0x00) {
+                    UniValue branch(UniValue::VARR);
+                    for (const auto& hash : entry.m_branch) {
+                        branch.push_back(HexStr(hash));
+                    }
+                    obj.pushKV("witness_branch", branch);
+                    obj.pushKV("witness_path", (int64_t)entry.m_path);
+                    CScript subscript(entry.m_script.begin() + 1, entry.m_script.end());
+                    ProcessSubScript(subscript, obj);
+                }
+            }
         }
         return obj;
     }
 
-    UniValue operator()(const WitnessV1Taproot& id) const { return UniValue(UniValue::VOBJ); }
+    UniValue operator()(const WitnessV0LongHash& id) const
+    {
+        return (*this)(WitnessV0ShortHash(id));
+    }
+
     UniValue operator()(const PayToAnchor& id) const { return UniValue(UniValue::VOBJ); }
     UniValue operator()(const WitnessUnknown& id) const { return UniValue(UniValue::VOBJ); }
 };
@@ -520,15 +737,15 @@ static UniValue DescribeWalletAddress(const CWallet& wallet, const CTxDestinatio
 RPCHelpMan getaddressinfo()
 {
     return RPCHelpMan{"getaddressinfo",
-                "\nReturn information about the given bitcoin address.\n"
+                "\nReturn information about the given freicoin address.\n"
                 "Some of the information will only be present if the address is in the active wallet.\n",
                 {
-                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The bitcoin address for which to get information."},
+                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The freicoin address for which to get information."},
                 },
                 RPCResult{
                     RPCResult::Type::OBJ, "", "",
                     {
-                        {RPCResult::Type::STR, "address", "The bitcoin address validated."},
+                        {RPCResult::Type::STR, "address", "The freicoin address validated."},
                         {RPCResult::Type::STR_HEX, "scriptPubKey", "The hex-encoded output script generated by the address."},
                         {RPCResult::Type::BOOL, "ismine", "If the address is yours."},
                         {RPCResult::Type::BOOL, "iswatchonly", "If the address is watchonly."},
@@ -540,9 +757,15 @@ RPCHelpMan getaddressinfo()
                         {RPCResult::Type::BOOL, "iswitness", "If the address is a witness address."},
                         {RPCResult::Type::NUM, "witness_version", /*optional=*/true, "The version number of the witness program."},
                         {RPCResult::Type::STR_HEX, "witness_program", /*optional=*/true, "The hex value of the witness program."},
+                        {RPCResult::Type::ARR, "witness_branch", /*optional=*/true, "The hex-encoded hashes of the Merkle branch proof",
+                        {
+                            {RPCResult::Type::STR_HEX, "hash", "The hex-encoded branch skip hash"},
+                        }},
+                        {RPCResult::Type::NUM, "witness_path", /*optional=*/true, "The left/right branching information for the Merkle branch proof"},
+                        {RPCResult::Type::NUM, "witscript_version", /*optional=*/true, "The inner script version"},
                         {RPCResult::Type::STR, "script", /*optional=*/true, "The output script type. Only if isscript is true and the redeemscript is known. Possible\n"
-                                                                     "types: nonstandard, pubkey, pubkeyhash, scripthash, multisig, nulldata, witness_v0_keyhash,\n"
-                            "witness_v0_scripthash, witness_unknown."},
+                                                                     "types: nonstandard, pubkey, pubkeyhash, scripthash, multisig, nulldata, witness_v0_shorthash,\n"
+                            "witness_v0_longhash, witness_unknown."},
                         {RPCResult::Type::STR_HEX, "hex", /*optional=*/true, "The redeemscript for the p2sh address."},
                         {RPCResult::Type::ARR, "pubkeys", /*optional=*/true, "Array of pubkeys associated with the known redeemscript (only if script is multisig).",
                         {
@@ -785,7 +1008,7 @@ RPCHelpMan walletdisplayaddress()
         "walletdisplayaddress",
         "Display address on an external signer for verification.",
         {
-            {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "bitcoin address to display"},
+            {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "freicoin address to display"},
         },
         RPCResult{
             RPCResult::Type::OBJ,"","",
