@@ -1167,7 +1167,7 @@ TINYFORMAT_FOREACH_ARGNUM(TINYFORMAT_MAKE_FORMAT_FUNCS)
 
 } // namespace tinyformat
 
-// Added for Bitcoin Core:
+// Added for Freicoin:
 /** Format arguments and return the string or write to given std::ostream (see tinyformat::format doc for details) */
 #define strprintf tfm::format
 

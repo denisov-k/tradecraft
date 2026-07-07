@@ -1,7 +1,18 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <common/messages.h>
 
@@ -103,19 +114,19 @@ bool FeeModeFromString(const std::string& mode_string, FeeEstimateMode& fee_esti
     return false;
 }
 
-bilingual_str PSBTErrorString(PSBTError err)
+bilingual_str PSTErrorString(PSTError err)
 {
     switch (err) {
-        case PSBTError::MISSING_INPUTS:
+        case PSTError::MISSING_INPUTS:
             return Untranslated("Inputs missing or spent");
-        case PSBTError::SIGHASH_MISMATCH:
-            return Untranslated("Specified sighash value does not match value stored in PSBT");
-        case PSBTError::EXTERNAL_SIGNER_NOT_FOUND:
+        case PSTError::SIGHASH_MISMATCH:
+            return Untranslated("Specified sighash value does not match value stored in PST");
+        case PSTError::EXTERNAL_SIGNER_NOT_FOUND:
             return Untranslated("External signer not found");
-        case PSBTError::EXTERNAL_SIGNER_FAILED:
+        case PSTError::EXTERNAL_SIGNER_FAILED:
             return Untranslated("External signer failed to sign");
-        case PSBTError::UNSUPPORTED:
-            return Untranslated("Signer does not support PSBT");
+        case PSTError::UNSUPPORTED:
+            return Untranslated("Signer does not support PST");
         // no default case, so the compiler can warn about missing cases
     }
     assert(false);

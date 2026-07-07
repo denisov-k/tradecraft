@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_LOGGING_H
-#define BITCOIN_LOGGING_H
+#ifndef FREICOIN_LOGGING_H
+#define FREICOIN_LOGGING_H
 
 #include <threadsafety.h>
 #include <tinyformat.h>
@@ -71,6 +82,7 @@ namespace BCLog {
         TXRECONCILIATION = (CategoryMask{1} << 26),
         SCAN        = (CategoryMask{1} << 27),
         TXPACKAGES  = (CategoryMask{1} << 28),
+        STRATUM     = (CategoryMask{1} << 31), // Freicoin: stratum mining server
         ALL         = ~NONE,
     };
     enum class Level {
@@ -175,7 +187,7 @@ namespace BCLog {
         /** Disable logging
          * This offers a slight speedup and slightly smaller memory usage
          * compared to leaving the logging system in its default state.
-         * Mostly intended for libbitcoin-kernel apps that don't want any logging.
+         * Mostly intended for libfreicoin-kernel apps that don't want any logging.
          * Should be used instead of StartLogging().
          */
         void DisableLogging() EXCLUSIVE_LOCKS_REQUIRED(!m_cs);
@@ -280,4 +292,7 @@ inline void LogPrintFormatInternal(std::string_view logging_function, std::strin
 #define LogDebug(category, ...) LogPrintLevel(category, BCLog::Level::Debug, __VA_ARGS__)
 #define LogTrace(category, ...) LogPrintLevel(category, BCLog::Level::Trace, __VA_ARGS__)
 
-#endif // BITCOIN_LOGGING_H
+// Deprecated conditional logging
+#define LogPrint(category, ...)  LogDebug(category, __VA_ARGS__)
+
+#endif // FREICOIN_LOGGING_H

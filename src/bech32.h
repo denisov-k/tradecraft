@@ -1,7 +1,18 @@
 // Copyright (c) 2017, 2021 Pieter Wuille
 // Copyright (c) 2021 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Bech32 and Bech32m are string encoding formats used in newer
 // address types. The outputs consist of a human-readable part
@@ -11,8 +22,8 @@
 //
 // For more information, see BIP 173 and BIP 350.
 
-#ifndef BITCOIN_BECH32_H
-#define BITCOIN_BECH32_H
+#ifndef FREICOIN_BECH32_H
+#define FREICOIN_BECH32_H
 
 #include <stdint.h>
 #include <string>
@@ -61,4 +72,4 @@ std::pair<std::string, std::vector<int>> LocateErrors(const std::string& str, Ch
 
 } // namespace bech32
 
-#endif // BITCOIN_BECH32_H
+#endif // FREICOIN_BECH32_H
