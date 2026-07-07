@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2013-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 # Generate seeds.txt from Pieter's DNS seeder
 #
@@ -34,21 +45,22 @@ PATTERN_ONION = re.compile(r"^([a-z2-7]{56}\.onion):(\d+)$")
 PATTERN_I2P = re.compile(r"^([a-z2-7]{52}\.b32\.i2p):(\d{1,5})$")
 PATTERN_AGENT = re.compile(
     r"^/Satoshi:("
-    r"0\.14\.(0|1|2|3|99)"
-    r"|0\.15\.(0|1|2|99)"
-    r"|0\.16\.(0|1|2|3|99)"
-    r"|0\.17\.(0|0\.1|1|2|99)"
-    r"|0\.18\.(0|1|99)"
-    r"|0\.19\.(0|1|2|99)"
-    r"|0\.20\.(0|1|2|99)"
-    r"|0\.21\.(0|1|2|99)"
-    r"|22\.(0|1|99)\.0"
-    r"|23\.(0|1|2|99)\.0"
-    r"|24\.(0|1|2|99)\.(0|1)"
-    r"|25\.(0|1|2|99)\.0"
-    r"|26\.(0|1|2|99)\.0"
-    r"|27\.(0|1|2|99)\.0"
-    r"|28\.(0|1|99)\.0"
+    r"13.2.5|"
+    r"13.2.5.1|"
+    r"14.3.0.1|"
+    r"15.2|"
+    r"16.3|"
+    r"17.2|"
+    r"18.1|"
+    r"19.2|"
+    r"20.2|"
+    r"21.2|"
+    r"22.1|"
+    r"23.1|"
+    r"24.1|"
+    r"25|"
+    r"26|"
+    r"27.1"
     r")")
 
 def parseline(line: str) -> Union[dict, None]:
@@ -195,7 +207,7 @@ def ip_stats(ips: list[dict]) -> str:
     return f"{hist['ipv4']:6d} {hist['ipv6']:6d} {hist['onion']:6d} {hist['i2p']:6d} {hist['cjdns']:6d}"
 
 def parse_args():
-    argparser = argparse.ArgumentParser(description='Generate a list of bitcoin node seed ip addresses.')
+    argparser = argparse.ArgumentParser(description='Generate a list of freicoin node seed ip addresses.')
     argparser.add_argument("-a","--asmap", help='the location of the asmap asn database file (required)', required=True)
     argparser.add_argument("-s","--seeds", help='the location of the DNS seeds file (required)', required=True)
     argparser.add_argument("-m", "--minblocks", help="The minimum number of blocks each node must have", default=MIN_BLOCKS, type=int)
@@ -245,9 +257,9 @@ def main():
     print(f'{ip_stats(ips):s} Require a known and recent user agent', file=sys.stderr)
     # Sort by availability (and use last success as tie breaker)
     ips.sort(key=lambda x: (x['uptime'], x['lastsuccess'], x['ip']), reverse=True)
-    # Filter out hosts with multiple bitcoin ports, these are likely abusive
+    # Filter out hosts with multiple freicoin ports, these are likely abusive
     ips = filtermultiport(ips)
-    print(f'{ip_stats(ips):s} Filter out hosts with multiple bitcoin ports', file=sys.stderr)
+    print(f'{ip_stats(ips):s} Filter out hosts with multiple freicoin ports', file=sys.stderr)
     # Look up ASNs and limit results, both per ASN and globally.
     ips = filterbyasn(asmap, ips, MAX_SEEDS_PER_ASN, NSEEDS)
     print(f'{ip_stats(ips):s} Look up ASNs and limit results per ASN and per net', file=sys.stderr)
