@@ -84,19 +84,11 @@ def bctest(testDir, testObj, buildenv):
     are not as expected. Error is caught by bctester() and reported.
     """
     # Get the exec names and arguments
-<<<<<<< v29.0
     execprog = os.path.join(buildenv["BUILDDIR"], "bin", testObj["exec"] + buildenv["EXEEXT"])
-    if testObj["exec"] == "./bitcoin-util":
-        execprog = os.getenv("BITCOINUTIL", default=execprog)
-    elif testObj["exec"] == "./bitcoin-tx":
-        execprog = os.getenv("BITCOINTX", default=execprog)
-=======
-    execprog = os.path.join(buildenv["BUILDDIR"], "src", testObj["exec"] + buildenv["EXEEXT"])
     if testObj["exec"] == "./freicoin-util":
         execprog = os.getenv("FREICOINUTIL", default=execprog)
     elif testObj["exec"] == "./freicoin-tx":
         execprog = os.getenv("FREICOINTX", default=execprog)
->>>>>>> tc-28.1
 
     execargs = testObj['args']
     execrun = [execprog] + execargs

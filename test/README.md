@@ -202,13 +202,8 @@ tests will fail. If this happens, remove the cache directory (and make
 sure freicoind processes are stopped as above):
 
 ```bash
-<<<<<<< v29.0
 rm -rf build/test/cache
-killall bitcoind
-=======
-rm -rf test/cache
 killall freicoind
->>>>>>> tc-28.1
 ```
 
 ##### Test logging
