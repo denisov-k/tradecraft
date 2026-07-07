@@ -203,7 +203,8 @@ if(ENABLE_WALLET)
       init/freicoin-wallet.cpp
       wallet/wallettool.cpp
     )
-    add_windows_resources(bitcoin-wallet bitcoin-wallet-res.rc)
+    add_windows_resources(bitcoin-wallet freicoin-wallet-res.rc)
+    set_target_properties(bitcoin-wallet PROPERTIES OUTPUT_NAME freicoin-wallet)
     target_link_libraries(bitcoin-wallet
       core_interface
       bitcoin_wallet
@@ -342,7 +343,8 @@ if(BUILD_DAEMON)
     freicoind.cpp
     init/freicoind.cpp
   )
-  add_windows_resources(bitcoind bitcoind-res.rc)
+  add_windows_resources(bitcoind freicoind-res.rc)
+  set_target_properties(bitcoind PROPERTIES OUTPUT_NAME freicoind)
   target_link_libraries(bitcoind
     core_interface
     bitcoin_node
@@ -395,7 +397,8 @@ target_link_libraries(bitcoin_cli
 # Bitcoin Core RPC client
 if(BUILD_CLI)
   add_executable(bitcoin-cli freicoin-cli.cpp)
-  add_windows_resources(bitcoin-cli bitcoin-cli-res.rc)
+  add_windows_resources(bitcoin-cli freicoin-cli-res.rc)
+  set_target_properties(bitcoin-cli PROPERTIES OUTPUT_NAME freicoin-cli)
   target_link_libraries(bitcoin-cli
     core_interface
     bitcoin_cli
@@ -410,7 +413,8 @@ endif()
 
 if(BUILD_TX)
   add_executable(bitcoin-tx freicoin-tx.cpp)
-  add_windows_resources(bitcoin-tx bitcoin-tx-res.rc)
+  add_windows_resources(bitcoin-tx freicoin-tx-res.rc)
+  set_target_properties(bitcoin-tx PROPERTIES OUTPUT_NAME freicoin-tx)
   target_link_libraries(bitcoin-tx
     core_interface
     bitcoin_common
@@ -423,7 +427,8 @@ endif()
 
 if(BUILD_UTIL)
   add_executable(bitcoin-util freicoin-util.cpp)
-  add_windows_resources(bitcoin-util bitcoin-util-res.rc)
+  add_windows_resources(bitcoin-util freicoin-util-res.rc)
+  set_target_properties(bitcoin-util PROPERTIES OUTPUT_NAME freicoin-util)
   target_link_libraries(bitcoin-util
     core_interface
     bitcoin_common
