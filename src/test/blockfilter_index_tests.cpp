@@ -205,7 +205,9 @@ BOOST_FIXTURE_TEST_CASE(blockfilter_index_initial_sync, BuildChainTestingSetup)
         LOCK(cs_main);
         tip = m_node.chainman->ActiveChain().Tip();
         while ((entry = m_node.chainman->ActiveChainstate().CoinsTip().GetFinalTx()).IsNull()) {
-            std::unique_ptr<CBlockTemplate> pblocktemplate = BlockAssembler{m_node.chainman->ActiveChainstate(), m_node.mempool.get(), BlockAssembler::Options{}}.CreateNewBlock(CScript() << OP_TRUE);
+            BlockAssembler::Options assembler_options;
+            assembler_options.coinbase_output_script = CScript() << OP_TRUE;
+            std::unique_ptr<CBlockTemplate> pblocktemplate = BlockAssembler{m_node.chainman->ActiveChainstate(), m_node.mempool.get(), assembler_options}.CreateNewBlock();
         }
     }
     CKey coinbase_key_A = GenerateRandomKey();

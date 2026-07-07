@@ -533,7 +533,7 @@ BOOST_AUTO_TEST_CASE(package_single_tx)
 
     // Parent and Child. Both submitted by themselves through the ProcessNewPackage interface.
     CKey parent_key = GenerateRandomKey();
-    CScript parent_locking_script = GetScriptForDestination(WitnessV0KeyHash(parent_key.GetPubKey()));
+    CScript parent_locking_script = GetScriptForDestination(PKHash(parent_key.GetPubKey()));
     auto mtx_parent = CreateValidMempoolTransaction(/*input_transaction=*/m_coinbase_txns[1], /*input_vout=*/0,
                                                     /*input_height=*/0, /*input_signing_key=*/coinbaseKey,
                                                     /*output_destination=*/parent_locking_script,
@@ -554,7 +554,7 @@ BOOST_AUTO_TEST_CASE(package_single_tx)
     BOOST_CHECK_EQUAL(m_node.mempool->size(), expected_pool_size);
 
     CKey child_key = GenerateRandomKey();
-    CScript child_locking_script = GetScriptForDestination(WitnessV0KeyHash(child_key.GetPubKey()));
+    CScript child_locking_script = GetScriptForDestination(PKHash(child_key.GetPubKey()));
     auto mtx_child = CreateValidMempoolTransaction(/*input_transaction=*/tx_parent, /*input_vout=*/0,
                                                    /*input_height=*/101, /*input_signing_key=*/parent_key,
                                                    /*output_destination=*/child_locking_script,
