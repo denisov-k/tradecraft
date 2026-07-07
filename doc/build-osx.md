@@ -2,7 +2,7 @@
 
 **Updated for MacOS [26](https://www.apple.com/os/macos/)**
 
-This guide describes how to build bitcoind, command-line utilities, and GUI on macOS.
+This guide describes how to build freicoind, command-line utilities, and GUI on macOS.
 
 ## Preparation
 
@@ -16,7 +16,7 @@ macOS comes with a built-in Terminal located in:
 ### 1. Xcode Command Line Tools
 
 The Xcode Command Line Tools are a collection of build tools for macOS.
-These tools must be installed in order to build Bitcoin Core from source.
+These tools must be installed in order to build Freicoin from source.
 
 To install, run the following command from your terminal:
 
@@ -67,20 +67,41 @@ you can omit `capnp` and use `-DENABLE_IPC=OFF` in the `cmake -B` step below.
 ### 4. Clone Bitcoin repository
 
 `git` should already be installed by default on your system.
-Now that all the required dependencies are installed, let's clone the Bitcoin Core repository to a directory.
+Now that all the required dependencies are installed, let's clone the Freicoin repository to a directory.
 All build scripts and commands will run from this directory.
 
 ``` bash
-git clone https://github.com/bitcoin/bitcoin.git
+git clone https://github.com/tradecraftio/tradecraft.git
 ```
 
 ### 5. Install Optional Dependencies
+
+#### Wallet Dependencies
+
+It is not necessary to build wallet functionality to run `freicoind` or  `freicoin-qt`.
+
+###### Descriptor Wallet Support
+
+`sqlite` is required to support for descriptor wallets.
+
+macOS ships with a useable `sqlite` package, meaning you don't need to
+install anything.
+
+###### Legacy Wallet Support
+
+`berkeley-db@4` is only required to support for legacy wallets.
+Skip if you don't intend to use legacy wallets.
+
+``` bash
+brew install berkeley-db@4
+```
+---
 
 #### GUI Dependencies
 
 ###### Qt
 
-Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
+Freicoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
 Qt, libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the GUI.
 
 ``` bash
@@ -130,14 +151,14 @@ brew install python
 
 #### Deploy Dependencies
 
-You can [deploy](#3-deploy-optional) a `.zip` containing the Bitcoin Core application.
-It is required that you have `python` and `zip` installed.
+You can [deploy](#3-deploy-optional) a `.zip` containing the Freicoin application.
+It is required that you have `python` installed.
 
-## Building Bitcoin Core
+## Building Freicoin
 
 ### 1. Configuration
 
-There are many ways to configure Bitcoin Core, here are a few common examples:
+There are many ways to configure Freicoin, here are a few common examples:
 
 ##### Wallet (only SQlite) and GUI Support:
 
@@ -166,7 +187,7 @@ cmake -B build -LH
 ### 2. Compile
 
 After configuration, you are ready to compile.
-Run the following in your terminal to compile Bitcoin Core:
+Run the following in your terminal to compile Freicoin:
 
 ``` bash
 cmake --build build     # Append "-j N" here for N parallel jobs.
@@ -181,45 +202,41 @@ You can also create a  `.zip` containing the `.app` bundle by running the follow
 cmake --build build --target deploy
 ```
 
-## Running Bitcoin Core
+## Running Freicoin
 
-Bitcoin Core should now be available at `./build/bin/bitcoind`.
-If you compiled support for the GUI, it should be available at `./build/bin/bitcoin-qt`.
+Freicoin should now be available at `./build/bin/freicoind`.
+If you compiled support for the GUI, it should be available at `./build/bin/freicoin-qt`.
 
-There is also a multifunction command line interface at `./build/bin/bitcoin`
-supporting subcommands like `bitcoin node`, `bitcoin gui`, `bitcoin rpc`, and
-others that can be listed with `bitcoin help`.
-
-The first time you run `bitcoind` or `bitcoin-qt`, it will start downloading the blockchain.
+The first time you run `freicoind` or `freicoin-qt`, it will start downloading the blockchain.
 This process could take many hours, or even days on slower than average systems.
 
 By default, blockchain and wallet data files will be stored in:
 
 ``` bash
-/Users/${USER}/Library/Application Support/Bitcoin/
+/Users/${USER}/Library/Application Support/Freicoin/
 ```
 
 Before running, you may create an empty configuration file:
 
 ```shell
-mkdir -p "/Users/${USER}/Library/Application Support/Bitcoin"
+mkdir -p "/Users/${USER}/Library/Application Support/Freicoin"
 
-touch "/Users/${USER}/Library/Application Support/Bitcoin/bitcoin.conf"
+touch "/Users/${USER}/Library/Application Support/Freicoin/freicoin.conf"
 
-chmod 600 "/Users/${USER}/Library/Application Support/Bitcoin/bitcoin.conf"
+chmod 600 "/Users/${USER}/Library/Application Support/Freicoin/freicoin.conf"
 ```
 
 You can monitor the download process by looking at the debug.log file:
 
 ```shell
-tail -f $HOME/Library/Application\ Support/Bitcoin/debug.log
+tail -f $HOME/Library/Application\ Support/Freicoin/debug.log
 ```
 
 ## Other commands:
 
 ```shell
-./build/bin/bitcoind -daemon      # Starts the bitcoin daemon.
-./build/bin/bitcoin-cli --help    # Outputs a list of command-line options.
-./build/bin/bitcoin-cli help      # Outputs a list of RPC commands when the daemon is running.
-./build/bin/bitcoin-qt -server # Starts the bitcoin-qt server mode, allows bitcoin-cli control
+./build/bin/freicoind -daemon      # Starts the bitcoin daemon.
+./build/bin/freicoin-cli --help    # Outputs a list of command-line options.
+./build/bin/freicoin-cli help      # Outputs a list of RPC commands when the daemon is running.
+./build/bin/freicoin-qt -server # Starts the freicoin-qt server mode, allows freicoin-cli control
 ```

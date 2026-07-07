@@ -1,8 +1,8 @@
-# Fuzzing Bitcoin Core using libFuzzer
+# Fuzzing Freicoin using libFuzzer
 
 ## Quickstart guide
 
-To quickly get started fuzzing Bitcoin Core using [libFuzzer](https://llvm.org/docs/LibFuzzer.html):
+To quickly get started fuzzing Freicoin using [libFuzzer](https://llvm.org/docs/LibFuzzer.html):
 
 ```sh
 $ git clone https://github.com/bitcoin/bitcoin
@@ -19,18 +19,13 @@ See [further](#run-without-sanitizers-for-increased-throughput) for more informa
 There is also a runner script to execute all fuzz targets. Refer to
 `./build_fuzz/test/fuzz/test_runner.py --help` for more details.
 
-For source-based coverage reports, see [developer notes](/doc/developer-notes.md#compiling-for-fuzz-coverage).
+## Overview of Freicoin fuzzing
 
-macOS users: We recommend fuzzing on Linux, see [macOS notes](#macos-notes) for
-more information.
-
-## Overview of Bitcoin Core fuzzing
-
-[Google](https://github.com/google/fuzzing/) has a good overview of fuzzing in general, with contributions from key architects of some of the most-used fuzzers. [This paper](https://agroce.github.io/bitcoin_report.pdf) includes an external overview of the status of Bitcoin Core fuzzing, as of summer 2021.  [John Regehr](https://blog.regehr.org/archives/1687) provides good advice on writing code that assists fuzzers in finding bugs, which is useful for developers to keep in mind.
+[Google](https://github.com/google/fuzzing/) has a good overview of fuzzing in general, with contributions from key architects of some of the most-used fuzzers. [This paper](https://agroce.github.io/freicoin_report.pdf) includes an external overview of the status of Freicoin fuzzing, as of summer 2021.  [John Regehr](https://blog.regehr.org/archives/1687) provides good advice on writing code that assists fuzzers in finding bugs, which is useful for developers to keep in mind.
 
 ## Fuzzing harnesses and output
 
-[`process_message`](/src/test/fuzz/process_message.cpp) is a fuzzing harness for the [`ProcessMessage(...)` function (`net_processing`)](/src/net_processing.cpp). The available fuzzing harnesses are found in [`src/test/fuzz/`](/src/test/fuzz).
+[`process_message`](https://github.com/tradecraftio/tradecraft/blob/master/src/test/fuzz/process_message.cpp) is a fuzzing harness for the [`ProcessMessage(...)` function (`net_processing`)](https://github.com/tradecraftio/tradecraft/blob/master/src/net_processing.cpp). The available fuzzing harnesses are found in [`src/test/fuzz/`](https://github.com/tradecraftio/tradecraft/tree/master/src/test/fuzz).
 
 The fuzzer will output `NEW` every time it has created a test input that covers new areas of the code under test. For more information on how to interpret the fuzzer output, see the [libFuzzer documentation](https://llvm.org/docs/LibFuzzer.html).
 
@@ -76,7 +71,7 @@ block^@M-^?M-^?M-^?M-^?M-^?nM-^?M-^?
 
 In this case the fuzzer managed to create a `block` message which when passed to `ProcessMessage(...)` increased coverage.
 
-It is possible to specify `bitcoind` arguments to the `fuzz` executable.
+It is possible to specify `freicoind` arguments to the `fuzz` executable.
 Depending on the test, they may be ignored or consumed and alter the behavior
 of the test. Just make sure to use double-dash to distinguish them from the
 fuzzer's own arguments:
@@ -151,7 +146,7 @@ Patience is useful; even with improved throughput, libFuzzer may need days and
 
 If you find coverage increasing inputs when fuzzing you are highly encouraged to submit them for inclusion in the [`bitcoin-core/qa-assets`](https://github.com/bitcoin-core/qa-assets) repo.
 
-Every single pull request submitted against the Bitcoin Core repo is automatically tested against all inputs in the [`bitcoin-core/qa-assets`](https://github.com/bitcoin-core/qa-assets) repo. Contributing new coverage increasing inputs is an easy way to help make Bitcoin Core more robust.
+Every single pull request submitted against the Freicoin repo is automatically tested against all inputs in the [`bitcoin-core/qa-assets`](https://github.com/bitcoin-core/qa-assets) repo. Contributing new coverage increasing inputs is an easy way to help make Freicoin more robust.
 
 ## Building and debugging fuzz tests
 
@@ -193,15 +188,15 @@ best results. On macOS this can be done within Docker or a virtual machine.
 Reproducing and debugging fuzz testcases on macOS is supported, by building the
 fuzz binary without support for any specific fuzzing engine.
 
-# Fuzzing Bitcoin Core using afl++
+# Fuzzing Freicoin using afl++
 
 ## Quickstart guide
 
-To quickly get started fuzzing Bitcoin Core using [afl++](https://github.com/AFLplusplus/AFLplusplus):
+To quickly get started fuzzing Freicoin using [afl++](https://github.com/AFLplusplus/AFLplusplus):
 
 ```sh
-$ git clone https://github.com/bitcoin/bitcoin
-$ cd bitcoin/
+$ git clone https://github.com/tradecraftio/tradecraft
+$ cd freicoin/
 $ git clone https://github.com/AFLplusplus/AFLplusplus
 $ make -C AFLplusplus/ source-only
 # If afl-clang-lto is not available, see
@@ -220,11 +215,11 @@ $ FUZZ=bech32 ./AFLplusplus/afl-fuzz -i inputs/ -o outputs/ -- build_fuzz/bin/fu
 
 Read the [afl++ documentation](https://github.com/AFLplusplus/AFLplusplus) for more information.
 
-# Fuzzing Bitcoin Core using Honggfuzz
+# Fuzzing Freicoin using Honggfuzz
 
 ## Quickstart guide
 
-To quickly get started fuzzing Bitcoin Core using [Honggfuzz](https://github.com/google/honggfuzz):
+To quickly get started fuzzing Freicoin using [Honggfuzz](https://github.com/google/honggfuzz):
 
 ```sh
 $ git clone https://github.com/bitcoin/bitcoin
@@ -247,12 +242,12 @@ Read the [Honggfuzz documentation](https://github.com/google/honggfuzz/blob/mast
 
 # OSS-Fuzz
 
-Bitcoin Core participates in Google's [OSS-Fuzz](https://github.com/google/oss-fuzz/tree/master/projects/bitcoin-core)
+Freicoin participates in Google's [OSS-Fuzz](https://github.com/google/oss-fuzz/tree/master/projects/bitcoin-core)
 program, which includes a dashboard of [publicly disclosed vulnerabilities](https://issues.oss-fuzz.com/issues?q=bitcoin-core%20status:open).
 
-Bitcoin Core follows its [security disclosure policy](https://bitcoincore.org/en/security-advisories/),
+Freicoin follows its [security disclosure policy](https://bitcoincore.org/en/security-advisories/),
 which may differ from Google's standard
 [90-day disclosure window](https://google.github.io/oss-fuzz/getting-started/bug-disclosure-guidelines/)
 .
 
-OSS-Fuzz also produces [a fuzzing coverage report](https://oss-fuzz.com/coverage-report/job/libfuzzer_asan_bitcoin-core/latest).
+OSS-Fuzz also produces [a fuzzing coverage report](https://oss-fuzz.com/coverage-report/job/libfuzzer_asan_freicoin/latest).

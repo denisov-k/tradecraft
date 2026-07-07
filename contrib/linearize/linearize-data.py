@@ -2,9 +2,20 @@
 #
 # linearize-data.py: Construct a linear, no-fork version of the chain.
 #
-# Copyright (c) 2013-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2013-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
 import struct
@@ -21,6 +32,9 @@ from collections import namedtuple
 settings = {}
 
 def calc_hash_str(blk_hdr):
+    blk_hdr = bytearray(blk_hdr)
+    blk_hdr[74] = blk_hdr[74] & 0x7f # Ignore aux-pow serialization bit
+    blk_hdr = bytes(blk_hdr)
     blk_hdr_hash = hashlib.sha256(hashlib.sha256(blk_hdr).digest()).digest()
     return blk_hdr_hash[::-1].hex()
 
@@ -226,11 +240,12 @@ class BlockDataCopier:
             su = struct.unpack("<I", inLenLE)
             inLen = su[0] - 80 # length without header
             blk_hdr = self.read_xored(self.inF, 80)
+            has_aux_pow = (blk_hdr[74] & 0x80) != 0
             inExtent = BlockExtent(self.inFn, self.inF.tell(), inhdr, blk_hdr, inLen)
 
             self.hash_str = calc_hash_str(blk_hdr)
-            if self.hash_str not in blkmap:
-                # Because blocks can be written to files out-of-order as of 0.10, the script
+            if not self.hash_str in blkmap:
+                # Because blocks can be written to files out-of-order as of 10.4, the script
                 # may encounter blocks it doesn't know about. Treat as debug output.
                 if settings['debug_output'] == 'true':
                     print("Skipping unknown block " + self.hash_str)
@@ -238,6 +253,11 @@ class BlockDataCopier:
                 continue
 
             blkHeight = self.blkmap[self.hash_str]
+            if blkHeight >= self.settings['auxpow'] and not has_aux_pow:
+                print("Skipping block %s at height %d due to missing auxpow" % (self.hash_str, blkHeight))
+                self.inF.seek(inLen, os.SEEK_CUR)
+                continue
+
             self.blkCountIn += 1
 
             if self.blkCountOut == blkHeight:
@@ -287,9 +307,9 @@ if __name__ == '__main__':
     settings['rev_hash_bytes'] = settings['rev_hash_bytes'].lower()
 
     if 'netmagic' not in settings:
-        settings['netmagic'] = 'f9beb4d9'
+        settings['netmagic'] = '2cfe7e6d'
     if 'genesis' not in settings:
-        settings['genesis'] = '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f'
+        settings['genesis'] = '000000005b1e3d23ecfd2dd4a6e1a35238aa0392c0a8528c40df52376d7efe2c'
     if 'input' not in settings:
         settings['input'] = 'input'
     if 'hashlist' not in settings:
@@ -305,6 +325,11 @@ if __name__ == '__main__':
     if 'debug_output' not in settings:
         settings['debug_output'] = 'false'
 
+    if 'auxpow' not in settings:
+        print("Missing auxpow height")
+        sys.exit(1)
+
+    settings['auxpow'] = int(settings['auxpow'])
     settings['max_out_sz'] = int(settings['max_out_sz'])
     settings['split_timestamp'] = int(settings['split_timestamp'])
     settings['file_timestamp'] = int(settings['file_timestamp'])

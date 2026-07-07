@@ -2,7 +2,7 @@
 
 **Updated for NetBSD [10.1](https://netbsd.org/releases/formal-10/NetBSD-10.1.html)**
 
-This guide describes how to build bitcoind, command-line utilities, and GUI on NetBSD.
+This guide describes how to build freicoind, command-line utilities, and GUI on NetBSD.
 
 ## Preparation
 
@@ -49,20 +49,40 @@ Compile with `-DENABLE_IPC=OFF` if you do not need IPC functionality.
 
 See [dependencies.md](dependencies.md) for a complete overview.
 
-### 2. Clone Bitcoin Repo
+### 2. Clone Freicoin Repo
 
-Clone the Bitcoin Core repository to a directory. All build scripts and commands will run from this directory.
+Clone the Freicoin repository to a directory. All build scripts and commands will run from this directory.
 
 ```bash
-git clone https://github.com/bitcoin/bitcoin.git
+git clone https://github.com/tradecraftio/tradecraft.git
 ```
 
 ### 3. Install Optional Dependencies
 
+#### Wallet Dependencies
+
+It is not necessary to build wallet functionality to run freicoind or the GUI.
+
+###### Descriptor Wallet Support
+
+`sqlite3` is required to enable support for [descriptor wallets](https://github.com/tradecraftio/tradecraft/blob/master/doc/descriptors.md).
+
+```bash
+pkgin install sqlite3
+```
+
+###### Legacy Wallet Support
+
+`db4` is required to enable support for legacy wallets.
+
+```bash
+pkgin install db4
+```
+
 #### GUI Dependencies
 ###### Qt6
 
-Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
+Freicoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
 the necessary parts of Qt, the libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the GUI.
 
 ```bash
@@ -96,11 +116,11 @@ To run the test suite (recommended), you will need to have Python 3 installed:
 pkgin install python313 py313-zmq
 ```
 
-## Building Bitcoin Core
+## Building Freicoin
 
 ### 1. Configuration
 
-There are many ways to configure Bitcoin Core. Here is an example that
+There are many ways to configure Freicoin. Here is an example that
 explicitly disables the wallet and GUI:
 
 ```bash

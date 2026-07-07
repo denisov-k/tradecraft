@@ -1,18 +1,29 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2014-2021 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
     ZMQ example using python3's asyncio
 
-    Bitcoin should be started with the command line arguments:
-        bitcoind -testnet4 -daemon \
-                -zmqpubrawtx=tcp://127.0.0.1:28332 \
-                -zmqpubrawblock=tcp://127.0.0.1:28332 \
-                -zmqpubhashtx=tcp://127.0.0.1:28332 \
-                -zmqpubhashblock=tcp://127.0.0.1:28332 \
-                -zmqpubsequence=tcp://127.0.0.1:28332
+    Freicoin should be started with the command line arguments:
+        freicoind -testnet -daemon \
+                -zmqpubrawtx=tcp://127.0.0.1:28102 \
+                -zmqpubrawblock=tcp://127.0.0.1:28102 \
+                -zmqpubhashtx=tcp://127.0.0.1:28102 \
+                -zmqpubhashblock=tcp://127.0.0.1:28102 \
+                -zmqpubsequence=tcp://127.0.0.1:28102
 
     We use the asyncio library here.  `self.handle()` installs itself as a
     future at the end of the function.  Since it never returns with the event
@@ -20,7 +31,7 @@
     alternative is to wrap the contents of `handle` inside `while True`.
 
     A blocking example using python 2.7 can be obtained from the git history:
-    https://github.com/bitcoin/bitcoin/blob/37a7fe9e440b83e2364d5498931253937abe9294/contrib/zmq/zmq_sub.py
+    https://github.com/tradecraftio/tradecraft/blob/37a7fe9e440b83e2364d5498931253937abe9294/contrib/zmq/zmq_sub.py
 """
 
 import asyncio
@@ -34,7 +45,7 @@ if (sys.version_info.major, sys.version_info.minor) < (3, 5):
     print("This example only works with Python 3.5 and greater")
     sys.exit(1)
 
-port = 28332
+port = 28102
 
 class ZMQHandler():
     def __init__(self):
