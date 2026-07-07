@@ -1,9 +1,20 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_WALLET_COINCONTROL_H
-#define BITCOIN_WALLET_COINCONTROL_H
+#ifndef FREICOIN_WALLET_COINCONTROL_H
+#define FREICOIN_WALLET_COINCONTROL_H
 
 #include <outputtype.h>
 #include <policy/feerate.h>
@@ -30,7 +41,7 @@ class PreselectedInput
 {
 private:
     //! The previous output being spent by this input
-    std::optional<CTxOut> m_txout;
+    std::optional<SpentOutput> m_spent_output;
     //! The input weight for spending this input
     std::optional<int64_t> m_weight;
     //! The sequence number for this input
@@ -47,11 +58,11 @@ public:
      * Set the previous output for this input.
      * Only necessary if the input is expected to be an external input.
      */
-    void SetTxOut(const CTxOut& txout);
+    void SetSpentOutput(const CTxOut& txout, uint32_t refheight);
     /** Retrieve the previous output for this input. */
-    CTxOut GetTxOut() const;
+    SpentOutput GetSpentOutput() const;
     /** Return whether the previous output is set for this input. */
-    bool HasTxOut() const;
+    bool HasSpentOutput() const;
 
     /** Set the weight for this input. */
     void SetInputWeight(int64_t weight);
@@ -135,7 +146,7 @@ public:
     /**
      * Returns the external output for the given outpoint if it exists.
      */
-    std::optional<CTxOut> GetExternalOutput(const COutPoint& outpoint) const;
+    std::optional<SpentOutput> GetExternalOutput(const COutPoint& outpoint) const;
     /**
      * Lock-in the given output for spending.
      * The output will be included in the transaction even if it's not the most optimal choice.
@@ -187,4 +198,4 @@ private:
 };
 } // namespace wallet
 
-#endif // BITCOIN_WALLET_COINCONTROL_H
+#endif // FREICOIN_WALLET_COINCONTROL_H

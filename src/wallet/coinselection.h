@@ -1,9 +1,20 @@
 // Copyright (c) 2017-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_WALLET_COINSELECTION_H
-#define BITCOIN_WALLET_COINSELECTION_H
+#ifndef FREICOIN_WALLET_COINSELECTION_H
+#define FREICOIN_WALLET_COINSELECTION_H
 
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
@@ -37,8 +48,17 @@ public:
     /** The outpoint identifying this UTXO */
     COutPoint outpoint;
 
+    /** The reference height at which the output is evaluated. */
+    uint32_t atheight;
+
+    /** The value of the output adjusted to the reference height atheight */
+    CAmount adjusted;
+
     /** The output itself */
     CTxOut txout;
+
+    /** The transaction's lock_height */
+    uint32_t refheight;
 
     /**
      * Depth in block chain.
@@ -72,9 +92,12 @@ public:
     /** The fee necessary to bump this UTXO's ancestor transactions to the target feerate */
     CAmount ancestor_bump_fees{0};
 
-    COutput(const COutPoint& outpoint, const CTxOut& txout, int depth, int input_bytes, bool solvable, bool safe, int64_t time, bool from_me, const std::optional<CFeeRate> feerate = std::nullopt)
+    COutput(uint32_t atheight, CAmount adjusted, const COutPoint& outpoint, const SpentOutput& spent_output, int depth, int input_bytes, bool solvable, bool safe, int64_t time, bool from_me, const std::optional<CFeeRate> feerate = std::nullopt)
         : outpoint{outpoint},
-          txout{txout},
+          atheight{atheight},
+          adjusted{adjusted},
+          txout{spent_output.out},
+          refheight{spent_output.refheight},
           depth{depth},
           input_bytes{input_bytes},
           solvable{solvable},
@@ -82,20 +105,23 @@ public:
           time{time},
           from_me{from_me}
     {
+        if (adjusted < 0) {
+            adjusted = spent_output.out.GetTimeAdjustedValue(static_cast<int>(atheight - refheight));
+        }
         if (feerate) {
             // base fee without considering potential unconfirmed ancestors
             fee = input_bytes < 0 ? 0 : feerate.value().GetFee(input_bytes);
-            effective_value = txout.nValue - fee.value();
+            effective_value = adjusted - fee.value();
         }
     }
 
-    COutput(const COutPoint& outpoint, const CTxOut& txout, int depth, int input_bytes, bool solvable, bool safe, int64_t time, bool from_me, const CAmount fees)
-        : COutput(outpoint, txout, depth, input_bytes, solvable, safe, time, from_me)
+    COutput(uint32_t atheight, CAmount adjusted, const COutPoint& outpoint, const SpentOutput& spent_output, int depth, int input_bytes, bool solvable, bool safe, int64_t time, bool from_me, const CAmount fees)
+        : COutput(atheight, adjusted, outpoint, spent_output, depth, input_bytes, solvable, safe, time, from_me)
     {
         // if input_bytes is unknown, then fees should be 0, if input_bytes is known, then the fees should be a positive integer or 0 (input_bytes known and fees = 0 only happens in the tests)
         assert((input_bytes < 0 && fees == 0) || (input_bytes > 0 && fees >= 0));
         fee = fees;
-        effective_value = txout.nValue - fee.value();
+        effective_value = adjusted - fee.value();
     }
 
     std::string ToString() const;
@@ -111,8 +137,8 @@ public:
         ancestor_bump_fees = bump_fee;
         assert(fee);
         *fee += bump_fee;
-        // Note: assert(effective_value - bump_fee == nValue - fee.value());
-        effective_value = txout.nValue - fee.value();
+        // Note: assert(effective_value - bump_fee == adjusted - fee.value());
+        effective_value = adjusted - fee.value();
     }
 
     CAmount GetFee() const
@@ -234,6 +260,8 @@ struct OutputGroup
     bool m_from_me{true};
     /** The total value of the UTXOs in sum. */
     CAmount m_value{0};
+    /** The reference height of the sum. */
+    uint32_t m_atheight{0};
     /** The minimum number of confirmations the UTXOs in the group have. Unconfirmed is 0. */
     int m_depth{999};
     /** The aggregated count of unconfirmed ancestors of all UTXOs in this
@@ -324,6 +352,8 @@ struct SelectionResult
 private:
     /** Set of inputs selected by the algorithm to use in the transaction */
     std::set<std::shared_ptr<COutput>> m_selected_inputs;
+    /** The reference height to which amounts are time-adjusted */
+    uint32_t m_atheight{0};
     /** The target the algorithm selected for. Equal to the recipient amount plus non-input fees */
     CAmount m_target;
     /** The algorithm used to produce this result */
@@ -344,6 +374,12 @@ private:
     template<typename T>
     void InsertInputs(const T& inputs)
     {
+	for (const auto& x : inputs) {
+            if (m_atheight == 0) {
+                m_atheight = x->atheight;
+            }
+            assert(x->atheight == m_atheight);
+        }
         // Store sum of combined input sets to check that the results have no shared UTXOs
         const size_t expected_count = m_selected_inputs.size() + inputs.size();
         util::insert(m_selected_inputs, inputs);
@@ -463,4 +499,4 @@ util::Result<SelectionResult> KnapsackSolver(std::vector<OutputGroup>& groups, c
                                              CAmount change_target, FastRandomContext& rng, int max_selection_weight);
 } // namespace wallet
 
-#endif // BITCOIN_WALLET_COINSELECTION_H
+#endif // FREICOIN_WALLET_COINSELECTION_H

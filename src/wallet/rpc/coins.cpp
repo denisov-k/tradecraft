@@ -1,6 +1,17 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <core_io.h>
 #include <hash.h>
@@ -29,7 +40,7 @@ static CAmount GetReceived(const CWallet& wallet, const UniValue& params, bool b
         // Get the address
         CTxDestination dest = DecodeDestination(params[0].get_str());
         if (!IsValidDestination(dest)) {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address");
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Freicoin address");
         }
         addresses.emplace_back(dest);
     }
@@ -68,7 +79,7 @@ static CAmount GetReceived(const CWallet& wallet, const UniValue& params, bool b
 
         for (const CTxOut& txout : wtx.tx->vout) {
             if (output_scripts.count(txout.scriptPubKey) > 0) {
-                amount += txout.nValue;
+                amount += txout.GetReferenceValue();
             }
         }
     }
@@ -83,7 +94,7 @@ RPCHelpMan getreceivedbyaddress()
         "getreceivedbyaddress",
         "Returns the total amount received by the given address in transactions with at least minconf confirmations.\n",
                 {
-                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The bitcoin address for transactions."},
+                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The freicoin address for transactions."},
                     {"minconf", RPCArg::Type::NUM, RPCArg::Default{1}, "Only include transactions confirmed at least this many times."},
                     {"include_immature_coinbase", RPCArg::Type::BOOL, RPCArg::Default{false}, "Include immature coinbase transactions."},
                 },
@@ -219,7 +230,7 @@ RPCHelpMan lockunspent()
         "Updates list of temporarily unspendable outputs.\n"
                 "Temporarily lock (unlock=false) or unlock (unlock=true) specified transaction outputs.\n"
                 "If no transaction outputs are specified when unlocking then all current locked transaction outputs are unlocked.\n"
-                "A locked transaction output will not be chosen by automatic coin selection, when spending bitcoins.\n"
+                "A locked transaction output will not be chosen by automatic coin selection, when spending freicoins.\n"
                 "Manually selected coins are automatically unlocked.\n"
                 "Locks are stored in memory only, unless persistent=true, in which case they will be written to the\n"
                 "wallet database and loaded on node start. Unwritten (persistent=false) locks are always cleared\n"
@@ -464,9 +475,9 @@ RPCHelpMan listunspent()
                 {
                     {"minconf", RPCArg::Type::NUM, RPCArg::Default{1}, "The minimum confirmations to filter"},
                     {"maxconf", RPCArg::Type::NUM, RPCArg::Default{9999999}, "The maximum confirmations to filter"},
-                    {"addresses", RPCArg::Type::ARR, RPCArg::Default{UniValue::VARR}, "The bitcoin addresses to filter",
+                    {"addresses", RPCArg::Type::ARR, RPCArg::Default{UniValue::VARR}, "The freicoin addresses to filter",
                         {
-                            {"address", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "bitcoin address"},
+                            {"address", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "freicoin address"},
                         },
                     },
                     {"include_unsafe", RPCArg::Type::BOOL, RPCArg::Default{true}, "Include outputs that are not safe to spend\n"
@@ -477,6 +488,7 @@ RPCHelpMan listunspent()
                             {"maximumAmount", RPCArg::Type::AMOUNT, RPCArg::DefaultHint{"unlimited"}, "Maximum value of each UTXO in " + CURRENCY_UNIT + ""},
                             {"maximumCount", RPCArg::Type::NUM, RPCArg::DefaultHint{"unlimited"}, "Maximum number of UTXOs"},
                             {"minimumSumAmount", RPCArg::Type::AMOUNT, RPCArg::DefaultHint{"unlimited"}, "Minimum sum value of all UTXOs in " + CURRENCY_UNIT + ""},
+                            {"atheight", RPCArg::Type::NUM, RPCArg::DefaultHint{"next block height"}, "Reference height for time-value adjustments and output availability"},
                             {"include_immature_coinbase", RPCArg::Type::BOOL, RPCArg::Default{false}, "Include immature coinbase UTXOs"}
                         },
                         RPCArgOptions{.oneline_description="query_options"}},
@@ -488,16 +500,18 @@ RPCHelpMan listunspent()
                         {
                             {RPCResult::Type::STR_HEX, "txid", "the transaction id"},
                             {RPCResult::Type::NUM, "vout", "the vout value"},
-                            {RPCResult::Type::STR, "address", /*optional=*/true, "the bitcoin address"},
+                            {RPCResult::Type::STR, "address", /*optional=*/true, "the freicoin address"},
                             {RPCResult::Type::STR, "label", /*optional=*/true, "The associated label, or \"\" for the default label"},
                             {RPCResult::Type::STR, "scriptPubKey", "the output script"},
-                            {RPCResult::Type::STR_AMOUNT, "amount", "the transaction output amount in " + CURRENCY_UNIT},
+                            {RPCResult::Type::STR_AMOUNT, "value", "the transaction output amount in " + CURRENCY_UNIT + " at the reference height of the transaction"},
+                            {RPCResult::Type::STR_AMOUNT, "amount", "the transaction output amount in " + CURRENCY_UNIT + " as of the next block"},
+                            {RPCResult::Type::NUM, "refheight", "the reference height of the transaction"},
                             {RPCResult::Type::NUM, "confirmations", "The number of confirmations"},
                             {RPCResult::Type::NUM, "ancestorcount", /*optional=*/true, "The number of in-mempool ancestor transactions, including this one (if transaction is in the mempool)"},
                             {RPCResult::Type::NUM, "ancestorsize", /*optional=*/true, "The virtual transaction size of in-mempool ancestors, including this one (if transaction is in the mempool)"},
                             {RPCResult::Type::STR_AMOUNT, "ancestorfees", /*optional=*/true, "The total fees of in-mempool ancestors (including this one) with fee deltas used for mining priority in " + CURRENCY_ATOM + " (if transaction is in the mempool)"},
                             {RPCResult::Type::STR_HEX, "redeemScript", /*optional=*/true, "The redeem script if the output script is P2SH"},
-                            {RPCResult::Type::STR, "witnessScript", /*optional=*/true, "witness script if the output script is P2WSH or P2SH-P2WSH"},
+                            {RPCResult::Type::STR, "witnessScript", /*optional=*/true, "witness script if the output script is P2WSH"},
                             {RPCResult::Type::BOOL, "spendable", "(DEPRECATED) Always true"},
                             {RPCResult::Type::BOOL, "solvable", "Whether we know how to spend this output, ignoring the lack of keys"},
                             {RPCResult::Type::BOOL, "reused", /*optional=*/true, "(only present if avoid_reuse is set) Whether this output is reused/dirty (sent to an address that was previously spent from)"},
@@ -540,7 +554,7 @@ RPCHelpMan listunspent()
             const UniValue& input = inputs[idx];
             CTxDestination dest = DecodeDestination(input.get_str());
             if (!IsValidDestination(dest)) {
-                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Bitcoin address: ") + input.get_str());
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Freicoin address: ") + input.get_str());
             }
             if (!destinations.insert(dest).second) {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid parameter, duplicated address: ") + input.get_str());
@@ -553,6 +567,16 @@ RPCHelpMan listunspent()
         include_unsafe = request.params[3].get_bool();
     }
 
+    int current_height = -1;
+    {
+        const std::optional<int> tip_height = pwallet->chain().getHeight();
+        if (!tip_height) {
+            throw JSONRPCError(RPC_INTERNAL_ERROR, "Cannot determine current chain height.  This should never happen.");
+        }
+        current_height = tip_height.value();
+    }
+    uint32_t atheight = current_height + 1;
+
     CoinFilterParams filter_coins;
     filter_coins.min_amount = 0;
 
@@ -564,6 +588,7 @@ RPCHelpMan listunspent()
                 {"minimumAmount", UniValueType()},
                 {"maximumAmount", UniValueType()},
                 {"minimumSumAmount", UniValueType()},
+                {"atheight", UniValueType(UniValue::VNUM)},
                 {"maximumCount", UniValueType(UniValue::VNUM)},
                 {"include_immature_coinbase", UniValueType(UniValue::VBOOL)}
             },
@@ -577,6 +602,9 @@ RPCHelpMan listunspent()
 
         if (options.exists("minimumSumAmount"))
             filter_coins.min_sum_amount = AmountFromValue(options["minimumSumAmount"]);
+
+        if (options.exists("atheight"))
+            atheight = options["atheight"].getInt<uint32_t>();
 
         if (options.exists("maximumCount"))
             filter_coins.max_count = options["maximumCount"].getInt<int64_t>();
@@ -600,7 +628,7 @@ RPCHelpMan listunspent()
         cctl.m_include_unsafe_inputs = include_unsafe;
         filter_coins.check_version_trucness = false;
         LOCK(pwallet->cs_wallet);
-        vecOutputs = AvailableCoins(*pwallet, &cctl, /*feerate=*/std::nullopt, filter_coins).All();
+        vecOutputs = AvailableCoins(*pwallet, atheight, &cctl, /*feerate=*/std::nullopt, filter_coins).All();
     }
 
     LOCK(pwallet->cs_wallet);
@@ -641,27 +669,41 @@ RPCHelpMan listunspent()
                             bool extracted = ExtractDestination(redeemScript, witness_destination);
                             CHECK_NONFATAL(extracted);
                             // Also return the witness script
-                            const WitnessV0ScriptHash& whash = std::get<WitnessV0ScriptHash>(witness_destination);
-                            CScriptID id{RIPEMD160(whash)};
-                            CScript witnessScript;
-                            if (provider->GetCScript(id, witnessScript)) {
-                                entry.pushKV("witnessScript", HexStr(witnessScript));
+                            WitnessV0ScriptEntry witentry;
+                            if (redeemScript.size() == 2 + WITNESS_V0_LONGHASH_SIZE) {
+                                const WitnessV0LongHash* whash = std::get_if<WitnessV0LongHash>(&witness_destination);
+                                if (whash && provider->GetWitnessV0Script(*whash, witentry)) {
+                                    entry.pushKV("witnessScript", HexStr(witentry.m_script));
+                                }
+                            } else if (redeemScript.size() == 2 + WITNESS_V0_SHORTHASH_SIZE) {
+                                const WitnessV0ShortHash* whash = std::get_if<WitnessV0ShortHash>(&witness_destination);
+                                if (whash && provider->GetWitnessV0Script(*whash, witentry)) {
+                                    entry.pushKV("witnessScript", HexStr(witentry.m_script));
+                                }
                             }
                         }
                     }
                 } else if (scriptPubKey.IsPayToWitnessScriptHash()) {
-                    const WitnessV0ScriptHash& whash = std::get<WitnessV0ScriptHash>(address);
-                    CScriptID id{RIPEMD160(whash)};
-                    CScript witnessScript;
-                    if (provider->GetCScript(id, witnessScript)) {
-                        entry.pushKV("witnessScript", HexStr(witnessScript));
+                    WitnessV0ScriptEntry witentry;
+                    if (scriptPubKey.size() == 2 + WITNESS_V0_LONGHASH_SIZE) {
+                        const WitnessV0LongHash* whash = std::get_if<WitnessV0LongHash>(&address);
+                        if (whash && provider->GetWitnessV0Script(*whash, witentry)) {
+                            entry.pushKV("witnessScript", HexStr(witentry.m_script));
+                        }
+                    } else if (scriptPubKey.size() == 2 + WITNESS_V0_SHORTHASH_SIZE) {
+                        const WitnessV0ShortHash* whash = std::get_if<WitnessV0ShortHash>(&address);
+                        if (whash && provider->GetWitnessV0Script(*whash, witentry)) {
+                            entry.pushKV("witnessScript", HexStr(witentry.m_script));
+                        }
                     }
                 }
             }
         }
 
         entry.pushKV("scriptPubKey", HexStr(scriptPubKey));
-        entry.pushKV("amount", ValueFromAmount(out.txout.nValue));
+        entry.pushKV("value", ValueFromAmount(out.txout.GetReferenceValue()));
+        entry.pushKV("amount", ValueFromAmount(out.adjusted));
+        entry.pushKV("refheight", (uint64_t)out.refheight);
         entry.pushKV("confirmations", out.depth);
         if (!out.depth) {
             size_t ancestor_count, descendant_count, ancestor_size;

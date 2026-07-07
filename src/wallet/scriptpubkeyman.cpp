@@ -1,6 +1,17 @@
-// Copyright (c) 2019-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2019-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <hash.h>
 #include <key_io.h>
@@ -21,7 +32,7 @@
 
 #include <optional>
 
-using common::PSBTError;
+using common::PSTError;
 using util::ToString;
 
 namespace wallet {
@@ -92,8 +103,8 @@ IsMineResult LegacyWalletIsMineInnerDONOTUSE(const LegacyDataSPKM& keystore, con
     switch (whichType) {
     case TxoutType::NONSTANDARD:
     case TxoutType::NULL_DATA:
+    case TxoutType::UNSPENDABLE:
     case TxoutType::WITNESS_UNKNOWN:
-    case TxoutType::WITNESS_V1_TAPROOT:
     case TxoutType::ANCHOR:
         break;
     case TxoutType::PUBKEY:
@@ -105,21 +116,6 @@ IsMineResult LegacyWalletIsMineInnerDONOTUSE(const LegacyDataSPKM& keystore, con
             ret = std::max(ret, IsMineResult::SPENDABLE);
         }
         break;
-    case TxoutType::WITNESS_V0_KEYHASH:
-    {
-        if (sigversion == IsMineSigVersion::WITNESS_V0) {
-            // P2WPKH inside P2WSH is invalid.
-            return IsMineResult::INVALID;
-        }
-        if (sigversion == IsMineSigVersion::TOP && !keystore.HaveCScript(CScriptID(CScript() << OP_0 << vSolutions[0]))) {
-            // We do not support bare witness outputs unless the P2SH version of it would be
-            // acceptable as well. This protects against matching before segwit activates.
-            // This also applies to the P2WSH case.
-            break;
-        }
-        ret = std::max(ret, LegacyWalletIsMineInnerDONOTUSE(keystore, GetScriptForDestination(PKHash(uint160(vSolutions[0]))), IsMineSigVersion::WITNESS_V0));
-        break;
-    }
     case TxoutType::PUBKEYHASH:
         keyID = CKeyID(uint160(vSolutions[0]));
         if (!PermitsUncompressed(sigversion)) {
@@ -145,20 +141,29 @@ IsMineResult LegacyWalletIsMineInnerDONOTUSE(const LegacyDataSPKM& keystore, con
         }
         break;
     }
-    case TxoutType::WITNESS_V0_SCRIPTHASH:
+    case TxoutType::WITNESS_V0_SHORTHASH:
+    case TxoutType::WITNESS_V0_LONGHASH:
     {
         if (sigversion == IsMineSigVersion::WITNESS_V0) {
             // P2WSH inside P2WSH is invalid.
             return IsMineResult::INVALID;
         }
-        if (sigversion == IsMineSigVersion::TOP && !keystore.HaveCScript(CScriptID(CScript() << OP_0 << vSolutions[0]))) {
+        bool found = false;
+        WitnessV0ScriptEntry entry;
+        if (whichType == TxoutType::WITNESS_V0_SHORTHASH) {
+            found = keystore.GetWitnessV0Script(WitnessV0ShortHash(uint160{vSolutions[0]}), entry);
+        }
+        else if (whichType == TxoutType::WITNESS_V0_LONGHASH) {
+            found = keystore.GetWitnessV0Script(WitnessV0LongHash(uint256{vSolutions[0]}), entry);
+        }
+        if (!found) {
             break;
         }
-        CScriptID scriptID{RIPEMD160(vSolutions[0])};
-        CScript subscript;
-        if (keystore.GetCScript(scriptID, subscript)) {
-            ret = std::max(ret, recurse_scripthash ? LegacyWalletIsMineInnerDONOTUSE(keystore, subscript, IsMineSigVersion::WITNESS_V0) : IsMineResult::SPENDABLE);
+        if (entry.m_script.empty() || (entry.m_script[0] != 0x00)) {
+            break;
         }
+        CScript subscript(entry.m_script.begin() + 1, entry.m_script.end());
+        ret = std::max(ret, recurse_scripthash ? LegacyWalletIsMineInnerDONOTUSE(keystore, subscript, IsMineSigVersion::WITNESS_V0) : IsMineResult::SPENDABLE);
         break;
     }
 
@@ -296,6 +301,11 @@ bool LegacyDataSPKM::LoadCScript(const CScript& redeemScript)
     }
 
     return FillableSigningProvider::AddCScript(redeemScript);
+}
+
+bool LegacyDataSPKM::LoadWitnessV0Script(const WitnessV0ScriptEntry& entry)
+{
+    return FillableSigningProvider::AddWitnessV0Script(entry);
 }
 
 void LegacyDataSPKM::LoadKeyMetadata(const CKeyID& keyID, const CKeyMetadata& meta)
@@ -463,14 +473,18 @@ std::unordered_set<CScript, SaltedSipHasher> LegacyDataSPKM::GetCandidateScriptP
     LOCK(cs_KeyStore);
     std::unordered_set<CScript, SaltedSipHasher> candidate_spks;
 
-    // For every private key in the wallet, there should be a P2PK, P2PKH, P2WPKH, and P2SH-P2WPKH
+    // For every private key in the wallet, there should be a P2PK, P2PKH, P2WPK, and P2SH-P2WPK
     const auto& add_pubkey = [&candidate_spks](const CPubKey& pub) -> void {
         candidate_spks.insert(GetScriptForRawPubKey(pub));
         candidate_spks.insert(GetScriptForDestination(PKHash(pub)));
 
-        CScript wpkh = GetScriptForDestination(WitnessV0KeyHash(pub));
-        candidate_spks.insert(wpkh);
-        candidate_spks.insert(GetScriptForDestination(ScriptHash(wpkh)));
+        WitnessV0ScriptEntry entry(0 /* version */, GetScriptForRawPubKey(pub));
+        CScript wpk_short = GetScriptForDestination(entry.GetShortHash());
+        candidate_spks.insert(wpk_short);
+        candidate_spks.insert(GetScriptForDestination(ScriptHash(wpk_short)));
+        CScript wpk_long = GetScriptForDestination(entry.GetLongHash());
+        candidate_spks.insert(wpk_long);
+        candidate_spks.insert(GetScriptForDestination(ScriptHash(wpk_long)));
     };
     for (const auto& [_, key] : mapKeys) {
         add_pubkey(key.GetPubKey());
@@ -487,9 +501,13 @@ std::unordered_set<CScript, SaltedSipHasher> LegacyDataSPKM::GetCandidateScriptP
         candidate_spks.insert(script);
         candidate_spks.insert(GetScriptForDestination(ScriptHash(script)));
 
-        CScript wsh = GetScriptForDestination(WitnessV0ScriptHash(script));
-        candidate_spks.insert(wsh);
-        candidate_spks.insert(GetScriptForDestination(ScriptHash(wsh)));
+        WitnessV0ScriptEntry entry(0 /* version */, script);
+        CScript wsh_short = GetScriptForDestination(entry.GetShortHash());
+        candidate_spks.insert(wsh_short);
+        candidate_spks.insert(GetScriptForDestination(ScriptHash(wsh_short)));
+        CScript wsh_long = GetScriptForDestination(entry.GetLongHash());
+        candidate_spks.insert(wsh_long);
+        candidate_spks.insert(GetScriptForDestination(ScriptHash(wsh_long)));
     };
     for (const auto& [_, script] : mapScripts) {
         add_script(script);
@@ -513,6 +531,28 @@ std::unordered_set<CScript, SaltedSipHasher> LegacyDataSPKM::GetScriptPubKeys() 
     for (const CScript& script : GetCandidateScriptPubKeys()) {
         if (IsMine(script)) {
             spks.insert(script);
+        }
+    }
+
+    // For every witness script in mapWitnessV0Scripts, add the witness program if it is ours.
+    LOCK(cs_KeyStore);
+    for (const auto& x : mapWitnessV0Scripts) {
+        if (!x.second.m_script.empty() && x.second.m_script[0] == 0x00) {
+            CScript subscript(x.second.m_script.begin() + 1, x.second.m_script.end());
+            // P2PK outputs are shorthashes, other scripts are longhashes
+            std::vector<std::vector<unsigned char>> sols;
+            TxoutType type = Solver(subscript, sols);
+            CTxDestination witdest = CNoDestination();
+            if (type == TxoutType::PUBKEY) {
+                witdest = x.second.GetShortHash();
+            } else if (type == TxoutType::MULTISIG) {
+                witdest = x.second.GetLongHash();
+            }
+            CScript witprog = GetScriptForDestination(witdest);
+            // Only report the script if it is solvable
+            if (IsMine(witprog)) {
+                spks.insert(witprog);
+            }
         }
     }
 
@@ -1303,17 +1343,22 @@ SigningResult DescriptorScriptPubKeyMan::SignMessage(const std::string& message,
     return SigningResult::OK;
 }
 
-std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbtx, const PrecomputedTransactionData& txdata, std::optional<int> sighash_type, bool sign, bool bip32derivs, int* n_signed, bool finalize) const
+std::optional<PSTError> DescriptorScriptPubKeyMan::FillPST(PartiallySignedTransaction& pstx, const PrecomputedTransactionData& txdata, int sighash_type, bool sign, bool bip32derivs, int* n_signed, bool finalize) const
 {
     if (n_signed) {
         *n_signed = 0;
     }
-    for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
-        const CTxIn& txin = psbtx.tx->vin[i];
-        PSBTInput& input = psbtx.inputs.at(i);
+    for (unsigned int i = 0; i < pstx.tx->vin.size(); ++i) {
+        const CTxIn& txin = pstx.tx->vin[i];
+        PSTInput& input = pstx.inputs.at(i);
 
-        if (PSBTInputSigned(input)) {
+        if (PSTInputSigned(input)) {
             continue;
+        }
+
+        // Get the Sighash type
+        if (sign && input.sighash_type != std::nullopt && *input.sighash_type != sighash_type) {
+            return PSTError::SIGHASH_MISMATCH;
         }
 
         // Get the scriptPubKey to know which SigningProvider to use
@@ -1322,7 +1367,7 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
             script = input.witness_utxo.scriptPubKey;
         } else if (input.non_witness_utxo) {
             if (txin.prevout.n >= input.non_witness_utxo->vout.size()) {
-                return PSBTError::MISSING_INPUTS;
+                return PSTError::MISSING_INPUTS;
             }
             script = input.non_witness_utxo->vout[txin.prevout.n].scriptPubKey;
         } else {
@@ -1344,27 +1389,6 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
                 pubkeys.push_back(pk);
             }
 
-            // Taproot output pubkey
-            std::vector<std::vector<unsigned char>> sols;
-            if (Solver(script, sols) == TxoutType::WITNESS_V1_TAPROOT) {
-                sols[0].insert(sols[0].begin(), 0x02);
-                pubkeys.emplace_back(sols[0]);
-                sols[0][0] = 0x03;
-                pubkeys.emplace_back(sols[0]);
-            }
-
-            // Taproot pubkeys
-            for (const auto& pk_pair : input.m_tap_bip32_paths) {
-                const XOnlyPubKey& pubkey = pk_pair.first;
-                for (unsigned char prefix : {0x02, 0x03}) {
-                    unsigned char b[33] = {prefix};
-                    std::copy(pubkey.begin(), pubkey.end(), b + 1);
-                    CPubKey fullpubkey;
-                    fullpubkey.Set(b, b + 33);
-                    pubkeys.push_back(fullpubkey);
-                }
-            }
-
             for (const auto& pubkey : pubkeys) {
                 std::unique_ptr<FlatSigningProvider> pk_keys = GetSigningProvider(pubkey);
                 if (pk_keys) {
@@ -1373,12 +1397,9 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
             }
         }
 
-        PSBTError res = SignPSBTInput(HidingSigningProvider(keys.get(), /*hide_secret=*/!sign, /*hide_origin=*/!bip32derivs), psbtx, i, &txdata, sighash_type, nullptr, finalize);
-        if (res != PSBTError::OK && res != PSBTError::INCOMPLETE) {
-            return res;
-        }
+        SignPSTInput(HidingSigningProvider(keys.get(), /*hide_secret=*/!sign, /*hide_origin=*/!bip32derivs), pstx, i, &txdata, sighash_type, nullptr, finalize);
 
-        bool signed_one = PSBTInputSigned(input);
+        bool signed_one = PSTInputSigned(input);
         if (n_signed && (signed_one || !sign)) {
             // If sign is false, we assume that we _could_ sign if we get here. This
             // will never have false negatives; it is hard to tell under what i
@@ -1388,12 +1409,12 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
     }
 
     // Fill in the bip32 keypaths and redeemscripts for the outputs so that hardware wallets can identify change
-    for (unsigned int i = 0; i < psbtx.tx->vout.size(); ++i) {
-        std::unique_ptr<SigningProvider> keys = GetSolvingProvider(psbtx.tx->vout.at(i).scriptPubKey);
+    for (unsigned int i = 0; i < pstx.tx->vout.size(); ++i) {
+        std::unique_ptr<SigningProvider> keys = GetSolvingProvider(pstx.tx->vout.at(i).scriptPubKey);
         if (!keys) {
             continue;
         }
-        UpdatePSBTOutput(HidingSigningProvider(keys.get(), /*hide_secret=*/true, /*hide_origin=*/!bip32derivs), psbtx, i);
+        UpdatePSTOutput(HidingSigningProvider(keys.get(), /*hide_secret=*/true, /*hide_origin=*/!bip32derivs), pstx, i);
     }
 
     return {};

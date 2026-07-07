@@ -1,6 +1,17 @@
 // Copyright (c) 2017-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <wallet/coinselection.h>
 
@@ -753,6 +764,19 @@ util::Result<SelectionResult> KnapsackSolver(std::vector<OutputGroup>& groups, c
  ******************************************************************************/
 
 void OutputGroup::Insert(const std::shared_ptr<COutput>& output, size_t ancestors, size_t descendants) {
+    // Ideally this shouldn't be an assert as we don't want to cause node
+    // crashes.  However inserting outputs with different calculated refheight
+    // into the same group can potentially result in either failed transactions
+    // or (worse) lost funds.
+    if (m_atheight || !m_outputs.empty()) {
+        assert(m_atheight == output->atheight);
+    }
+    // The reference height is inferred from the first output inserted, unless
+    // it is explicitly set before inserting any outputs into the group.
+    if (m_outputs.empty()) {
+        m_atheight = output->atheight;
+    }
+
     m_outputs.push_back(output);
     auto& coin = *m_outputs.back();
 
@@ -764,7 +788,7 @@ void OutputGroup::Insert(const std::shared_ptr<COutput>& output, size_t ancestor
     effective_value += coin.GetEffectiveValue();
 
     m_from_me &= coin.from_me;
-    m_value += coin.txout.nValue;
+    m_value += coin.adjusted;
     m_depth = std::min(m_depth, coin.depth);
     // ancestors here express the number of ancestors the new coin will end up having, which is
     // the sum, rather than the max; this will overestimate in the cases where multiple inputs
@@ -879,7 +903,7 @@ CAmount SelectionResult::GetWaste() const
 
 CAmount SelectionResult::GetSelectedValue() const
 {
-    return std::accumulate(m_selected_inputs.cbegin(), m_selected_inputs.cend(), CAmount{0}, [](CAmount sum, const auto& coin) { return sum + coin->txout.nValue; });
+    return std::accumulate(m_selected_inputs.cbegin(), m_selected_inputs.cend(), CAmount{0}, [](CAmount sum, const auto& coin) { return sum + coin->adjusted; });
 }
 
 CAmount SelectionResult::GetSelectedEffectiveValue() const
@@ -901,6 +925,8 @@ void SelectionResult::Clear()
 
 void SelectionResult::AddInput(const OutputGroup& group)
 {
+    // If reference heights don't match, money could be lost.
+    assert(m_selected_inputs.empty() || m_atheight == group.m_atheight);
     // As it can fail, combine inputs first
     InsertInputs(group.m_outputs);
     m_use_effective = !group.m_subtract_fee_outputs;
@@ -921,6 +947,8 @@ void SelectionResult::AddInputs(const std::set<std::shared_ptr<COutput>>& inputs
 
 void SelectionResult::Merge(const SelectionResult& other)
 {
+    // If reference heights don't match, money could be lost.
+    assert(m_selected_inputs.empty() || other.m_selected_inputs.empty() || m_atheight == other.m_atheight);
     // As it can fail, combine inputs first
     InsertInputs(other.m_selected_inputs);
 
@@ -955,7 +983,7 @@ bool SelectionResult::operator<(SelectionResult other) const
 
 std::string COutput::ToString() const
 {
-    return strprintf("COutput(%s, %d, %d) [%s]", outpoint.hash.ToString(), outpoint.n, depth, FormatMoney(txout.nValue));
+    return strprintf("COutput(%d, %s, %s, %d, %d) [%s]", atheight, FormatMoney(adjusted), outpoint.hash.ToString(), outpoint.n, depth, FormatMoney(txout.GetReferenceValue()));
 }
 
 std::string GetAlgorithmName(const SelectionAlgorithm algo)

@@ -1,6 +1,17 @@
 // Copyright (c) 2021-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
@@ -31,10 +42,10 @@ bool AllInputsMine(const CWallet& wallet, const CTransaction& tx)
 
 CAmount OutputGetCredit(const CWallet& wallet, const CTxOut& txout)
 {
-    if (!MoneyRange(txout.nValue))
+    if (!MoneyRange(txout.GetReferenceValue()))
         throw std::runtime_error(std::string(__func__) + ": value out of range");
     LOCK(wallet.cs_wallet);
-    return (wallet.IsMine(txout) ? txout.nValue : 0);
+    return (wallet.IsMine(txout) ? txout.GetReferenceValue() : 0);
 }
 
 CAmount TxGetCredit(const CWallet& wallet, const CTransaction& tx)
@@ -79,9 +90,9 @@ bool OutputIsChange(const CWallet& wallet, const CTxOut& txout)
 CAmount OutputGetChange(const CWallet& wallet, const CTxOut& txout)
 {
     AssertLockHeld(wallet.cs_wallet);
-    if (!MoneyRange(txout.nValue))
+    if (!MoneyRange(txout.GetReferenceValue()))
         throw std::runtime_error(std::string(__func__) + ": value out of range");
-    return (OutputIsChange(wallet, txout) ? txout.nValue : 0);
+    return (OutputIsChange(wallet, txout) ? txout.GetReferenceValue() : 0);
 }
 
 CAmount TxGetChange(const CWallet& wallet, const CTransaction& tx)
@@ -138,26 +149,28 @@ CAmount CachedTxGetChange(const CWallet& wallet, const CWalletTx& wtx)
 
 void CachedTxGetAmounts(const CWallet& wallet, const CWalletTx& wtx,
                   std::list<COutputEntry>& listReceived,
-                  std::list<COutputEntry>& listSent, CAmount& nFee,
+                  std::list<COutputEntry>& listSent, CAmount& nFee, CAmount& demurrage,
                   bool include_change)
 {
-    nFee = 0;
+    nFee = demurrage = 0;
     listReceived.clear();
     listSent.clear();
 
-    // Compute fee:
+    LOCK(wallet.cs_wallet);
+    // Compute fee and demurrage:
     CAmount nDebit = CachedTxGetDebit(wallet, wtx, /*avoid_reuse=*/false);
     if (nDebit > 0) // debit>0 means we signed/sent this transaction
     {
-        CAmount nValueOut = wtx.tx->GetValueOut();
-        nFee = nDebit - nValueOut;
+        CAmount value_in = 0;
+        wallet.GetInputSplit(wtx, value_in, demurrage);
+        nFee = value_in - wtx.tx->GetValueOut();
     }
 
-    LOCK(wallet.cs_wallet);
     // Sent/received.
     for (unsigned int i = 0; i < wtx.tx->vout.size(); ++i)
     {
         const CTxOut& txout = wtx.tx->vout[i];
+        const uint32_t& refheight = wtx.tx->lock_height;
         bool ismine = wallet.IsMine(txout);
         // Only need to handle txouts if AT LEAST one of these is true:
         //   1) they debit from us (sent)
@@ -180,7 +193,7 @@ void CachedTxGetAmounts(const CWallet& wallet, const CWalletTx& wtx,
             address = CNoDestination();
         }
 
-        COutputEntry output = {address, txout.nValue, (int)i};
+        COutputEntry output = {address, txout.GetReferenceValue(), refheight, (int)i};
 
         // If we are debited by the transaction, add the output as a "sent" entry
         if (nDebit > 0)
@@ -247,6 +260,11 @@ Balance GetBalance(const CWallet& wallet, const int min_depth, bool avoid_reuse)
     Balance ret;
     bool allow_used_addresses = !avoid_reuse || !wallet.IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE);
     {
+        const auto chain_height = wallet.chain().getHeight();
+        if (!chain_height) {
+            throw std::runtime_error(std::string(__func__) + ": unable to determine current chain height");
+        }
+        const uint32_t next_height = static_cast<uint32_t>(chain_height.value()) + 1;
         LOCK(wallet.cs_wallet);
         std::set<Txid> trusted_parents;
         for (const auto& [outpoint, txo] : wallet.GetTXOs()) {
@@ -257,7 +275,7 @@ Balance GetBalance(const CWallet& wallet, const int min_depth, bool avoid_reuse)
 
             if (!wallet.IsSpent(outpoint) && (allow_used_addresses || !wallet.IsSpentKey(txo.GetTxOut().scriptPubKey))) {
                 // Get the amounts for mine
-                CAmount credit_mine = txo.GetTxOut().nValue;
+                CAmount credit_mine = GetTimeAdjustedValue(txo.GetTxOut().GetReferenceValue(), next_height - wtx.tx->lock_height);
 
                 // Set the amounts in the return object
                 if (wallet.IsTxImmatureCoinBase(wtx) && wtx.isConfirmed()) {
@@ -293,7 +311,7 @@ std::map<CTxDestination, CAmount> GetAddressBalances(const CWallet& wallet)
             Assume(wallet.IsMine(txo.GetTxOut()));
             if(!ExtractDestination(txo.GetTxOut().scriptPubKey, addr)) continue;
 
-            CAmount n = wallet.IsSpent(outpoint) ? 0 : txo.GetTxOut().nValue;
+            CAmount n = wallet.IsSpent(outpoint) ? 0 : txo.GetTxOut().GetReferenceValue();
             balances[addr] += n;
         }
     }
