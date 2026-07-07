@@ -202,6 +202,9 @@ void SyncUpWallet(const std::shared_ptr<CWallet>& wallet, interfaces::Node& node
     QVERIFY(result.last_failed_block.IsNull());
 }
 
+// Note: Freicoin's TestChain100Setup mines 101 blocks (an initial anyone-can-spend
+// block plus COINBASE_MATURITY to the coinbase key), so after the five blocks
+// the GUI tests mine the tip is at height 106.
 std::shared_ptr<CWallet> SetupLegacyWatchOnlyWallet(interfaces::Node& node, TestChain100Setup& test)
 {
     std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(node.context()->chain.get(), "", CreateMockableWalletDatabase());
@@ -214,7 +217,7 @@ std::shared_ptr<CWallet> SetupLegacyWatchOnlyWallet(interfaces::Node& node, Test
         CPubKey pubKey = test.coinbaseKey.GetPubKey();
         bool import_keys = wallet->ImportPubKeys({{pubKey.GetID(), false}}, {{pubKey.GetID(), pubKey}} , /*key_origins=*/{}, /*add_keypool=*/false, /*timestamp=*/1);
         assert(import_keys);
-        wallet->SetLastBlockProcessed(105, WITH_LOCK(node.context()->chainman->GetMutex(), return node.context()->chainman->ActiveChain().Tip()->GetBlockHash()));
+        wallet->SetLastBlockProcessed(106, WITH_LOCK(node.context()->chainman->GetMutex(), return node.context()->chainman->ActiveChain().Tip()->GetBlockHash()));
     }
     SyncUpWallet(wallet, node);
     return wallet;
@@ -239,7 +242,7 @@ std::shared_ptr<CWallet> SetupDescriptorsWallet(interfaces::Node& node, TestChai
     if (!wallet->AddWalletDescriptor(w_desc, provider, "", false)) assert(false);
     CTxDestination dest = GetDestinationForKey(test.coinbaseKey.GetPubKey(), wallet->m_default_address_type);
     wallet->SetAddressBook(dest, "", wallet::AddressPurpose::RECEIVE);
-    wallet->SetLastBlockProcessed(105, WITH_LOCK(node.context()->chainman->GetMutex(), return node.context()->chainman->ActiveChain().Tip()->GetBlockHash()));
+    wallet->SetLastBlockProcessed(106, WITH_LOCK(node.context()->chainman->GetMutex(), return node.context()->chainman->ActiveChain().Tip()->GetBlockHash()));
     SyncUpWallet(wallet, node);
     wallet->SetBroadcastTransactions(true);
     return wallet;
