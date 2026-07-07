@@ -50,7 +50,15 @@ const std::string UA_NAME("Satoshi");
 
 static std::string FormatVersion(int nVersion)
 {
-    return strprintf("%d.%d.%d", nVersion / 10000, (nVersion / 100) % 100, nVersion % 100);
+    // Freicoin: trailing zero version components are omitted from the
+    // user-agent string (e.g. /Freicoin:28.1/, not /Freicoin:28.1.0/).
+    if (nVersion % 10000 == 0) {
+        return strprintf("%d", nVersion / 10000);
+    } if (nVersion % 100 == 0) {
+        return strprintf("%d.%d", nVersion / 10000, (nVersion / 100) % 100);
+    } else {
+        return strprintf("%d.%d.%d", nVersion / 10000, (nVersion / 100) % 100, nVersion % 100);
+    }
 }
 
 std::string FormatFullVersion()

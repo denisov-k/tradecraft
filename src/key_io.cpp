@@ -1,6 +1,17 @@
-// Copyright (c) 2014-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2014-2021 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <key_io.h>
 
@@ -16,7 +27,7 @@
 #include <cstring>
 
 /// Maximum witness length for Bech32 addresses.
-static constexpr std::size_t BECH32_WITNESS_PROG_MAX_LEN = 40;
+static constexpr std::size_t BECH32_WITNESS_PROG_MAX_LEN = 75;
 
 namespace {
 class DestinationEncoder
@@ -41,34 +52,26 @@ public:
         return EncodeBase58Check(data);
     }
 
-    std::string operator()(const WitnessV0KeyHash& id) const
+    std::string operator()(const WitnessV0ShortHash& id) const
     {
         std::vector<unsigned char> data = {0};
         data.reserve(33);
         ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, id.begin(), id.end());
-        return bech32::Encode(bech32::Encoding::BECH32, m_params.Bech32HRP(), data);
+        return bech32::Encode(bech32::Encoding::BECH32M, m_params.Bech32HRP(), data);
     }
 
-    std::string operator()(const WitnessV0ScriptHash& id) const
+    std::string operator()(const WitnessV0LongHash& id) const
     {
         std::vector<unsigned char> data = {0};
         data.reserve(53);
         ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, id.begin(), id.end());
-        return bech32::Encode(bech32::Encoding::BECH32, m_params.Bech32HRP(), data);
-    }
-
-    std::string operator()(const WitnessV1Taproot& tap) const
-    {
-        std::vector<unsigned char> data = {1};
-        data.reserve(53);
-        ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, tap.begin(), tap.end());
         return bech32::Encode(bech32::Encoding::BECH32M, m_params.Bech32HRP(), data);
     }
 
     std::string operator()(const WitnessUnknown& id) const
     {
         const std::vector<unsigned char>& program = id.GetWitnessProgram();
-        if (id.GetWitnessVersion() < 1 || id.GetWitnessVersion() > 16 || program.size() < 2 || program.size() > 40) {
+        if ((id.GetWitnessVersion() == 0 && (program.size() == 20 || program.size() == 32)) || id.GetWitnessVersion() > 30 || program.size() < 2 || program.size() > 75) {
             return {};
         }
         std::vector<unsigned char> data = {(unsigned char)id.GetWitnessVersion()};
@@ -91,7 +94,7 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     bool is_bech32 = (ToLower(str.substr(0, params.Bech32HRP().size())) == params.Bech32HRP());
 
     if (!is_bech32 && DecodeBase58Check(str, data, 21)) {
-        // base58-encoded Bitcoin addresses.
+        // base58-encoded Freicoin addresses.
         // Public-key-hash-addresses have version 0 (or 111 testnet).
         // The data vector contains RIPEMD160(SHA256(pubkey)), where pubkey is the serialized public key.
         const std::vector<unsigned char>& pubkey_prefix = params.Base58Prefix(CChainParams::PUBKEY_ADDRESS);
@@ -129,7 +132,11 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
 
     data.clear();
     const auto dec = bech32::Decode(str);
-    if (dec.encoding == bech32::Encoding::BECH32 || dec.encoding == bech32::Encoding::BECH32M) {
+    if (dec.encoding != bech32::Encoding::BECH32M && dec.data.size() > 0) {
+        error_str = "All address types in Freicoin use Bech32m checksum.";
+        return CNoDestination();
+    }
+    if (dec.encoding == bech32::Encoding::BECH32M) {
         if (dec.data.empty()) {
             error_str = "Empty Bech32 data section";
             return CNoDestination();
@@ -139,15 +146,7 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
             error_str = strprintf("Invalid or unsupported prefix for Segwit (Bech32) address (expected %s, got %s).", params.Bech32HRP(), dec.hrp);
             return CNoDestination();
         }
-        int version = dec.data[0]; // The first 5 bit symbol is the witness version (0-16)
-        if (version == 0 && dec.encoding != bech32::Encoding::BECH32) {
-            error_str = "Version 0 witness address must use Bech32 checksum";
-            return CNoDestination();
-        }
-        if (version != 0 && dec.encoding != bech32::Encoding::BECH32M) {
-            error_str = "Version 1+ witness address must use Bech32m checksum";
-            return CNoDestination();
-        }
+        int version = dec.data[0]; // The first 5 bit symbol is the witness version (0-30)
         // The rest of the symbols are converted witness program bytes.
         data.reserve(((dec.data.size() - 1) * 5) / 8);
         if (ConvertBits<5, 8, false>([&](unsigned char c) { data.push_back(c); }, dec.data.begin() + 1, dec.data.end())) {
@@ -156,36 +155,26 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
 
             if (version == 0) {
                 {
-                    WitnessV0KeyHash keyid;
-                    if (data.size() == keyid.size()) {
-                        std::copy(data.begin(), data.end(), keyid.begin());
-                        return keyid;
+                    WitnessV0ShortHash shortid;
+                    if (data.size() == shortid.size()) {
+                        std::copy(data.begin(), data.end(), shortid.begin());
+                        return shortid;
                     }
                 }
                 {
-                    WitnessV0ScriptHash scriptid;
-                    if (data.size() == scriptid.size()) {
-                        std::copy(data.begin(), data.end(), scriptid.begin());
-                        return scriptid;
+                    WitnessV0LongHash longid;
+                    if (data.size() == longid.size()) {
+                        std::copy(data.begin(), data.end(), longid.begin());
+                        return longid;
                     }
                 }
-
-                error_str = strprintf("Invalid Bech32 v0 address program size (%d %s), per BIP141", data.size(), byte_str);
-                return CNoDestination();
-            }
-
-            if (version == 1 && data.size() == WITNESS_V1_TAPROOT_SIZE) {
-                static_assert(WITNESS_V1_TAPROOT_SIZE == WitnessV1Taproot::size());
-                WitnessV1Taproot tap;
-                std::copy(data.begin(), data.end(), tap.begin());
-                return tap;
             }
 
             if (CScript::IsPayToAnchor(version, data)) {
                 return PayToAnchor();
             }
 
-            if (version > 16) {
+            if (version > 30) {
                 error_str = "Invalid Bech32 address witness version";
                 return CNoDestination();
             }

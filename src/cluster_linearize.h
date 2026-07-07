@@ -1,9 +1,20 @@
 // Copyright (c) The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_CLUSTER_LINEARIZE_H
-#define BITCOIN_CLUSTER_LINEARIZE_H
+#ifndef FREICOIN_CLUSTER_LINEARIZE_H
+#define FREICOIN_CLUSTER_LINEARIZE_H
 
 #include <algorithm>
 #include <cstdint>
@@ -510,7 +521,7 @@ public:
      * a feerate not below GetChunk(0)'s, then moving IntersectPrefixes(subset) to the front of
      * (what remains of) the linearization is guaranteed not to make it worse at any point.
      *
-     * See https://delvingbitcoin.org/t/introduction-to-cluster-linearization/1032 for background.
+     * See https://delvingfreico.in/t/introduction-to-cluster-linearization/1032 for background.
      */
     SetInfo<SetType> IntersectPrefixes(const SetInfo<SetType>& subset) const noexcept
     {
@@ -1394,4 +1405,4 @@ void FixLinearization(const DepGraph<SetType>& depgraph, std::span<DepGraphIndex
 
 } // namespace cluster_linearize
 
-#endif // BITCOIN_CLUSTER_LINEARIZE_H
+#endif // FREICOIN_CLUSTER_LINEARIZE_H
