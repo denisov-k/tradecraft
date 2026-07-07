@@ -1,15 +1,26 @@
 // Copyright (c) 2012-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_NODE_PROTOCOL_VERSION_H
-#define BITCOIN_NODE_PROTOCOL_VERSION_H
+#ifndef FREICOIN_NODE_PROTOCOL_VERSION_H
+#define FREICOIN_NODE_PROTOCOL_VERSION_H
 
 /**
  * network protocol versioning
  */
 
-static const int PROTOCOL_VERSION = 70016;
+static const int PROTOCOL_VERSION = 70017;
 
 //! initial proto version, to be increased after version/verack negotiation
 static const int INIT_PROTO_VERSION = 209;
@@ -35,4 +46,11 @@ static const int INVALID_CB_NO_BAN_VERSION = 70015;
 //! "wtxidrelay" message type for wtxid-based relay starts with this version
 static const int WTXID_RELAY_VERSION = 70016;
 
-#endif // BITCOIN_NODE_PROTOCOL_VERSION_H
+//! serialization of CBlockHeader and CBlock may include auxiliary proof-of-work
+//! data starting with this version
+static const int AUX_POW_VERSION = 70016;
+
+//! "wtxidrelay" command for wtxid-based relay starts with this version
+static const int WTXID_RELAY_VERSION = 70017;
+
+#endif // FREICOIN_NODE_PROTOCOL_VERSION_H

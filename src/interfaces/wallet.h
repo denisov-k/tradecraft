@@ -1,9 +1,20 @@
-// Copyright (c) 2018-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2018-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_INTERFACES_WALLET_H
-#define BITCOIN_INTERFACES_WALLET_H
+#ifndef FREICOIN_INTERFACES_WALLET_H
+#define FREICOIN_INTERFACES_WALLET_H
 
 #include <addresstype.h>
 #include <common/signmessage.h>
@@ -34,7 +45,7 @@ enum class OutputType;
 struct PartiallySignedTransaction;
 struct bilingual_str;
 namespace common {
-enum class PSBTError;
+enum class PSTError;
 } // namespace common
 namespace node {
 enum class TransactionError;
@@ -144,6 +155,7 @@ public:
 
     //! Create transaction.
     virtual util::Result<wallet::CreatedTransactionResult> createTransaction(const std::vector<wallet::CRecipient>& recipients,
+        std::optional<uint32_t> refheight,
         const wallet::CCoinControl& coin_control,
         bool sign,
         std::optional<unsigned int> change_pos) = 0;
@@ -201,12 +213,12 @@ public:
         bool& in_mempool,
         int& num_blocks) = 0;
 
-    //! Fill PSBT.
-    virtual std::optional<common::PSBTError> fillPSBT(std::optional<int> sighash_type,
+    //! Fill PST.
+    virtual std::optional<common::PSTError> fillPST(int sighash_type,
         bool sign,
         bool bip32derivs,
         size_t* n_signed,
-        PartiallySignedTransaction& psbtx,
+        PartiallySignedTransaction& pstx,
         bool& complete) = 0;
 
     //! Get balances.
@@ -219,7 +231,7 @@ public:
     virtual CAmount getBalance() = 0;
 
     //! Get available balance.
-    virtual CAmount getAvailableBalance(const wallet::CCoinControl& coin_control) = 0;
+    virtual CAmount getAvailableBalance(uint32_t atheight, const wallet::CCoinControl& coin_control) = 0;
 
     //! Return whether transaction input belongs to wallet.
     virtual bool txinIsMine(const CTxIn& txin) = 0;
@@ -261,9 +273,6 @@ public:
 
     // Return whether private keys enabled.
     virtual bool privateKeysDisabled() = 0;
-
-    // Return whether the wallet contains a Taproot scriptPubKeyMan
-    virtual bool taprootEnabled() = 0;
 
     // Return whether wallet uses an external signer.
     virtual bool hasExternalSigner() = 0;
@@ -414,9 +423,14 @@ struct WalletTxStatus
 struct WalletTxOut
 {
     CTxOut txout;
+    uint32_t refheight;
     int64_t time;
     int depth_in_main_chain = -1;
     bool is_spent = false;
+
+    inline CAmount GetPresentValue(uint32_t atheight) const {
+        return txout.GetTimeAdjustedValue(atheight - refheight);
+    }
 };
 
 //! Migrated wallet info
@@ -438,4 +452,4 @@ std::unique_ptr<WalletLoader> MakeWalletLoader(Chain& chain, ArgsManager& args);
 
 } // namespace interfaces
 
-#endif // BITCOIN_INTERFACES_WALLET_H
+#endif // FREICOIN_INTERFACES_WALLET_H

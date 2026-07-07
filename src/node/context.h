@@ -1,9 +1,20 @@
-// Copyright (c) 2019-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2019-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_NODE_CONTEXT_H
-#define BITCOIN_NODE_CONTEXT_H
+#ifndef FREICOIN_NODE_CONTEXT_H
+#define FREICOIN_NODE_CONTEXT_H
 
 #include <atomic>
 #include <cstdlib>
@@ -54,7 +65,7 @@ class Warnings;
 //! any member functions. It should just be a collection of references that can
 //! be used without pulling in unwanted dependencies or functionality.
 struct NodeContext {
-    //! libbitcoin_kernel context
+    //! libfreicoin_kernel context
     std::unique_ptr<kernel::Context> kernel;
     std::unique_ptr<ECC_Context> ecc_context;
     //! Init interface for initializing current process and connecting to other processes.
@@ -99,4 +110,4 @@ struct NodeContext {
 };
 } // namespace node
 
-#endif // BITCOIN_NODE_CONTEXT_H
+#endif // FREICOIN_NODE_CONTEXT_H

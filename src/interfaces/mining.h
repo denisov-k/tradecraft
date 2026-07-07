@@ -1,9 +1,20 @@
-// Copyright (c) 2024-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2024 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_INTERFACES_MINING_H
-#define BITCOIN_INTERFACES_MINING_H
+#ifndef FREICOIN_INTERFACES_MINING_H
+#define FREICOIN_INTERFACES_MINING_H
 
 #include <consensus/amount.h>
 #include <interfaces/types.h>
@@ -44,6 +55,11 @@ public:
 
     /** Return fields needed to construct a coinbase transaction */
     virtual node::CoinbaseTx getCoinbaseTx() = 0;
+
+    //! Freicoin: whether the template ends with a block-final transaction.
+    virtual bool hasBlockFinalTx() = 0;
+    //! Freicoin: UTXO records for the block-final transaction inputs.
+    virtual std::map<COutPoint, Coin> getBlockFinalTxCoinMap() = 0;
 
     /**
      * Compute merkle path to the coinbase transaction
@@ -168,4 +184,4 @@ std::unique_ptr<Mining> MakeMining(node::NodeContext& node, bool wait_loaded=tru
 
 } // namespace interfaces
 
-#endif // BITCOIN_INTERFACES_MINING_H
+#endif // FREICOIN_INTERFACES_MINING_H
