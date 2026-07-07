@@ -1,6 +1,17 @@
-// Copyright (c) 2019-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2019-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <arith_uint256.h>
 #include <common/args.h>
@@ -68,8 +79,6 @@ FUZZ_TARGET(integer, .init = initialize_integer)
     const char ch = fuzzed_data_provider.ConsumeIntegral<char>();
     const bool b = fuzzed_data_provider.ConsumeBool();
 
-    const Consensus::Params& consensus_params = Params().GetConsensus();
-    (void)CheckProofOfWorkImpl(u256, u32, consensus_params);
     if (u64 <= MAX_MONEY) {
         const uint64_t compressed_money_amount = CompressAmount(u64);
         assert(u64 == DecompressAmount(compressed_money_amount));

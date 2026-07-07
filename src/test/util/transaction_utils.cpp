@@ -1,6 +1,17 @@
-// Copyright (c) 2019-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2019-2020 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <coins.h>
 #include <consensus/validation.h>
@@ -12,13 +23,14 @@ CMutableTransaction BuildCreditingTransaction(const CScript& scriptPubKey, int n
     CMutableTransaction txCredit;
     txCredit.version = 1;
     txCredit.nLockTime = 0;
+    txCredit.lock_height = 0;
     txCredit.vin.resize(1);
     txCredit.vout.resize(1);
     txCredit.vin[0].prevout.SetNull();
     txCredit.vin[0].scriptSig = CScript() << CScriptNum(0) << CScriptNum(0);
     txCredit.vin[0].nSequence = CTxIn::SEQUENCE_FINAL;
     txCredit.vout[0].scriptPubKey = scriptPubKey;
-    txCredit.vout[0].nValue = nValue;
+    txCredit.vout[0].SetReferenceValue(nValue);
 
     return txCredit;
 }
@@ -28,6 +40,7 @@ CMutableTransaction BuildSpendingTransaction(const CScript& scriptSig, const CSc
     CMutableTransaction txSpend;
     txSpend.version = 1;
     txSpend.nLockTime = 0;
+    txSpend.lock_height = txCredit.lock_height;
     txSpend.vin.resize(1);
     txSpend.vout.resize(1);
     txSpend.vin[0].scriptWitness = scriptWitness;
@@ -36,7 +49,7 @@ CMutableTransaction BuildSpendingTransaction(const CScript& scriptSig, const CSc
     txSpend.vin[0].scriptSig = scriptSig;
     txSpend.vin[0].nSequence = CTxIn::SEQUENCE_FINAL;
     txSpend.vout[0].scriptPubKey = CScript();
-    txSpend.vout[0].nValue = txCredit.vout[0].nValue;
+    txSpend.vout[0].SetReferenceValue(txCredit.vout[0].GetReferenceValue());
 
     return txSpend;
 }
@@ -55,16 +68,16 @@ std::vector<CMutableTransaction> SetupDummyInputs(FillableSigningProvider& keyst
 
     // Create some dummy input transactions
     dummyTransactions[0].vout.resize(2);
-    dummyTransactions[0].vout[0].nValue = nValues[0];
+    dummyTransactions[0].vout[0].SetReferenceValue(nValues[0]);
     dummyTransactions[0].vout[0].scriptPubKey << ToByteVector(key[0].GetPubKey()) << OP_CHECKSIG;
-    dummyTransactions[0].vout[1].nValue = nValues[1];
+    dummyTransactions[0].vout[1].SetReferenceValue(nValues[1]);
     dummyTransactions[0].vout[1].scriptPubKey << ToByteVector(key[1].GetPubKey()) << OP_CHECKSIG;
     AddCoins(coinsRet, CTransaction(dummyTransactions[0]), 0);
 
     dummyTransactions[1].vout.resize(2);
-    dummyTransactions[1].vout[0].nValue = nValues[2];
+    dummyTransactions[1].vout[0].SetReferenceValue(nValues[2]);
     dummyTransactions[1].vout[0].scriptPubKey = GetScriptForDestination(PKHash(key[2].GetPubKey()));
-    dummyTransactions[1].vout[1].nValue = nValues[3];
+    dummyTransactions[1].vout[1].SetReferenceValue(nValues[3]);
     dummyTransactions[1].vout[1].scriptPubKey = GetScriptForDestination(PKHash(key[3].GetPubKey()));
     AddCoins(coinsRet, CTransaction(dummyTransactions[1]), 0);
 
@@ -91,23 +104,6 @@ void BulkTransaction(CMutableTransaction& tx, int32_t target_weight)
     assert(GetTransactionWeight(CTransaction(tx)) <= target_weight + 3);
 }
 
-bool SignSignature(const SigningProvider &provider, const CScript& fromPubKey, CMutableTransaction& txTo, unsigned int nIn, const CAmount& amount, int nHashType, SignatureData& sig_data)
-{
-    assert(nIn < txTo.vin.size());
-
-    MutableTransactionSignatureCreator creator(txTo, nIn, amount, nHashType);
-
-    bool ret = ProduceSignature(provider, creator, fromPubKey, sig_data);
-    UpdateInput(txTo.vin.at(nIn), sig_data);
-    return ret;
-}
-
-bool SignSignature(const SigningProvider &provider, const CTransaction& txFrom, CMutableTransaction& txTo, unsigned int nIn, int nHashType, SignatureData& sig_data)
-{
-    assert(nIn < txTo.vin.size());
-    const CTxIn& txin = txTo.vin[nIn];
-    assert(txin.prevout.n < txFrom.vout.size());
-    const CTxOut& txout = txFrom.vout[txin.prevout.n];
-
-    return SignSignature(provider, txout.scriptPubKey, txTo, nIn, txout.nValue, nHashType, sig_data);
-}
+// NOTE: upstream v29 moved SignSignature here from script/sign; Freicoin keeps
+// the canonical refheight-aware SignSignature in script/sign.{h,cpp}, so no
+// test-util copy is needed.

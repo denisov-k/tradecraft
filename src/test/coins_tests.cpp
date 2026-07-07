@@ -1,6 +1,19 @@
-// Copyright (c) 2014-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2014-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#include <test/util/setup_common.h>
 
 #include <addresstype.h>
 #include <clientversion.h>
@@ -9,7 +22,6 @@
 #include <test/util/common.h>
 #include <test/util/poolresourcetester.h>
 #include <test/util/random.h>
-#include <test/util/setup_common.h>
 #include <txdb.h>
 #include <uint256.h>
 #include <undo.h>
@@ -56,7 +68,7 @@ public:
 
     uint256 GetBestBlock() const override { return hashBestBlock_; }
 
-    void BatchWrite(CoinsViewCacheCursor& cursor, const uint256& hashBlock) override
+    void BatchWrite(CoinsViewCacheCursor& cursor, const uint256& hashBlock, const BlockFinalTxEntry& final_tx) override
     {
         for (auto it{cursor.Begin()}; it != cursor.End(); it = cursor.NextAndMaybeErase(*it)){
             if (it->second.IsDirty()) {
@@ -426,7 +438,7 @@ BOOST_FIXTURE_TEST_CASE(updatecoins_simulation_test, UpdateTest)
             // Update the expected result to know about the new output coins
             assert(tx.vout.size() == 1);
             const COutPoint outpoint(tx.GetHash(), 0);
-            result[outpoint] = Coin{tx.vout[0], height, CTransaction{tx}.IsCoinBase()};
+            result[outpoint] = Coin{tx.vout[0], tx.lock_height, height, CTransaction{tx}.IsCoinBase()};
 
             // Call UpdateCoins on the top cache
             CTxUndo undo;
@@ -523,33 +535,45 @@ BOOST_FIXTURE_TEST_CASE(updatecoins_simulation_test, UpdateTest)
 BOOST_AUTO_TEST_CASE(ccoins_serialization)
 {
     // Good example
+    DataStream ss1{ParseHex("97f23c835800816115944e077fe7c803cfa57f29b36bf87c1d3500")};
     Coin cc1;
-    SpanReader{"97f23c835800816115944e077fe7c803cfa57f29b36bf87c1d35"_hex} >> cc1;
+    ss1 >> cc1;
+    BOOST_CHECK(ss1.empty());
     BOOST_CHECK_EQUAL(cc1.fCoinBase, false);
     BOOST_CHECK_EQUAL(cc1.nHeight, 203998U);
     BOOST_CHECK_EQUAL(cc1.out.nValue, CAmount{60000000000});
-    BOOST_CHECK_EQUAL(HexStr(cc1.out.scriptPubKey), HexStr(GetScriptForDestination(PKHash(uint160("816115944e077fe7c803cfa57f29b36bf87c1d35"_hex_u8)))));
+    BOOST_CHECK_EQUAL(cc1.refheight, 0);
+    BOOST_CHECK_EQUAL(HexStr(cc1.out.scriptPubKey), HexStr(GetScriptForDestination(PKHash(uint160(ParseHex("816115944e077fe7c803cfa57f29b36bf87c1d35"))))));
 
     // Good example
+    DataStream ss2{ParseHex("8ddf77bbd123008c988f1a4a4de2161e0f50aac7f17e7f9555caa48000")};
     Coin cc2;
-    SpanReader{"8ddf77bbd123008c988f1a4a4de2161e0f50aac7f17e7f9555caa4"_hex} >> cc2;
+    ss2 >> cc2;
+    BOOST_CHECK(ss2.empty());
     BOOST_CHECK_EQUAL(cc2.fCoinBase, true);
     BOOST_CHECK_EQUAL(cc2.nHeight, 120891U);
     BOOST_CHECK_EQUAL(cc2.out.nValue, 110397);
-    BOOST_CHECK_EQUAL(HexStr(cc2.out.scriptPubKey), HexStr(GetScriptForDestination(PKHash(uint160("8c988f1a4a4de2161e0f50aac7f17e7f9555caa4"_hex_u8)))));
+    BOOST_CHECK_EQUAL(cc2.refheight, 128);
+    BOOST_CHECK_EQUAL(HexStr(cc2.out.scriptPubKey), HexStr(GetScriptForDestination(PKHash(uint160(ParseHex("8c988f1a4a4de2161e0f50aac7f17e7f9555caa4"))))));
 
     // Smallest possible example
+    DataStream ss3{ParseHex("00000600")};
     Coin cc3;
-    SpanReader{"000006"_hex} >> cc3;
+
+    ss3 >> cc3;
+    BOOST_CHECK(ss3.empty());
     BOOST_CHECK_EQUAL(cc3.fCoinBase, false);
     BOOST_CHECK_EQUAL(cc3.nHeight, 0U);
     BOOST_CHECK_EQUAL(cc3.out.nValue, 0);
+    BOOST_CHECK_EQUAL(cc3.refheight, 0);
     BOOST_CHECK_EQUAL(cc3.out.scriptPubKey.size(), 0U);
 
     // scriptPubKey that ends beyond the end of the stream
+    DataStream ss4{ParseHex("00000700")};
     try {
         Coin cc4;
-        SpanReader{"000007"_hex} >> cc4;
+        ss4 >> cc4;
+        BOOST_CHECK(ss4.empty());
         BOOST_CHECK_MESSAGE(false, "We should have thrown");
     } catch (const std::ios_base::failure&) {
     }
@@ -559,9 +583,11 @@ BOOST_AUTO_TEST_CASE(ccoins_serialization)
     uint64_t x = 3000000000ULL;
     tmp << VARINT(x);
     BOOST_CHECK_EQUAL(HexStr(tmp), "8a95c0bb00");
+    DataStream ss5{ParseHex("00008a95c0bb0000")};
     try {
         Coin cc5;
-        SpanReader{"00008a95c0bb00"_hex} >> cc5;
+        ss5 >> cc5;
+        BOOST_CHECK(ss5.empty());
         BOOST_CHECK_MESSAGE(false, "We should have thrown");
     } catch (const std::ios_base::failure&) {
     }
@@ -661,7 +687,7 @@ static void WriteCoinsViewEntry(CCoinsView& view, const MaybeCoin& cache_coin)
     if (cache_coin) InsertCoinsMapEntry(map, sentinel, *cache_coin);
     size_t dirty_count{cache_coin && cache_coin->IsDirty()};
     auto cursor{CoinsViewCacheCursor(dirty_count, sentinel, map, /*will_erase=*/true)};
-    view.BatchWrite(cursor, {});
+    view.BatchWrite(cursor, {}, {});
     BOOST_CHECK_EQUAL(dirty_count, 0U);
 }
 
@@ -748,7 +774,7 @@ static void CheckAddCoin(const CAmount base_value, const MaybeCoin& cache_coin, 
 {
     SingleEntryCacheTest test{base_value, cache_coin};
     bool possible_overwrite{coinbase};
-    auto add_coin{[&] { test.cache.AddCoin(OUTPOINT, Coin{CTxOut{modify_value, CScript{}}, 1, coinbase}, possible_overwrite); }};
+    auto add_coin{[&] { test.cache.AddCoin(OUTPOINT, Coin{CTxOut{modify_value, CScript{}}, /*refheight=*/1, /*nHeightIn=*/1, coinbase}, possible_overwrite); }};
     if (auto* expected_coin{std::get_if<MaybeCoin>(&expected)}) {
         add_coin();
         test.cache.SelfTest();

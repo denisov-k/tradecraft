@@ -1,7 +1,21 @@
-// Copyright (c) 2019-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2019-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
 //
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
+#include <test/util/setup_common.h>
+
 #include <chainparams.h>
 #include <consensus/validation.h>
 #include <kernel/disconnected_transactions.h>
@@ -15,7 +29,6 @@
 #include <test/util/common.h>
 #include <test/util/logging.h>
 #include <test/util/random.h>
-#include <test/util/setup_common.h>
 #include <test/util/validation.h>
 #include <uint256.h>
 #include <util/result.h>
@@ -59,7 +72,7 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager, TestChain100Setup)
     BOOST_CHECK_EQUAL(&active_chain, &c1.m_chain);
 
     // Get to a valid assumeutxo tip (per chainparams);
-    mineBlocks(10);
+    mineBlocks(9);
     BOOST_CHECK_EQUAL(WITH_LOCK(manager.GetMutex(), return manager.ActiveHeight()), 110);
     auto active_tip = WITH_LOCK(manager.GetMutex(), return manager.ActiveTip());
     auto exp_tip = c1.m_chain.Tip();
@@ -75,11 +88,23 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager, TestChain100Setup)
         /*cache_size_bytes=*/1 << 23, /*in_memory=*/true, /*should_wipe=*/false);
     {
         LOCK(::cs_main);
+        auto finaltx = c1.CoinsTip().GetFinalTx();
+        std::map<uint32_t, Coin> coins;
+        for (uint32_t i = 0; i < finaltx.size; ++i) {
+            std::optional<Coin> coin{c1.CoinsTip().GetCoin({finaltx.hash, i})};
+            BOOST_CHECK(coin.has_value());
+            coins[i] = *coin;
+        }
         c2.InitCoinsCache(1 << 23);
         c2.CoinsTip().SetBestBlock(active_tip->GetBlockHash());
+        c2.CoinsTip().SetFinalTx(finaltx);
+        for (auto&& [i, coin] : coins) {
+            c2.CoinsTip().AddCoin({finaltx.hash, i}, std::move(coin), true);
+        }
         for (const auto& cs : manager.m_chainstates) {
             cs->ClearBlockIndexCandidates();
         }
+        c2.setBlockIndexCandidates.insert(manager.m_blockman.LookupBlockIndex(active_tip->GetBlockHash()));
         c2.LoadChainTip();
         for (const auto& cs : manager.m_chainstates) {
             cs->PopulateBlockIndexCandidates();
@@ -251,7 +276,7 @@ struct SnapshotTestSetup : TestChain100Setup {
             }
 
             BOOST_CHECK_EQUAL(total_coins, initial_total_coins);
-            BOOST_CHECK_EQUAL(initial_size, initial_total_coins);
+            BOOST_CHECK_EQUAL(initial_size, initial_total_coins + 3);
         }
 
         Chainstate& validation_chainstate = chainman.ActiveChainstate();
@@ -263,9 +288,9 @@ struct SnapshotTestSetup : TestChain100Setup {
         // Mine 10 more blocks, putting at us height 110 where a valid assumeutxo value can
         // be found.
         constexpr int snapshot_height = 110;
-        mineBlocks(10);
-        initial_size += 10;
-        initial_total_coins += 10;
+        mineBlocks(9);
+        initial_size += 9;
+        initial_total_coins += 9;
 
         // Should not load malleated snapshots
         BOOST_REQUIRE(!CreateAndActivateUTXOSnapshot(
@@ -355,7 +380,7 @@ struct SnapshotTestSetup : TestChain100Setup {
                     total_coins++;
                 }
 
-                BOOST_CHECK_EQUAL(initial_size , coinscache.GetCacheSize());
+                BOOST_CHECK_EQUAL(initial_size , coinscache.GetCacheSize() + 3);
                 BOOST_CHECK_EQUAL(total_coins, initial_total_coins);
                 chains_tested++;
             }
@@ -480,7 +505,7 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager_loadblockindex, TestChain100Setup)
 
     // Mine to height 120, past the hardcoded regtest assumeutxo snapshot at
     // height 110
-    mineBlocks(20);
+    mineBlocks(19);
 
     CBlockIndex* validated_tip{nullptr};
     CBlockIndex* assumed_base{nullptr};

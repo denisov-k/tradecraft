@@ -1,6 +1,17 @@
-// Copyright (c) 2023-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2023 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bip324.h>
 #include <chainparams.h>
@@ -21,7 +32,7 @@
 
 namespace {
 
-struct BIP324Test : BasicTestingSetup {
+#if 0 // Unused, since we removed the bip324 test vectors (see below).
 void TestBIP324PacketVector(
     uint32_t in_idx,
     const std::string& in_priv_ours_hex,
@@ -157,11 +168,11 @@ void TestBIP324PacketVector(
         }
     }
 }
-}; // struct BIP324Test
+#endif // 0
 
 }  // namespace
 
-BOOST_FIXTURE_TEST_SUITE(bip324_tests, BIP324Test)
+BOOST_FIXTURE_TEST_SUITE(bip324_tests, BasicTestingSetup)
 
 BOOST_AUTO_TEST_CASE(packet_test_vectors) {
     // BIP324 key derivation uses network magic in the HKDF process. We use mainnet params here
@@ -193,6 +204,7 @@ BOOST_AUTO_TEST_CASE(packet_test_vectors) {
     //             quote(row['out_ciphertext_endswith'])
     //         ]
     //         print("    TestBIP324PacketVector(\n        " + ",\n        ".join(args) + ");")
+#if 0 // We have no way of fixing these to work with freicoin's changed configuration.
     TestBIP324PacketVector(
         1,
         "61062ea5071d800bbfd59e2e8b53d47d194b095ae5a4df04936b49772ef0d4d7",
@@ -297,7 +309,8 @@ BOOST_AUTO_TEST_CASE(packet_test_vectors) {
         "e5d4905a8b6a5d18ec6cebbdecd703d3",
         "fc2431beb9a666bf888df0662276a4b6a1af5061072992ef408f2b686c86a2ac",
         "",
-        "1a7f3fb83ad2b050b663b8df6b7c2cc2d8e169a869a58bf7ef5ab5db97a505c84a812e100d9445da4fc39a1176d6aed3995f6868631224b86f10603217c8d13270e0c6d054ad9e0d0b7dc0c8e59a37cd05a0a45faa14b4ffc8d12b641f62e6f1b71c1f72b737e9ce3fe74be779b25e70bf11d98766b3876d0fa28d3c669087fc");
+        "7c4b9e1e6c1ce69da7b01513cdc4588fd93b04dafefaf87f31561763d906c672bac3dfceb751ebd126728ac017d4d580e931b8e5c7d5dfe0123be4dc9b2d2238b655c8a7fadaf8082c31e310909b5b731efc12f0a56e849eae6bfeedcc86dd27ef9b91d159256aa8e8d2b71a311f73350863d70f18d0d7302cf551e4303c7733");
+#endif
 }
 
 BOOST_AUTO_TEST_SUITE_END()

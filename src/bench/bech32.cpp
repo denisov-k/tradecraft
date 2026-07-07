@@ -1,6 +1,17 @@
-// Copyright (c) 2018-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2018-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bech32.h>
 #include <bench/bench.h>
@@ -17,14 +28,14 @@ static void Bech32Encode(benchmark::Bench& bench)
     tmp.reserve(1 + v.size() * 8 / 5);
     ConvertBits<8, 5, true>([&](unsigned char c) { tmp.push_back(c); }, v.begin(), v.end());
     bench.batch(v.size()).unit("byte").run([&] {
-        bech32::Encode(bech32::Encoding::BECH32, "bc", tmp);
+        bech32::Encode(bech32::Encoding::BECH32M, "fc", tmp);
     });
 }
 
 
 static void Bech32Decode(benchmark::Bench& bench)
 {
-    std::string addr = "bc1qkallence7tjawwvy0dwt4twc62qjgaw8f4vlhyd006d99f09";
+    std::string addr = "fc1qfmwaw92egxe9mqqa5h6kmsr7jks00az0yv97usksyhlygrx2ya2q2xwkgh";
     bench.batch(addr.size()).unit("byte").run([&] {
         bech32::Decode(addr);
     });

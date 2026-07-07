@@ -3,7 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <bench/bench.h>
-#include <bench/data/block413567.raw.h>
+#include <bench/data/block136207.raw.h>
 #include <flatfile.h>
 #include <node/blockstorage.h>
 #include <primitives/block.h>
@@ -22,7 +22,7 @@
 static CBlock CreateTestBlock()
 {
     CBlock block;
-    SpanReader{benchmark::data::block413567} >> TX_WITH_WITNESS(block);
+    SpanReader{benchmark::data::block136207} >> TX_WITH_WITNESS(block);
     return block;
 }
 

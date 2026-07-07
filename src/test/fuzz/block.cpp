@@ -1,6 +1,17 @@
-// Copyright (c) 2019-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2019-2021 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <chainparams.h>
 #include <consensus/merkle.h>
@@ -56,7 +67,7 @@ FUZZ_TARGET(block, .init = initialize_block)
         (void)BlockWitnessMerkleRoot(block);
     }
     (void)GetBlockWeight(block);
-    (void)GetWitnessCommitmentIndex(block);
+    (void)GetWitnessCommitment(block, nullptr, nullptr);
     const size_t raw_memory_size = RecursiveDynamicUsage(block);
     const size_t raw_memory_size_as_shared_ptr = RecursiveDynamicUsage(std::make_shared<CBlock>(block));
     assert(raw_memory_size_as_shared_ptr > raw_memory_size);

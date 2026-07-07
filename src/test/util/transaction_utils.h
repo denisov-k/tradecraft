@@ -1,9 +1,20 @@
-// Copyright (c) 2019-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2019-2020 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_TEST_UTIL_TRANSACTION_UTILS_H
-#define BITCOIN_TEST_UTIL_TRANSACTION_UTILS_H
+#ifndef FREICOIN_TEST_UTIL_TRANSACTION_UTILS_H
+#define FREICOIN_TEST_UTIL_TRANSACTION_UTILS_H
 
 #include <primitives/transaction.h>
 #include <script/sign.h>
@@ -31,23 +42,7 @@ std::vector<CMutableTransaction> SetupDummyInputs(FillableSigningProvider& keyst
 // by appending a single output with padded output script
 void BulkTransaction(CMutableTransaction& tx, int32_t target_weight);
 
-/**
- * Produce a satisfying script (scriptSig or witness).
- *
- * @param provider   Utility containing the information necessary to solve a script.
- * @param fromPubKey The script to produce a satisfaction for.
- * @param txTo       The spending transaction.
- * @param nIn        The index of the input in `txTo` referring the output being spent.
- * @param amount     The value of the output being spent.
- * @param nHashType  Signature hash type.
- * @param sig_data   Additional data provided to solve a script. Filled with the resulting satisfying
- *                   script and whether the satisfaction is complete.
- *
- * @return           True if the produced script is entirely satisfying `fromPubKey`.
- **/
-bool SignSignature(const SigningProvider &provider, const CScript& fromPubKey, CMutableTransaction& txTo,
-                   unsigned int nIn, const CAmount& amount, int nHashType, SignatureData& sig_data);
-bool SignSignature(const SigningProvider &provider, const CTransaction& txFrom, CMutableTransaction& txTo,
-                   unsigned int nIn, int nHashType, SignatureData& sig_data);
+// NOTE: upstream v29 moved SignSignature here from script/sign; Freicoin keeps
+// the canonical refheight-aware SignSignature in script/sign.{h,cpp}.
 
-#endif // BITCOIN_TEST_UTIL_TRANSACTION_UTILS_H
+#endif // FREICOIN_TEST_UTIL_TRANSACTION_UTILS_H
