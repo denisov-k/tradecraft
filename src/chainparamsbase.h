@@ -1,9 +1,20 @@
 // Copyright (c) 2014-2020 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_CHAINPARAMSBASE_H
-#define BITCOIN_CHAINPARAMSBASE_H
+#ifndef FREICOIN_CHAINPARAMSBASE_H
+#define FREICOIN_CHAINPARAMSBASE_H
 
 #include <util/chaintype.h>
 
@@ -14,14 +25,15 @@
 class ArgsManager;
 
 /**
- * CBaseChainParams defines the base parameters (shared between bitcoin-cli and bitcoind)
- * of a given instance of the Bitcoin system.
+ * CBaseChainParams defines the base parameters (shared between freicoin-cli and freicoind)
+ * of a given instance of the Freicoin system.
  */
 class CBaseChainParams
 {
 public:
     const std::string& DataDir() const { return strDataDir; }
     uint16_t RPCPort() const { return m_rpc_port; }
+    uint16_t StratumPort() const { return (RPCPort() + 1000); }
 
     CBaseChainParams() = delete;
     CBaseChainParams(const std::string& data_dir, uint16_t rpc_port)
@@ -52,6 +64,6 @@ const CBaseChainParams& BaseParams();
 void SelectBaseParams(const ChainType chain);
 
 /** List of possible chain / network names  */
-#define LIST_CHAIN_NAMES "main, test, testnet4, signet, regtest"
+#define LIST_CHAIN_NAMES "main, test, signet, regtest"
 
-#endif // BITCOIN_CHAINPARAMSBASE_H
+#endif // FREICOIN_CHAINPARAMSBASE_H
