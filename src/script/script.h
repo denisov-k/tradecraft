@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_SCRIPT_SCRIPT_H
-#define BITCOIN_SCRIPT_SCRIPT_H
+#ifndef FREICOIN_SCRIPT_SCRIPT_H
+#define FREICOIN_SCRIPT_SCRIPT_H
 
 #include <attributes.h>
 #include <crypto/common.h>
@@ -13,6 +24,7 @@
 #include <uint256.h>
 #include <util/hash_type.h>
 
+#include <bitset>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -41,6 +53,9 @@ static const int MAX_SCRIPT_SIZE = 10000;
 
 // Maximum number of values on script interpreter stack
 static const int MAX_STACK_SIZE = 1000;
+
+// Maximum number of elements of stack+altstack in post-segwit scripts
+static const std::size_t MAX_WITNESS_STACK_SIZE = 0x7fff;
 
 // Threshold for nLockTime: below this value it is interpreted as block number,
 // otherwise as UNIX timestamp.
@@ -198,7 +213,8 @@ enum opcodetype
     OP_NOP2 = OP_CHECKLOCKTIMEVERIFY,
     OP_CHECKSEQUENCEVERIFY = 0xb2,
     OP_NOP3 = OP_CHECKSEQUENCEVERIFY,
-    OP_NOP4 = 0xb3,
+    OP_MERKLEBRANCHVERIFY = 0xb3,
+    OP_NOP4 = OP_MERKLEBRANCHVERIFY,
     OP_NOP5 = 0xb4,
     OP_NOP6 = 0xb5,
     OP_NOP7 = 0xb6,
@@ -400,6 +416,124 @@ private:
     int64_t m_value;
 };
 
+class CScript;
+
+/**
+ * A helper class for creating, reading, and writing the multisig hint
+ * field placed in the extra stack position of a CHECKMULTISIG when
+ * SCRIPT_VERIFY_MULTISIG_HINT is in effect.
+ */
+class MultiSigHint
+{
+protected:
+    // A bitset is used to indicate which keys do NOT have signatures
+    // present, and should be skipped over. Keys for which there is a
+    // signature present have their corresponding bit clear.
+    //
+    // The ordering of bits within the hint is the same as the
+    // ordering of the pubkeys on the stack: if there are N public
+    // keys, the 1st public key (closest to the top of the stack) is
+    // indicated by the lowest-order bit in the hint; use of the Nth
+    // public key (nearest the bottom of the stack) is indicated with
+    // the Nth bit. For example:
+    //
+    //     <hint> <sigB> <sigA> 2 <pubC> <pubB> <pubA> 3 CHECKMULTISIG
+    //     hint:               0b     1      0      0  = 4
+    //
+    // Since the hint is pushed onto the stack as an integer, it can
+    // be more space efficient to drop the signature(s) corresponding
+    // to the last keys of a threshold when all keys are available.
+    // For example, an 11-of-15 threshold has a hint value of 0x000f
+    // when it is the first 11 public keys that are used. This is
+    // compactly pushed onto the stsack with a single byte, the OP_16
+    // opcode.
+    std::bitset<MAX_PUBKEYS_PER_MULTISIG> skipped_keys;
+    // The skipped_keys bitset is setup to store bits for 20 keys, the
+    // maximum number of pubkeys allowed in a single CHECKMULTISIG.
+    // We need the actual number of keys in order to calculate how
+    // many signatures should be present, since higher order bits of
+    // the bitfield are not significant.
+    int num_keys;
+
+public:
+    // By default no bits are set, which means ALL keys are used. This
+    // can only be valid for a n-of-n multisig. However a reasonable
+    // way to use this class is to initialize a hint object with this
+    // default value and then call skip_key() for the pubkeys which
+    // are not used.
+    MultiSigHint(int _num_keys)
+        : skipped_keys(0)
+        , num_keys(_num_keys)
+    {
+        assert(_num_keys >= 0);
+        assert(_num_keys <= MAX_PUBKEYS_PER_MULTISIG);
+    }
+
+    // Alternatively we can initialize with an integer or CScriptNum
+    // that is the integer-serialized representation of the hint bitfield.
+    MultiSigHint(int _num_keys, int int_hint)
+        : skipped_keys(0)     // When we switch to C++11, we can
+        , num_keys(_num_keys) // delegate to the other constructor
+    {                         // instead of duplicating code.
+        assert(_num_keys >= 0);
+        assert(_num_keys <= MAX_PUBKEYS_PER_MULTISIG);
+        *this << CScriptNum(int_hint);
+    }
+    MultiSigHint(int _num_keys, const CScriptNum& ser_hint)
+        : skipped_keys(0)     // When we switch to C++11, we can
+        , num_keys(_num_keys) // delegate to the other constructor
+    {                         // instead of duplicating code.
+        assert(_num_keys >= 0);
+        assert(_num_keys <= MAX_PUBKEYS_PER_MULTISIG);
+        *this << ser_hint;
+    }
+
+    // In some instances, such as the implementation of CHECKMULTISIG
+    // itself, it makes sense to later read the serialized hint after
+    // initialization to default values. We provide an input operator
+    // for that purpoes.
+    inline MultiSigHint& operator<<(const CScriptNum& ser_hint) {
+        const int int_hint = ser_hint.getint();
+        assert(int_hint >= 0);
+        assert(int_hint < (1 << num_keys));
+        skipped_keys = static_cast<unsigned>(int_hint);
+        return *this;
+    }
+
+    // Much of the signing code uses std::vector<valtype> to represent
+    // scriptSig or witness stacks, where valtype is is a shorthand
+    // for std::vector<unsigned char>.  We provide a method to easily
+    // convert a hint object into a stack element for that purpose.
+    inline std::vector<unsigned char> getvch() const {
+        return CScriptNum(skipped_keys.to_ulong()).getvch();
+    }
+
+    // hint.use_key(N) will clear the Nth skip bit
+    inline MultiSigHint& use_key(int which) {
+        skipped_keys.set(which, false);
+        return *this;
+    }
+
+    // hint.skip_key(N) will set the Nth skip bit
+    inline MultiSigHint& skip_key(int which) {
+        skipped_keys.set(which, true);
+        return *this;
+    }
+
+    // hint.have_sig_for_key(N) checks if the Nth skip bit is NOT set
+    inline bool have_sig_for_key(int which) const
+        { return !skipped_keys.test(which); }
+
+    // Returns the total number of signatures present, which is the
+    // number of clear bits in the bitfield, *ignoring higher-order
+    // bits beyond the actual number of keys*.
+    inline int count_sigs() const
+        { return (num_keys - skipped_keys.count()); }
+
+    // for CScript::operator<<(const MultiSigHint&)
+    friend class CScript;
+};
+
 /**
  * We use a prevector for the script to reduce the considerable memory overhead
  *  of vectors in cases where they normally contain a small number of small elements.
@@ -470,6 +604,7 @@ public:
     // delete non-existent constructor to defend against future introduction
     // e.g. via prevector
     explicit CScript(const std::vector<unsigned char>& b) = delete;
+    explicit CScript(const MultiSigHint& b) { operator<<(b); }
 
     /** Delete non-existent operator to defend against future introduction */
     CScript& operator<<(const CScript& b) = delete;
@@ -503,6 +638,11 @@ public:
         return *this << std::as_bytes(b);
     }
 
+    // Pushes an integer representation of the hint's skip-bitfield,
+    // using minimal pushes.
+    CScript& operator<<(const MultiSigHint& hint)
+        { return push_int64(hint.skipped_keys.to_ulong()); }
+
     bool GetOp(const_iterator& pc, opcodetype& opcodeRet, std::vector<unsigned char>& vchRet) const
     {
         return GetScriptOp(pc, end(), opcodeRet, &vchRet);
@@ -530,7 +670,7 @@ public:
     }
 
     /**
-     * Pre-version-0.6, Bitcoin always counted CHECKMULTISIGs
+     * Pre-version-0.6, Freicoin always counted CHECKMULTISIGs
      * as 20 sigops. With pay-to-script-hash, that changed:
      * CHECKMULTISIGs serialized in scriptSigs are
      * counted more accurately, assuming they are of the form
@@ -554,7 +694,7 @@ public:
 
     bool IsPayToScriptHash() const;
     bool IsPayToWitnessScriptHash() const;
-    bool IsWitnessProgram(int& version, std::vector<unsigned char>& program) const;
+    bool IsWitnessProgram(int *version = nullptr, std::vector<unsigned char> *program = nullptr) const;
 
     /** Called by IsStandardTx and P2SH/BIP62 VerifyScript (which makes it consensus-critical). */
     bool IsPushOnly(const_iterator pc) const;
@@ -636,4 +776,4 @@ CScript BuildScript(Ts&&... inputs)
     return ret;
 }
 
-#endif // BITCOIN_SCRIPT_SCRIPT_H
+#endif // FREICOIN_SCRIPT_SCRIPT_H

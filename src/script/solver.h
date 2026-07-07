@@ -1,12 +1,23 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // The Solver functions are used by policy and the wallet, but not consensus.
 
-#ifndef BITCOIN_SCRIPT_SOLVER_H
-#define BITCOIN_SCRIPT_SOLVER_H
+#ifndef FREICOIN_SCRIPT_SOLVER_H
+#define FREICOIN_SCRIPT_SOLVER_H
 
 #include <attributes.h>
 #include <script/script.h>
@@ -28,9 +39,9 @@ enum class TxoutType {
     SCRIPTHASH,
     MULTISIG,
     NULL_DATA, //!< unspendable OP_RETURN script that carries data
-    WITNESS_V0_SCRIPTHASH,
-    WITNESS_V0_KEYHASH,
-    WITNESS_V1_TAPROOT,
+    UNSPENDABLE, //!< unspendable, minimal (no-data) OP_RETURN script
+    WITNESS_V0_LONGHASH,
+    WITNESS_V0_SHORTHASH,
     WITNESS_UNKNOWN, //!< Only for Witness versions not already defined above
 };
 
@@ -64,4 +75,4 @@ std::optional<std::pair<int, std::vector<Span<const unsigned char>>>> MatchMulti
 /** Generate a multisig script. */
 CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey>& keys);
 
-#endif // BITCOIN_SCRIPT_SOLVER_H
+#endif // FREICOIN_SCRIPT_SOLVER_H

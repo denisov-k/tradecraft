@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2020 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_SCRIPT_SCRIPT_ERROR_H
-#define BITCOIN_SCRIPT_SCRIPT_ERROR_H
+#ifndef FREICOIN_SCRIPT_SCRIPT_ERROR_H
+#define FREICOIN_SCRIPT_SCRIPT_ERROR_H
 
 #include <string>
 
@@ -41,17 +52,21 @@ typedef enum ScriptError_t
     SCRIPT_ERR_NEGATIVE_LOCKTIME,
     SCRIPT_ERR_UNSATISFIED_LOCKTIME,
 
+    /* MERKLEBRANCHVERIFY */
+    SCRIPT_ERR_INVALID_HASH_LENGTH,
+    SCRIPT_ERR_INVALID_MERKLE_PROOF,
+    SCRIPT_ERR_MERKLEBRANCHVERIFY,
+
     /* Malleability */
     SCRIPT_ERR_SIG_HASHTYPE,
     SCRIPT_ERR_SIG_DER,
     SCRIPT_ERR_MINIMALDATA,
     SCRIPT_ERR_SIG_PUSHONLY,
     SCRIPT_ERR_SIG_HIGH_S,
-    SCRIPT_ERR_SIG_NULLDUMMY,
     SCRIPT_ERR_PUBKEYTYPE,
     SCRIPT_ERR_CLEANSTACK,
     SCRIPT_ERR_MINIMALIF,
-    SCRIPT_ERR_SIG_NULLFAIL,
+    SCRIPT_ERR_NULLFAIL,
 
     /* softfork safeness */
     SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS,
@@ -61,11 +76,10 @@ typedef enum ScriptError_t
     SCRIPT_ERR_DISCOURAGE_UPGRADABLE_PUBKEYTYPE,
 
     /* segregated witness */
-    SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH,
     SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY,
+    SCRIPT_ERR_WITNESS_PROGRAM_INVALID_PROOF,
     SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH,
     SCRIPT_ERR_WITNESS_MALLEATED,
-    SCRIPT_ERR_WITNESS_MALLEATED_P2SH,
     SCRIPT_ERR_WITNESS_UNEXPECTED,
     SCRIPT_ERR_WITNESS_PUBKEYTYPE,
 
@@ -82,6 +96,10 @@ typedef enum ScriptError_t
     SCRIPT_ERR_OP_CODESEPARATOR,
     SCRIPT_ERR_SIG_FINDANDDELETE,
 
+    /* require valid signatures */
+    SCRIPT_ERR_MULTISIG_HINT,
+    SCRIPT_ERR_FAILED_SIGNATURE_CHECK,
+
     SCRIPT_ERR_ERROR_COUNT
 } ScriptError;
 
@@ -89,4 +107,4 @@ typedef enum ScriptError_t
 
 std::string ScriptErrorString(const ScriptError error);
 
-#endif // BITCOIN_SCRIPT_SCRIPT_ERROR_H
+#endif // FREICOIN_SCRIPT_SCRIPT_ERROR_H

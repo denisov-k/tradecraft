@@ -1,7 +1,18 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <script/script.h>
 
@@ -138,7 +149,7 @@ std::string GetOpName(opcodetype opcode)
     case OP_NOP1                   : return "OP_NOP1";
     case OP_CHECKLOCKTIMEVERIFY    : return "OP_CHECKLOCKTIMEVERIFY";
     case OP_CHECKSEQUENCEVERIFY    : return "OP_CHECKSEQUENCEVERIFY";
-    case OP_NOP4                   : return "OP_NOP4";
+    case OP_MERKLEBRANCHVERIFY     : return "OP_MERKLEBRANCHVERIFY";
     case OP_NOP5                   : return "OP_NOP5";
     case OP_NOP6                   : return "OP_NOP6";
     case OP_NOP7                   : return "OP_NOP7";
@@ -207,7 +218,7 @@ unsigned int CScript::GetSigOpCount(const CScript& scriptSig) const
 bool CScript::IsPayToAnchor() const
 {
     return (this->size() == 4 &&
-        (*this)[0] == OP_1 &&
+        (*this)[0] == OP_1NEGATE &&
         (*this)[1] == 0x02 &&
         (*this)[2] == 0x4e &&
         (*this)[3] == 0x73);
@@ -233,27 +244,124 @@ bool CScript::IsPayToScriptHash() const
 bool CScript::IsPayToWitnessScriptHash() const
 {
     // Extra-fast test for pay-to-witness-script-hash CScripts:
-    return (this->size() == 34 &&
+    return (this->size() == 22 && // WITNESS_V0_SHORTHASH
+            (*this)[0] == OP_0 &&
+            (*this)[1] == 0x14) ||
+           (this->size() == 34 && // WITNESS_V0_LONGHASH
             (*this)[0] == OP_0 &&
             (*this)[1] == 0x20);
 }
 
-// A witness program is any valid CScript that consists of a 1-byte push opcode
-// followed by a data push between 2 and 40 bytes.
-bool CScript::IsWitnessProgram(int& version, std::vector<unsigned char>& program) const
+// A witness program is any valid CScript that consists of a valid 1-byte opcode
+// followed by a required data push between 2 and 75 bytes, an optional shard
+// prefix specifier, and another optional data push with the same 2- to 75-byte
+// constraint.
+bool CScript::IsWitnessProgram(int* version, std::vector<unsigned char>* program) const
 {
-    if (this->size() < 4 || this->size() > 42) {
+    // Early-out based on the minimum and maximum sizes.
+    if (this->size() < 4 || this->size() > 155) {
         return false;
     }
-    if ((*this)[0] != OP_0 && ((*this)[0] < OP_1 || (*this)[0] > OP_16)) {
+    // The second byte is a push between 2 and 75 bytes in length.
+    if ((*this)[1] < 2 || (*this)[1] > 75) {
         return false;
     }
-    if ((size_t)((*this)[1] + 2) == this->size()) {
-        version = DecodeOP_N((opcodetype)(*this)[0]);
-        program = std::vector<unsigned char>(this->begin() + 2, this->end());
-        return true;
+    // Make sure the script contains the push value.
+    int pos = 2 + (*this)[1];
+    if ((size_t)pos > this->size()) {
+        return false;
     }
-    return false;
+    // The shard specifier and extension output are optional.
+    if ((size_t)pos < this->size()) {
+        // Valiate shard prefix.
+        // Note that the extension output is a push between 2 and 75 bytes in
+        // length.  So if the shard prefix is not present, we will fall though
+        // this switch statement without any action.
+        switch ((*this)[pos]) {
+            case 0x01:
+                ++pos;
+                // Make sure the shard prefix is not one of the ones with
+                // special encoding.
+                if ((*this)[pos] < 0x10 || (*this)[pos] == 0x80) {
+                    return false;
+                }
+                // Fall through to advance past the push value as well.
+                [[fallthrough]];
+            case OP_1NEGATE:
+            case OP_1:  case OP_2:  case OP_3:  case OP_4:
+            case OP_5:  case OP_6:  case OP_7:  case OP_8:
+            case OP_9:  case OP_10: case OP_11: case OP_12:
+            case OP_13: case OP_14: case OP_15: case OP_16:
+                ++pos;
+        }
+        // Validate extension output
+        if ((std::size_t)pos != this->size()) {
+            if ((*this)[pos] < 2 || (*this)[pos] > 75) {
+                return false;
+            }
+            if ((std::size_t)pos + 1 + (*this)[pos] != this->size()) {
+                return false;
+            }
+        }
+    }
+    // There are 31 single-byte opcodes which can start a script under the
+    // legacy, pre-cleanup rules.  Ordered by opcode, these constitute our 31
+    // outer version bytes which combined with the push length specify the
+    // method of hashing the inner witness script.
+    switch ((*this)[0]) {
+        case OP_0:
+            if (version) {
+                *version = 0;
+            }
+            break;
+        case OP_1NEGATE:
+            if (version) {
+                *version = 1;
+            }
+            break;
+        case OP_1:  case OP_2:  case OP_3:  case OP_4:
+        case OP_5:  case OP_6:  case OP_7:  case OP_8:
+        case OP_9:  case OP_10: case OP_11: case OP_12:
+        case OP_13: case OP_14: case OP_15: case OP_16:
+            if (version) {
+                *version = 2 + (*this)[0] - OP_1;
+            }
+            break;
+        case OP_NOP:
+            if (version) {
+                *version = 18;
+            }
+            break;
+        case OP_DEPTH:
+            if (version) {
+                *version = 19;
+            }
+            break;
+        case OP_CODESEPARATOR:
+            if (version) {
+                *version = 20;
+            }
+            break;
+        case OP_NOP1:
+        case OP_CHECKLOCKTIMEVERIFY:
+        case OP_CHECKSEQUENCEVERIFY:
+        case OP_MERKLEBRANCHVERIFY:
+        case OP_NOP5:  case OP_NOP6:  case OP_NOP7:  case OP_NOP8:
+        case OP_NOP9:  case OP_NOP10:
+            if (version) {
+                *version = 21 + (*this)[0] - OP_NOP1;
+            }
+            break;
+        default:
+            // Not one of the 31 single-byte opcodes which can start a script
+            // under the legacy, pre-cleanup consensus rules.
+            return false;
+    }
+    // The witness program is the push which follows the outer version byte.
+    if (program) {
+        *program = std::vector<unsigned char>(this->begin() + 2, this->begin() + 2 + (*this)[1]);
+    }
+    return true;
 }
 
 bool CScript::IsPushOnly(const_iterator pc) const
@@ -357,9 +465,10 @@ bool GetScriptOp(CScriptBase::const_iterator& pc, CScriptBase::const_iterator en
 
 bool IsOpSuccess(const opcodetype& opcode)
 {
-    return opcode == 80 || opcode == 98 || (opcode >= 126 && opcode <= 129) ||
+    return opcode == 80 || opcode == 98 || opcode == 122 || (opcode >= 126 && opcode <= 129) ||
            (opcode >= 131 && opcode <= 134) || (opcode >= 137 && opcode <= 138) ||
            (opcode >= 141 && opcode <= 142) || (opcode >= 149 && opcode <= 153) ||
+           opcode == 167 || opcode == 176 || (opcode >= 180 && opcode <= 185) ||
            (opcode >= 187 && opcode <= 254);
 }
 
