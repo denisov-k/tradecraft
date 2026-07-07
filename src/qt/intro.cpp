@@ -13,11 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-<<<<<<< v29.0
 #include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
-#include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1
 
 #include <chainparams.h>
 #include <qt/intro.h>
@@ -404,11 +400,7 @@ void Intro::UpdatePruneLabels(bool prune_checked)
         //: Explanatory text on the capability of the current prune target.
         tr("(sufficient to restore backups %n day(s) old)", "", expected_backup_days));
     ui->sizeWarningLabel->setText(
-<<<<<<< v29.0
-        tr("%1 will download and store a copy of the Bitcoin block chain.").arg(CLIENT_NAME) + " " +
-=======
-        tr("%1 will download and store a copy of the Freicoin block chain.").arg(PACKAGE_NAME) + " " +
->>>>>>> tc-28.1
+        tr("%1 will download and store a copy of the Freicoin block chain.").arg(CLIENT_NAME) + " " +
         storageRequiresMsg.arg(m_required_space_gb) + " " +
         tr("The wallet will also be stored in this directory.")
     );

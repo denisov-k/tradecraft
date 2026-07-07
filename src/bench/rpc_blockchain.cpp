@@ -14,7 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bench/bench.h>
-#include <bench/data/block413567.raw.h>
+#include <bench/data/block136207.raw.h>
 #include <chain.h>
 #include <core_io.h>
 #include <primitives/block.h>

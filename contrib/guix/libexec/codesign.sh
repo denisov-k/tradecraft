@@ -114,22 +114,17 @@ mkdir -p "$DISTSRC"
                 || ( rm -f "${OUTDIR}/${DISTNAME}-${HOST//x86_64-w64-mingw32/win64}.zip" && exit 1 )
             ;;
         *darwin*)
-<<<<<<< v29.0
             case "$HOST" in
                 arm64*) ARCH="arm64" ;;
                 x86_64*) ARCH="x86_64" ;;
             esac
 
             # Apply detached codesignatures (in-place)
-            signapple apply dist/Bitcoin-Qt.app codesignatures/osx/"${HOST}"/dist/Bitcoin-Qt.app
+            signapple apply dist/Freicoin-Qt.app codesignatures/osx/"${HOST}"/dist/Freicoin-Qt.app
             find "${DISTNAME}" -wholename "*/bin/*" -type f | while read -r bin
             do
                 signapple apply "${bin}" "codesignatures/osx/${HOST}/${bin}.${ARCH}sign"
             done
-=======
-            # Apply detached codesignatures to dist/ (in-place)
-            signapple apply dist/Freicoin-Qt.app codesignatures/osx/dist
->>>>>>> tc-28.1
 
             # Make a .zip from dist/
             cd dist/

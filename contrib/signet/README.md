@@ -23,14 +23,8 @@ miner
 
 You will first need to pick a difficulty target. Since signet chains are primarily protected by a signature rather than proof of work, there is no need to spend as much energy as possible mining, however you may wish to choose to spend more time than the absolute minimum. The calibrate subcommand can be used to pick a target appropriate for your hardware, eg:
 
-<<<<<<< v29.0
     MINER="./contrib/signet/miner"
-    GRIND="./build/bin/bitcoin-util grind"
-=======
-    cd src/
-    MINER="../contrib/signet/miner"
-    GRIND="./freicoin-util grind"
->>>>>>> tc-28.1
+    GRIND="./build/bin/freicoin-util grind"
     $MINER calibrate --grind-cmd="$GRIND"
     nbits=1e00f403 for 25s average mining time
 
@@ -38,11 +32,7 @@ It defaults to estimating an nbits value resulting in 25s average time to find a
 
 To mine the first block in your custom chain, you can run:
 
-<<<<<<< v29.0
-    CLI="./build/bin/bitcoin-cli -conf=mysignet.conf"
-=======
-    CLI="./freicoin-cli -conf=mysignet.conf"
->>>>>>> tc-28.1
+    CLI="./build/bin/freicoin-cli -conf=mysignet.conf"
     ADDR=$($CLI -signet getnewaddress)
     NBITS=1e00f403
     $MINER --cli="$CLI" generate --grind-cmd="$GRIND" --address="$ADDR" --nbits=$NBITS

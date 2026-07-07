@@ -94,11 +94,7 @@ void PSTOperationsDialog::signTransaction()
 
     WalletModel::UnlockContext ctx(m_wallet_model->requestUnlock());
 
-<<<<<<< v29.0:src/qt/psbtoperationsdialog.cpp
-    const auto err{m_wallet_model->wallet().fillPSBT(SIGHASH_DEFAULT, /*sign=*/true, /*bip32derivs=*/true, &n_signed, m_transaction_data, complete)};
-=======
     const auto err{m_wallet_model->wallet().fillPST(SIGHASH_ALL, /*sign=*/true, /*bip32derivs=*/true, &n_signed, m_transaction_data, complete)};
->>>>>>> tc-28.1:src/qt/pstoperationsdialog.cpp
 
     if (err) {
         showStatus(tr("Failed to sign transaction: %1")

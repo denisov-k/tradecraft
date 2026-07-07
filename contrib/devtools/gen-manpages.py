@@ -20,21 +20,12 @@ import tempfile
 import argparse
 
 BINARIES = [
-<<<<<<< v29.0
-'bin/bitcoind',
-'bin/bitcoin-cli',
-'bin/bitcoin-tx',
-'bin/bitcoin-wallet',
-'bin/bitcoin-util',
-'bin/bitcoin-qt',
-=======
-'src/freicoind',
-'src/freicoin-cli',
-'src/freicoin-tx',
-'src/freicoin-wallet',
-'src/freicoin-util',
-'src/qt/freicoin-qt',
->>>>>>> tc-28.1
+'bin/freicoind',
+'bin/freicoin-cli',
+'bin/freicoin-tx',
+'bin/freicoin-wallet',
+'bin/freicoin-util',
+'bin/freicoin-qt',
 ]
 
 parser = argparse.ArgumentParser(

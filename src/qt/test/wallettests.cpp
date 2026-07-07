@@ -281,15 +281,9 @@ public:
 //
 // This also requires overriding the default minimal Qt platform:
 //
-<<<<<<< v29.0
-//     QT_QPA_PLATFORM=xcb     build/bin/test_bitcoin-qt  # Linux
-//     QT_QPA_PLATFORM=windows build/bin/test_bitcoin-qt  # Windows
-//     QT_QPA_PLATFORM=cocoa   build/bin/test_bitcoin-qt  # macOS
-=======
-//     QT_QPA_PLATFORM=xcb     src/qt/test/test_freicoin-qt  # Linux
-//     QT_QPA_PLATFORM=windows src/qt/test/test_freicoin-qt  # Windows
-//     QT_QPA_PLATFORM=cocoa   src/qt/test/test_freicoin-qt  # macOS
->>>>>>> tc-28.1
+//     QT_QPA_PLATFORM=xcb     build/bin/test_freicoin-qt  # Linux
+//     QT_QPA_PLATFORM=windows build/bin/test_freicoin-qt  # Windows
+//     QT_QPA_PLATFORM=cocoa   build/bin/test_freicoin-qt  # macOS
 void TestGUI(interfaces::Node& node, const std::shared_ptr<CWallet>& wallet)
 {
     // Create widgets for sending coins and listing transactions.
@@ -494,13 +488,8 @@ void WalletTests::walletTests()
         // framework when it tries to look up unimplemented cocoa functions,
         // and fails to handle returned nulls
         // (https://bugreports.qt.io/browse/QTBUG-49686).
-<<<<<<< v29.0
         qWarning() << "Skipping WalletTests on mac build with 'minimal' platform set due to Qt bugs. To run AppTests, invoke "
-                      "with 'QT_QPA_PLATFORM=cocoa test_bitcoin-qt' on mac, or else use a linux or windows build.";
-=======
-        QWARN("Skipping WalletTests on mac build with 'minimal' platform set due to Qt bugs. To run AppTests, invoke "
-              "with 'QT_QPA_PLATFORM=cocoa test_freicoin-qt' on mac, or else use a linux or windows build.");
->>>>>>> tc-28.1
+                      "with 'QT_QPA_PLATFORM=cocoa test_freicoin-qt' on mac, or else use a linux or windows build.";
         return;
     }
 #endif

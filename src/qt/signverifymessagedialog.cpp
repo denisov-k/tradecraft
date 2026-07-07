@@ -22,11 +22,7 @@
 #include <qt/walletmodel.h>
 
 #include <common/signmessage.h> // For MessageSign(), MessageVerify()
-<<<<<<< v29.0
 #include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
-#include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1
 #include <key_io.h>
 #include <wallet/wallet.h>
 

@@ -13,11 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-<<<<<<< v29.0:src/qt/bitcoingui.cpp
 #include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
-#include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1:src/qt/freicoingui.cpp
 
 #include <qt/freicoingui.h>
 
@@ -379,11 +375,7 @@ void FreicoinGUI::createActions()
 
     showHelpMessageAction = new QAction(tr("&Command-line options"), this);
     showHelpMessageAction->setMenuRole(QAction::NoRole);
-<<<<<<< v29.0:src/qt/bitcoingui.cpp
-    showHelpMessageAction->setStatusTip(tr("Show the %1 help message to get a list with possible Bitcoin command-line options").arg(CLIENT_NAME));
-=======
-    showHelpMessageAction->setStatusTip(tr("Show the %1 help message to get a list with possible Freicoin command-line options").arg(PACKAGE_NAME));
->>>>>>> tc-28.1:src/qt/freicoingui.cpp
+    showHelpMessageAction->setStatusTip(tr("Show the %1 help message to get a list with possible Freicoin command-line options").arg(CLIENT_NAME));
 
     m_mask_values_action = new QAction(tr("&Mask values"), this);
     m_mask_values_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));

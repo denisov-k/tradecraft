@@ -16,11 +16,7 @@
 #ifndef FREICOIN_QT_FREICOIN_H
 #define FREICOIN_QT_FREICOIN_H
 
-<<<<<<< v29.0:src/qt/bitcoin.h
 #include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
-#include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1:src/qt/freicoin.h
 
 #include <interfaces/node.h>
 #include <qt/initexecutor.h>

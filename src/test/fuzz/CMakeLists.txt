@@ -92,7 +92,7 @@ add_executable(fuzz
   process_message.cpp
   process_messages.cpp
   protocol.cpp
-  psbt.cpp
+  pst.cpp
   random.cpp
   rbf.cpp
   rolling_bloom_filter.cpp

@@ -5,12 +5,6 @@ Upstream-Contact: Satoshi Nakamoto <krian@gmx.com>
 Source: https://github.com/tradecraftio/tradecraft
 
 Files: *
-<<<<<<< v29.0
-Copyright: 2009-2025, Bitcoin Core Developers
-License: Expat
-Comment: The Bitcoin Core Developers encompasses all contributors to the
-         project, listed in the release notes or the git log.
-=======
 Copyright: 2009-2024, Freicoin Developers
            2011-2024, Freicoin Developers
 License: AGPL-3
@@ -18,7 +12,6 @@ Comment: The Freicoin Developers encompasses the current developers listed
          on freico.in, as well as the numerous contributors to the project,
          listed in the release notes or the git log.  The Freicoin Developers
          similarly encompasses the contributors to Freicoin specifically.
->>>>>>> tc-28.1
 
 Files: debian/*
 Copyright: 2010-2011, Jonas Smedegaard <dr@jones.dk>

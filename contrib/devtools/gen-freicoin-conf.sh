@@ -16,15 +16,9 @@
 
 export LC_ALL=C
 TOPDIR=${TOPDIR:-$(git rev-parse --show-toplevel)}
-<<<<<<< v29.0:contrib/devtools/gen-bitcoin-conf.sh
 BUILDDIR=${BUILDDIR:-$TOPDIR/build}
 BINDIR=${BINDIR:-$BUILDDIR/bin}
-BITCOIND=${BITCOIND:-$BINDIR/bitcoind}
-=======
-BUILDDIR=${BUILDDIR:-$TOPDIR}
-BINDIR=${BINDIR:-$BUILDDIR/src}
 FREICOIND=${FREICOIND:-$BINDIR/freicoind}
->>>>>>> tc-28.1:contrib/devtools/gen-freicoin-conf.sh
 SHARE_EXAMPLES_DIR=${SHARE_EXAMPLES_DIR:-$TOPDIR/share/examples}
 EXAMPLE_CONF_FILE=${EXAMPLE_CONF_FILE:-$SHARE_EXAMPLES_DIR/freicoin.conf}
 
@@ -66,14 +60,9 @@ EOF
 # parse the output from freicoind --help
 # adding newlines is a bit funky to ensure portability for BSD
 # see here for more details: https://stackoverflow.com/a/24575385
-<<<<<<< v29.0:contrib/devtools/gen-bitcoin-conf.sh
-${BITCOIND} --help \
+${FREICOIND} --help \
     | sed '1,/Options:/d' \
     | sed -E '/^[[:space:]]{2}-help/,/^[[:space:]]*$/d' \
-=======
-${FREICOIND} --help \
-    | sed '1,/Print this help message and exit/d' \
->>>>>>> tc-28.1:contrib/devtools/gen-freicoin-conf.sh
     | sed -E 's/^[[:space:]]{2}\-/#/' \
     | sed -E 's/^[[:space:]]{7}/# /' \
     | sed -E '/[=[:space:]]/!s/#.*$/&=1/' \

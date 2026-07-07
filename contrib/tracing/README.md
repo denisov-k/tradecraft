@@ -82,11 +82,7 @@ about the connection. Peers can be selected individually to view recent P2P
 messages.
 
 ```
-<<<<<<< v29.0
-$ python3 contrib/tracing/p2p_monitor.py $(pidof bitcoind)
-=======
-$ python3 contrib/tracing/p2p_monitor.py ./src/freicoind
->>>>>>> tc-28.1
+$ python3 contrib/tracing/p2p_monitor.py $(pidof freicoind)
 ```
 
 Lists selectable peers and traffic and connection information.
@@ -154,11 +150,7 @@ lost. BCC prints: `Possibly lost 2 samples` on lost messages.
 
 
 ```
-<<<<<<< v29.0
-$ python3 contrib/tracing/log_raw_p2p_msgs.py $(pidof bitcoind)
-=======
-$ python3 contrib/tracing/log_raw_p2p_msgs.py ./src/freicoind
->>>>>>> tc-28.1
+$ python3 contrib/tracing/log_raw_p2p_msgs.py $(pidof freicoind)
 ```
 
 ```
@@ -196,11 +188,7 @@ In a different terminal, starting Freicoin in SigNet mode and with
 re-indexing enabled.
 
 ```
-<<<<<<< v29.0
-$ ./build/bin/bitcoind -signet -reindex
-=======
-$ ./src/freicoind -signet -reindex
->>>>>>> tc-28.1
+$ ./build/bin/freicoind -signet -reindex
 ```
 
 This produces the following output.
@@ -253,11 +241,7 @@ A BCC Python script to log the UTXO cache flushes. Based on the
 `utxocache:flush` tracepoint.
 
 ```bash
-<<<<<<< v29.0
-$ python3 contrib/tracing/log_utxocache_flush.py $(pidof bitcoind)
-=======
-$ python3 contrib/tracing/log_utxocache_flush.py ./src/freicoind
->>>>>>> tc-28.1
+$ python3 contrib/tracing/log_utxocache_flush.py $(pidof freicoind)
 ```
 
 ```
@@ -316,11 +300,7 @@ comprising a timestamp along with all event data available via the event's
 tracepoint.
 
 ```console
-<<<<<<< v29.0
-$ python3 contrib/tracing/mempool_monitor.py $(pidof bitcoind)
-=======
-$ python3 contrib/tracing/mempool_monitor.py ./src/freicoind
->>>>>>> tc-28.1
+$ python3 contrib/tracing/mempool_monitor.py $(pidof freicoind)
 ```
 
 ```

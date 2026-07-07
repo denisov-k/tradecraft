@@ -16,11 +16,7 @@
 #ifndef FREICOIN_QT_NOTIFICATOR_H
 #define FREICOIN_QT_NOTIFICATOR_H
 
-<<<<<<< v29.0
 #include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
-#include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1
 
 #include <QIcon>
 #include <QObject>

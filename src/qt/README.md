@@ -11,11 +11,7 @@ When following your systems build instructions, make sure to install the `Qt` de
 To run:
 
 ```sh
-<<<<<<< v29.0
-./build/bin/bitcoin-qt
-=======
-./src/qt/freicoin-qt
->>>>>>> tc-28.1
+./build/bin/freicoin-qt
 ```
 
 ## Files and Directories
@@ -123,12 +119,6 @@ sudo apt-get install qtcreator
  - Under `Compilers`: select `"GCC (x86 64bit in /usr/bin)"`
  - Under `Debuggers`: select `"GDB"` as debugger
 
-<<<<<<< v29.0
-8. While in the `Projects` tab, ensure that you have the `bitcoin-qt` executable specified under `Run`
- - If the executable is not specified: click `"Choose..."`, navigate to `build/bin`, and select `bitcoin-qt`
-9. You're all set! Start developing, building, and debugging the Bitcoin Core GUI
-=======
 8. While in the `Projects` tab, ensure that you have the `freicoin-qt` executable specified under `Run`
- - If the executable is not specified: click `"Choose..."`, navigate to `src/qt`, and select `freicoin-qt`
+ - If the executable is not specified: click `"Choose..."`, navigate to `build/bin`, and select `freicoin-qt`
 9. You're all set! Start developing, building, and debugging the Freicoin GUI
->>>>>>> tc-28.1

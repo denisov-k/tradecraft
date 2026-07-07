@@ -255,13 +255,8 @@ mkdir -p "$DISTSRC"
           -DWITH_CCACHE=OFF \
           ${CONFIGFLAGS}
 
-<<<<<<< v29.0
-    # Build Bitcoin Core
-    cmake --build build -j "$JOBS" ${V:+--verbose}
-=======
     # Build Freicoin
-    make --jobs="$JOBS" ${V:+V=1}
->>>>>>> tc-28.1
+    cmake --build build -j "$JOBS" ${V:+--verbose}
 
     # Perform basic security checks on a series of executables.
     cmake --build build -j 1 --target check-security ${V:+--verbose}
@@ -273,12 +268,8 @@ mkdir -p "$DISTSRC"
     # Make the os-specific installers
     case "$HOST" in
         *mingw*)
-<<<<<<< v29.0
             cmake --build build -j "$JOBS" -t deploy ${V:+--verbose}
-            mv build/bitcoin-win64-setup.exe "${OUTDIR}/${DISTNAME}-win64-setup-unsigned.exe"
-=======
-            make deploy ${V:+V=1} FREICOIN_WIN_INSTALLER="${OUTDIR}/${DISTNAME}-win64-setup-unsigned.exe"
->>>>>>> tc-28.1
+            mv build/freicoin-win64-setup.exe "${OUTDIR}/${DISTNAME}-win64-setup-unsigned.exe"
             ;;
     esac
 

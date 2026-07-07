@@ -13,11 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-<<<<<<< v29.0
 #include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
-#include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1
 
 #include <qt/optionsdialog.h>
 #include <qt/forms/ui_optionsdialog.h>
@@ -163,17 +159,10 @@ OptionsDialog::OptionsDialog(QWidget* parent, bool enableWallet)
     /* Display elements init */
     QDir translations(":translations");
 
-<<<<<<< v29.0
-    ui->bitcoinAtStartup->setToolTip(ui->bitcoinAtStartup->toolTip().arg(CLIENT_NAME));
-    ui->bitcoinAtStartup->setText(ui->bitcoinAtStartup->text().arg(CLIENT_NAME));
+    ui->freicoinAtStartup->setToolTip(ui->freicoinAtStartup->toolTip().arg(CLIENT_NAME));
+    ui->freicoinAtStartup->setText(ui->freicoinAtStartup->text().arg(CLIENT_NAME));
 
-    ui->openBitcoinConfButton->setToolTip(ui->openBitcoinConfButton->toolTip().arg(CLIENT_NAME));
-=======
-    ui->freicoinAtStartup->setToolTip(ui->freicoinAtStartup->toolTip().arg(PACKAGE_NAME));
-    ui->freicoinAtStartup->setText(ui->freicoinAtStartup->text().arg(PACKAGE_NAME));
-
-    ui->openFreicoinConfButton->setToolTip(ui->openFreicoinConfButton->toolTip().arg(PACKAGE_NAME));
->>>>>>> tc-28.1
+    ui->openFreicoinConfButton->setToolTip(ui->openFreicoinConfButton->toolTip().arg(CLIENT_NAME));
 
     ui->lang->setToolTip(ui->lang->toolTip().arg(CLIENT_NAME));
     ui->lang->addItem(QString("(") + tr("default") + QString(")"), QVariant(""));

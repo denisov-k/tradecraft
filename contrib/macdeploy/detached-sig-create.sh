@@ -17,19 +17,13 @@
 export LC_ALL=C
 set -e
 
-<<<<<<< v29.0
-=======
-ROOTDIR=dist
-BUNDLE="${ROOTDIR}/Freicoin-Qt.app"
-BINARY="${BUNDLE}/Contents/MacOS/Freicoin-Qt"
->>>>>>> tc-28.1
 SIGNAPPLE=signapple
 TEMPDIR=sign.temp
 
 BUNDLE_ROOT=dist
-BUNDLE_NAME="Bitcoin-Qt.app"
+BUNDLE_NAME="Freicoin-Qt.app"
 UNSIGNED_BUNDLE="${BUNDLE_ROOT}/${BUNDLE_NAME}"
-UNSIGNED_BINARY="${UNSIGNED_BUNDLE}/Contents/MacOS/Bitcoin-Qt"
+UNSIGNED_BINARY="${UNSIGNED_BUNDLE}/Contents/MacOS/Freicoin-Qt"
 
 ARCH=$(${SIGNAPPLE} info ${UNSIGNED_BINARY} | head -n 1 | cut -d " " -f 1)
 

@@ -25,13 +25,8 @@ find_program(CLANG_TIDY_EXE NAMES "clang-tidy-${LLVM_VERSION_MAJOR}" "clang-tidy
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Found clang-tidy: ${CLANG_TIDY_EXE}")
 
-<<<<<<< v29.0:contrib/devtools/bitcoin-tidy/CMakeLists.txt
-add_library(bitcoin-tidy MODULE bitcoin-tidy.cpp nontrivial-threadlocal.cpp)
-target_include_directories(bitcoin-tidy SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
-=======
 add_library(freicoin-tidy MODULE freicoin-tidy.cpp logprintf.cpp nontrivial-threadlocal.cpp)
 target_include_directories(freicoin-tidy SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
->>>>>>> tc-28.1:contrib/devtools/freicoin-tidy/CMakeLists.txt
 
 # Disable RTTI and exceptions as necessary
 if (MSVC)
@@ -63,13 +58,8 @@ else()
 endif()
 
 # Create a dummy library that runs clang-tidy tests as a side-effect of building
-<<<<<<< v29.0:contrib/devtools/bitcoin-tidy/CMakeLists.txt
-add_library(bitcoin-tidy-tests OBJECT EXCLUDE_FROM_ALL example_nontrivial-threadlocal.cpp)
-add_dependencies(bitcoin-tidy-tests bitcoin-tidy)
-=======
 add_library(freicoin-tidy-tests OBJECT EXCLUDE_FROM_ALL example_logprintf.cpp example_nontrivial-threadlocal.cpp)
 add_dependencies(freicoin-tidy-tests freicoin-tidy)
->>>>>>> tc-28.1:contrib/devtools/freicoin-tidy/CMakeLists.txt
 
 set_target_properties(freicoin-tidy-tests PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 

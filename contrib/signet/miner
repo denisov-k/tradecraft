@@ -31,13 +31,8 @@ sys.path.insert(0, PATH_BASE_TEST_FUNCTIONAL)
 
 from test_framework.blocktools import get_witness_script, script_BIP34_coinbase_height # noqa: E402
 from test_framework.messages import CBlock, CBlockHeader, COutPoint, CTransaction, CTxIn, CTxInWitness, CTxOut, from_binary, from_hex, ser_string, ser_uint256, tx_from_hex # noqa: E402
-<<<<<<< v29.0
-from test_framework.psbt import PSBT, PSBTMap, PSBT_GLOBAL_UNSIGNED_TX, PSBT_IN_FINAL_SCRIPTSIG, PSBT_IN_FINAL_SCRIPTWITNESS, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_SIGHASH_TYPE # noqa: E402
-from test_framework.script import CScript, CScriptOp # noqa: E402
-=======
 from test_framework.pst import PST, PSTMap, PST_GLOBAL_UNSIGNED_TX, PST_IN_FINAL_SCRIPTSIG, PST_IN_FINAL_SCRIPTWITNESS, PST_IN_NON_WITNESS_UTXO, PST_IN_SIGHASH_TYPE # noqa: E402
-from test_framework.script import CScriptOp # noqa: E402
->>>>>>> tc-28.1
+from test_framework.script import CScript, CScriptOp # noqa: E402
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)s %(message)s',
@@ -82,24 +77,8 @@ def signet_txs(block, challenge):
 
     return spend, to_spend
 
-<<<<<<< v29.0
-def decode_psbt(b64psbt):
-    psbt = PSBT.from_base64(b64psbt)
-=======
-def do_createpst(block, signme, spendme):
-    pst = PST()
-    pst.g = PSTMap( {PST_GLOBAL_UNSIGNED_TX: signme.serialize(),
-                       PST_SIGNET_BLOCK: block.serialize()
-                     } )
-    pst.i = [ PSTMap( {PST_IN_NON_WITNESS_UTXO: spendme.serialize(),
-                         PST_IN_SIGHASH_TYPE: bytes([1,0,0,0])})
-             ]
-    pst.o = [ PSTMap() ]
-    return pst.hex()
-
-def do_decode_pst(hexpst):
+def decode_pst(hexpst):
     pst = PST.fromhex(hexpst)
->>>>>>> tc-28.1
 
     assert len(pst.tx.vin) == 1
     assert len(pst.tx.vout) == 1
@@ -125,11 +104,7 @@ def finish_block(block, signet_solution, grind_cmd):
         block.rehash()
     return block
 
-<<<<<<< v29.0
-def generate_psbt(tmpl, reward_spk, *, blocktime=None, poolid=None):
-=======
-def generate_pst(tmpl, reward_spk, *, blocktime=None):
->>>>>>> tc-28.1
+def generate_pst(tmpl, reward_spk, *, blocktime=None, poolid=None):
     signet_spk = tmpl["signet_challenge"]
     signet_spk_bin = bytes.fromhex(signet_spk)
 
@@ -162,19 +137,15 @@ def generate_pst(tmpl, reward_spk, *, blocktime=None):
 
     signme, spendme = signet_txs(block, signet_spk_bin)
 
-<<<<<<< v29.0
-    psbt = PSBT()
-    psbt.g = PSBTMap( {PSBT_GLOBAL_UNSIGNED_TX: signme.serialize(),
-                       PSBT_SIGNET_BLOCK: block.serialize()
+    pst = PST()
+    pst.g = PSTMap( {PST_GLOBAL_UNSIGNED_TX: signme.serialize(),
+                       PST_SIGNET_BLOCK: block.serialize()
                      } )
-    psbt.i = [ PSBTMap( {PSBT_IN_NON_WITNESS_UTXO: spendme.serialize(),
-                         PSBT_IN_SIGHASH_TYPE: bytes([1,0,0,0])})
+    pst.i = [ PSTMap( {PST_IN_NON_WITNESS_UTXO: spendme.serialize(),
+                         PST_IN_SIGHASH_TYPE: bytes([1,0,0,0])})
              ]
-    psbt.o = [ PSBTMap() ]
-    return psbt.to_base64()
-=======
-    return do_createpst(block, signme, spendme)
->>>>>>> tc-28.1
+    pst.o = [ PSTMap() ]
+    return pst.hex()
 
 def get_poolid(args):
     if args.poolid is not None:
@@ -211,26 +182,15 @@ def get_reward_addr_spk(args, height):
 
     return reward_addr, reward_spk
 
-<<<<<<< v29.0
-def do_genpsbt(args):
+def do_genpst(args):
     poolid = get_poolid(args)
     tmpl = json.load(sys.stdin)
     _, reward_spk = get_reward_addr_spk(args, tmpl["height"])
-    psbt = generate_psbt(tmpl, reward_spk, poolid=poolid)
-    print(psbt)
-
-def do_solvepsbt(args):
-    block, signet_solution = decode_psbt(sys.stdin.read())
-=======
-def do_genpst(args):
-    tmpl = json.load(sys.stdin)
-    _, reward_spk = get_reward_addr_spk(args, tmpl["height"])
-    pst = generate_pst(tmpl, reward_spk)
+    pst = generate_pst(tmpl, reward_spk, poolid=poolid)
     print(pst)
 
 def do_solvepst(args):
-    block, signet_solution = do_decode_pst(sys.stdin.read())
->>>>>>> tc-28.1
+    block, signet_solution = decode_pst(sys.stdin.read())
     block = finish_block(block, signet_solution, args.grind_cmd)
     print(block.serialize().hex())
 
@@ -373,14 +333,14 @@ class Generate:
         return tmpl
 
     def mine(self, bcli, grind_cmd, tmpl, reward_spk):
-        psbt = generate_psbt(tmpl, reward_spk, blocktime=self.mine_time, poolid=self.poolid)
-        input_stream = os.linesep.join([psbt, "true", "ALL"]).encode('utf8')
-        psbt_signed = json.loads(bcli("-stdin", "walletprocesspsbt", input=input_stream))
-        if not psbt_signed.get("complete",False):
-            logging.debug("Generated PSBT: %s" % (psbt,))
-            sys.stderr.write("PSBT signing failed\n")
+        pst = generate_pst(tmpl, reward_spk, blocktime=self.mine_time, poolid=self.poolid)
+        input_stream = os.linesep.join([pst, "true", "ALL"]).encode('utf8')
+        pst_signed = json.loads(bcli("-stdin", "walletprocesspst", input=input_stream))
+        if not pst_signed.get("complete",False):
+            logging.debug("Generated PST: %s" % (pst,))
+            sys.stderr.write("PST signing failed\n")
             return None
-        block, signet_solution = decode_psbt(psbt_signed["psbt"])
+        block, signet_solution = decode_pst(pst_signed["pst"])
         return finish_block(block, signet_solution, grind_cmd)
 
 def do_generate(args):
@@ -489,21 +449,9 @@ def do_generate(args):
         # mine block
         logging.debug("Mining block delta=%s start=%s mine=%s", seconds_to_hms(gen.mine_time-bestheader["time"]), gen.mine_time, gen.is_mine)
         mined_blocks += 1
-<<<<<<< v29.0
         block = gen.mine(args.bcli, args.grind_cmd, tmpl, reward_spk)
         if block is None:
             return 1
-=======
-        pst = generate_pst(tmpl, reward_spk, blocktime=mine_time)
-        input_stream = os.linesep.join([pst, "true", "ALL"]).encode('utf8')
-        pst_signed = json.loads(args.bcli("-stdin", "walletprocesspst", input=input_stream))
-        if not pst_signed.get("complete",False):
-            logging.debug("Generated PST: %s" % (pst,))
-            sys.stderr.write("PST signing failed\n")
-            return 1
-        block, signet_solution = do_decode_pst(pst_signed["pst"])
-        block = finish_block(block, signet_solution, args.grind_cmd)
->>>>>>> tc-28.1
 
         # submit block
         r = args.bcli("-stdin", "submitblock", input=block.serialize().hex().encode('utf8'))
@@ -599,19 +547,13 @@ def main():
     calibrate_by.add_argument("--nbits", type=str, default=None)
     calibrate_by.add_argument("--seconds", type=int, default=None)
 
-<<<<<<< v29.0
-    for sp in [genpsbt, generate]:
+    for sp in [genpst, generate]:
         payto = sp.add_mutually_exclusive_group(required=True)
         payto.add_argument("--address", default=None, type=str, help="Address for block reward payment")
         payto.add_argument("--descriptor", default=None, type=str, help="Descriptor for block reward payment")
         pool = sp.add_mutually_exclusive_group()
         pool.add_argument("--poolnum", default=None, type=int, help="Identify blocks that you mine")
         pool.add_argument("--poolid", default=None, type=str, help="Identify blocks that you mine (eg: /signet:1/)")
-=======
-    for sp in [genpst, generate]:
-        sp.add_argument("--address", default=None, type=str, help="Address for block reward payment")
-        sp.add_argument("--descriptor", default=None, type=str, help="Descriptor for block reward payment")
->>>>>>> tc-28.1
 
     for sp in [solvepst, generate, calibrate]:
         sp.add_argument("--grind-cmd", default=None, type=str, required=(sp==calibrate), help="Command to grind a block header for proof-of-work")

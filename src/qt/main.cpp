@@ -24,13 +24,8 @@
 #include <string>
 
 /** Translate string to current locale using Qt. */
-<<<<<<< v29.0
 extern const TranslateFn G_TRANSLATION_FUN = [](const char* psz) {
-    return QCoreApplication::translate("bitcoin-core", psz).toStdString();
-=======
-extern const std::function<std::string(const char*)> G_TRANSLATION_FUN = [](const char* psz) {
     return QCoreApplication::translate("freicoin", psz).toStdString();
->>>>>>> tc-28.1
 };
 
 const std::function<std::string()> G_TEST_GET_FULL_NAME{};

@@ -325,6 +325,9 @@ target_link_libraries(bitcoin_node
     core_interface
     bitcoin_common
     bitcoin_util
+    # stratum.cpp calls the wallet mining-destination management
+    # (tradecraftio/tradecraft#104), so node must precede wallet at link time
+    $<TARGET_NAME_IF_EXISTS:bitcoin_wallet>
     $<TARGET_NAME_IF_EXISTS:bitcoin_zmq>
     leveldb
     minisketch

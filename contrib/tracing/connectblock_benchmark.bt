@@ -14,15 +14,9 @@
     over <logging threshold in ms>.
   - Threshold <logging threshold in ms>
 
-<<<<<<< v29.0
-  This script requires a 'bitcoind' binary compiled with eBPF support and the
-  'validation:block_connected' USDT. By default, it's assumed that 'bitcoind' is
-  located in './build/bin/bitcoind'. This can be modified in the script below.
-=======
   This script requires a 'freicoind' binary compiled with eBPF support and the
   'validation:block_connected' USDT. By default, it's assumed that 'freicoind' is
-  located in './src/freicoind'. This can be modified in the script below.
->>>>>>> tc-28.1
+  located in './build/bin/freicoind'. This can be modified in the script below.
 
   EXAMPLES:
 
@@ -73,11 +67,7 @@ BEGIN
   connected block is between the start and end height (or the end height is
   unset).
 */
-<<<<<<< v29.0
-usdt:./build/bin/bitcoind:validation:block_connected /arg1 >= $1 && (arg1 <= $2 || $2 == 0 )/
-=======
-usdt:./src/freicoind:validation:block_connected /arg1 >= $1 && (arg1 <= $2 || $2 == 0 )/
->>>>>>> tc-28.1
+usdt:./build/bin/freicoind:validation:block_connected /arg1 >= $1 && (arg1 <= $2 || $2 == 0 )/
 {
   $height = arg1;
   $transactions = arg2;
@@ -112,11 +102,7 @@ usdt:./src/freicoind:validation:block_connected /arg1 >= $1 && (arg1 <= $2 || $2
   blocks where the time it took to connect the block is above the
   <logging threshold in ms>.
 */
-<<<<<<< v29.0
-usdt:./build/bin/bitcoind:validation:block_connected / (uint64) arg5 / 1e6 > $3 /
-=======
-usdt:./src/freicoind:validation:block_connected / (uint64) arg5 / 1000> $3 /
->>>>>>> tc-28.1
+usdt:./build/bin/freicoind:validation:block_connected / (uint64) arg5 / 1e6 > $3 /
 {
   $hash = arg0;
   $height = (int32) arg1;

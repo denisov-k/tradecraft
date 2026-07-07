@@ -132,11 +132,7 @@ To use it with a different build directory, set `BUILDDIR`.
 For example:
 
 ```bash
-<<<<<<< v29.0
-BUILDDIR=$PWD/my-build-dir contrib/devtools/gen-bitcoin-conf.sh
-=======
-BUILDDIR=$PWD/build contrib/devtools/gen-freicoin-conf.sh
->>>>>>> tc-28.1
+BUILDDIR=$PWD/my-build-dir contrib/devtools/gen-freicoin-conf.sh
 ```
 
 security-check.py

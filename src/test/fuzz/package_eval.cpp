@@ -308,7 +308,7 @@ FUZZ_TARGET(ephemeral_package_eval, .init = initialize_tx_pool)
                 }
                 // We need newly-created values for the duration of this run
                 for (size_t i = 0; i < tx->vout.size(); ++i) {
-                    outpoints_value[COutPoint(tx->GetHash(), i)] = tx->vout[i].nValue;
+                    outpoints_value[COutPoint(tx->GetHash(), i)] = tx->vout[i].GetReferenceValue();
                 }
                 return tx;
             }());
@@ -352,7 +352,7 @@ FUZZ_TARGET(ephemeral_package_eval, .init = initialize_tx_pool)
 
     node.validation_signals->UnregisterSharedValidationInterface(outpoints_updater);
 
-    WITH_LOCK(::cs_main, tx_pool.check(chainstate.CoinsTip(), chainstate.m_chain.Height() + 1));
+    WITH_LOCK(::cs_main, tx_pool.check(chainstate.CoinsTip(), chainstate.m_chain.Height() + 1, chainstate.m_chainman.GetParams().GetConsensus()));
 }
 
 

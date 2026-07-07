@@ -26,11 +26,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 
-<<<<<<< v29.0
 #include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
-#include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1
 
 #ifdef USE_QRCODE
 #include <qrencode.h>

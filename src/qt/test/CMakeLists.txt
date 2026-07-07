@@ -11,7 +11,7 @@ add_executable(test_bitcoin-qt
   test_main.cpp
   uritests.cpp
   util.cpp
-  ../../init/bitcoin-qt.cpp
+  ../../init/freicoin-qt.cpp
 )
 
 target_link_libraries(test_bitcoin-qt
@@ -22,6 +22,8 @@ target_link_libraries(test_bitcoin-qt
   Boost::headers
   Qt5::Test
 )
+
+set_target_properties(test_bitcoin-qt PROPERTIES OUTPUT_NAME test_freicoin-qt)
 
 import_plugins(test_bitcoin-qt)
 
@@ -34,13 +36,13 @@ if(ENABLE_WALLET)
   )
 endif()
 
-add_test(NAME test_bitcoin-qt
+add_test(NAME test_freicoin-qt
   COMMAND test_bitcoin-qt
 )
 if(WIN32 AND VCPKG_TARGET_TRIPLET)
   # On Windows, vcpkg configures Qt with `-opengl dynamic`, which makes
   # the "minimal" platform plugin unusable due to internal Qt bugs.
-  set_tests_properties(test_bitcoin-qt PROPERTIES
+  set_tests_properties(test_freicoin-qt PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=windows"
   )
 endif()

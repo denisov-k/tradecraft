@@ -371,13 +371,8 @@ EOF
                                         OUTDIR="$(OUTDIR_BASE=/outdir-base && outdir_for_host "$HOST" codesigned)" \
                                         DIST_ARCHIVE_BASE=/outdir-base/dist-archive \
                                         DETACHED_SIGS_REPO=/detached-sigs \
-<<<<<<< v29.0
                                         CODESIGNING_TARBALL="$(OUTDIR_BASE=/outdir-base && codesigning_tarball_for_host "$HOST")" \
-                                      bash -c "cd /bitcoin && bash contrib/guix/libexec/codesign.sh"
-=======
-                                        UNSIGNED_TARBALL="$(OUTDIR_BASE=/outdir-base && unsigned_tarball_for_host "$HOST")" \
                                       bash -c "cd /freicoin && bash contrib/guix/libexec/codesign.sh"
->>>>>>> tc-28.1
     )
 
 done

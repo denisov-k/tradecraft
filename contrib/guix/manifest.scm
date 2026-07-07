@@ -562,14 +562,9 @@ inspecting signatures in Mach-O binaries.")
                  osslsigncode))
           ((string-contains target "-linux-")
            (list bison
-<<<<<<< v29.0
                  pkg-config
                  (list gcc-toolchain-13 "static")
-                 (make-bitcoin-cross-toolchain target)))
-=======
-                 (list gcc-toolchain-12 "static")
                  (make-freicoin-cross-toolchain target)))
->>>>>>> tc-28.1
           ((string-contains target "darwin")
            (list clang-toolchain-18
                  lld-18

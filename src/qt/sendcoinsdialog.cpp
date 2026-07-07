@@ -13,11 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-<<<<<<< v29.0
 #include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
-#include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1
 
 #include <qt/sendcoinsdialog.h>
 #include <qt/forms/ui_sendcoinsdialog.h>
@@ -225,11 +221,7 @@ void SendCoinsDialog::setModel(WalletModel *_model)
             }
         } else if (model->wallet().privateKeysDisabled()) {
             ui->sendButton->setText(tr("Cr&eate Unsigned"));
-<<<<<<< v29.0
-            ui->sendButton->setToolTip(tr("Creates a Partially Signed Bitcoin Transaction (PSBT) for use with e.g. an offline %1 wallet, or a PSBT-compatible hardware wallet.").arg(CLIENT_NAME));
-=======
-            ui->sendButton->setToolTip(tr("Creates a Partially Signed Freicoin Transaction (PST) for use with e.g. an offline %1 wallet, or a PST-compatible hardware wallet.").arg(PACKAGE_NAME));
->>>>>>> tc-28.1
+            ui->sendButton->setToolTip(tr("Creates a Partially Signed Freicoin Transaction (PST) for use with e.g. an offline %1 wallet, or a PST-compatible hardware wallet.").arg(CLIENT_NAME));
         }
 
         // set the smartfee-sliders default value (wallets default conf.target or last stored value)
@@ -351,21 +343,12 @@ bool SendCoinsDialog::PrepareSendText(QString& question_string, QString& informa
         /*: Text to inform a user attempting to create a transaction of their current options. At this stage,
             a user can only create a PST. This string is displayed when private keys are disabled and an external
             signer is not available. */
-<<<<<<< v29.0
-        question_string.append(tr("Please, review your transaction proposal. This will produce a Partially Signed Bitcoin Transaction (PSBT) which you can save or copy and then sign with e.g. an offline %1 wallet, or a PSBT-compatible hardware wallet.").arg(CLIENT_NAME));
-    } else if (model->getOptionsModel()->getEnablePSBTControls()) {
-        /*: Text to inform a user attempting to create a transaction of their current options. At this stage,
-            a user can send their transaction or create a PSBT. This string is displayed when both private keys
-            and PSBT controls are enabled. */
-        question_string.append(tr("Please, review your transaction. You can create and send this transaction or create a Partially Signed Bitcoin Transaction (PSBT), which you can save or copy and then sign with, e.g., an offline %1 wallet, or a PSBT-compatible hardware wallet.").arg(CLIENT_NAME));
-=======
-        question_string.append(tr("Please, review your transaction proposal. This will produce a Partially Signed Freicoin Transaction (PST) which you can save or copy and then sign with e.g. an offline %1 wallet, or a PST-compatible hardware wallet.").arg(PACKAGE_NAME));
+        question_string.append(tr("Please, review your transaction proposal. This will produce a Partially Signed Freicoin Transaction (PST) which you can save or copy and then sign with e.g. an offline %1 wallet, or a PST-compatible hardware wallet.").arg(CLIENT_NAME));
     } else if (model->getOptionsModel()->getEnablePSFRControls()) {
         /*: Text to inform a user attempting to create a transaction of their current options. At this stage,
             a user can send their transaction or create a PST. This string is displayed when both private keys
             and PST controls are enabled. */
-        question_string.append(tr("Please, review your transaction. You can create and send this transaction or create a Partially Signed Freicoin Transaction (PST), which you can save or copy and then sign with, e.g., an offline %1 wallet, or a PST-compatible hardware wallet.").arg(PACKAGE_NAME));
->>>>>>> tc-28.1
+        question_string.append(tr("Please, review your transaction. You can create and send this transaction or create a Partially Signed Freicoin Transaction (PST), which you can save or copy and then sign with, e.g., an offline %1 wallet, or a PST-compatible hardware wallet.").arg(CLIENT_NAME));
     } else {
         /*: Text to prompt a user to review the details of the transaction they are attempting to send. */
         question_string.append(tr("Please, review your transaction."));

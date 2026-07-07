@@ -13,11 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-<<<<<<< v29.0:src/qt/bitcoin.cpp
 #include <bitcoin-build-config.h> // IWYU pragma: keep
-=======
-#include <config/freicoin-config.h> // IWYU pragma: keep
->>>>>>> tc-28.1:src/qt/freicoin.cpp
 
 #include <qt/freicoin.h>
 
@@ -572,13 +568,8 @@ int GuiMain(int argc, char* argv[])
             return EXIT_FAILURE;
         }
         if (invalid_token) {
-<<<<<<< v29.0:src/qt/bitcoin.cpp
-            InitError(Untranslated(strprintf("Command line contains unexpected token '%s', see bitcoin-qt -h for a list of options.", argv[i])));
-            QMessageBox::critical(nullptr, CLIENT_NAME,
-=======
             InitError(Untranslated(strprintf("Command line contains unexpected token '%s', see freicoin-qt -h for a list of options.", argv[i])));
-            QMessageBox::critical(nullptr, PACKAGE_NAME,
->>>>>>> tc-28.1:src/qt/freicoin.cpp
+            QMessageBox::critical(nullptr, CLIENT_NAME,
                                   // message cannot be translated because translations have not been initialized
                                   QString::fromStdString("Command line contains unexpected token '%1', see freicoin-qt -h for a list of options.").arg(QString::fromStdString(argv[i])));
             return EXIT_FAILURE;
