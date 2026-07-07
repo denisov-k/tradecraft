@@ -120,11 +120,7 @@ def main():
         logging.error("Must have fuzz executable built")
         sys.exit(1)
 
-<<<<<<< v29.0
-    fuzz_bin=os.getenv("BITCOINFUZZ", default=os.path.join(config["environment"]["BUILDDIR"], 'bin', 'fuzz'))
-=======
-    fuzz_bin=os.getenv("FREICOINFUZZ", default=os.path.join(config["environment"]["BUILDDIR"], 'src', 'test', 'fuzz', 'fuzz'))
->>>>>>> tc-28.1
+    fuzz_bin=os.getenv("FREICOINFUZZ", default=os.path.join(config["environment"]["BUILDDIR"], 'bin', 'fuzz'))
 
     # Build list of tests
     test_list_all = parse_test_list(

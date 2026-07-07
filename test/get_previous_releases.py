@@ -101,24 +101,6 @@ SHA256_SUMS = {
     "e2f751512f3c0f00eb68ba946d9c829e6cf99422a61e8f5e0a7c109c318674d0": {"tag": "v24.0.1", "tarball": "freicoin-24.0.1-x86_64-apple-darwin.tar.gz"},
     "49df6e444515d457ea0b885d66f521f2a26ca92ccf73d5296082e633544253bf": {"tag": "v24.0.1", "tarball": "freicoin-24.0.1-x86_64-linux-gnu.tar.gz"},
 
-<<<<<<< v29.0
-    "3a7bdd959a0b426624f63f394f25e5b7769a5a2f96f8126dcc2ea53f3fa5212b": {"tag": "v25.0", "tarball": "bitcoin-25.0-aarch64-linux-gnu.tar.gz"},
-    "e537c8630b05e63242d979c3004f851fd73c2a10b5b4fdbb161788427c7b3c0f": {"tag": "v25.0", "tarball": "bitcoin-25.0-arm-linux-gnueabihf.tar.gz"},
-    "3b35075d6c1209743611c705a13575be2668bc069bc6301ce78a2e1e53ebe7cc": {"tag": "v25.0", "tarball": "bitcoin-25.0-arm64-apple-darwin.tar.gz"},
-    "0c8e135a6fd297270d3b65196042d761453493a022b5ff7fb847fc911e938214": {"tag": "v25.0", "tarball": "bitcoin-25.0-powerpc64-linux-gnu.tar.gz"},
-    "fa8af160782f5adfcea570f72b947073c1663b3e9c3cd0f82b216b609fe47573": {"tag": "v25.0", "tarball": "bitcoin-25.0-powerpc64le-linux-gnu.tar.gz"},
-    "fe6e347a66043946920c72c9c4afca301968101e6b82fb90a63d7885ebcceb32": {"tag": "v25.0", "tarball": "bitcoin-25.0-riscv64-linux-gnu.tar.gz"},
-    "5708fc639cdfc27347cccfd50db9b73b53647b36fb5f3a4a93537cbe8828c27f": {"tag": "v25.0", "tarball": "bitcoin-25.0-x86_64-apple-darwin.tar.gz"},
-    "33930d432593e49d58a9bff4c30078823e9af5d98594d2935862788ce8a20aec": {"tag": "v25.0", "tarball": "bitcoin-25.0-x86_64-linux-gnu.tar.gz"},
-
-    "7fa582d99a25c354d23e371a5848bd9e6a79702870f9cbbf1292b86e647d0f4e": {"tag": "v28.0", "tarball": "bitcoin-28.0-aarch64-linux-gnu.tar.gz"},
-    "e004b7910bedd6dd18b6c52b4eef398d55971da666487a82cd48708d2879727e": {"tag": "v28.0", "tarball": "bitcoin-28.0-arm-linux-gnueabihf.tar.gz"},
-    "c8108f30dfcc7ddffab33f5647d745414ef9d3298bfe67d243fe9b9cb4df4c12": {"tag": "v28.0", "tarball": "bitcoin-28.0-arm64-apple-darwin.tar.gz"},
-    "756df50d8f0c2a3d4111389a7be5f4849e0f5014dd5bfcbc37a8c3aaaa54907b": {"tag": "v28.0", "tarball": "bitcoin-28.0-powerpc64-linux-gnu.tar.gz"},
-    "6ee1a520b638132a16725020146abea045db418ce91c02493f02f541cd53062a": {"tag": "v28.0", "tarball": "bitcoin-28.0-riscv64-linux-gnu.tar.gz"},
-    "77e931bbaaf47771a10c376230bf53223f5380864bad3568efc7f4d02e40a0f7": {"tag": "v28.0", "tarball": "bitcoin-28.0-x86_64-apple-darwin.tar.gz"},
-    "7fe294b02b25b51acb8e8e0a0eb5af6bbafa7cd0c5b0e5fcbb61263104a82fbc": {"tag": "v28.0", "tarball": "bitcoin-28.0-x86_64-linux-gnu.tar.gz"},
-=======
     "3a7bdd959a0b426624f63f394f25e5b7769a5a2f96f8126dcc2ea53f3fa5212b": {"tag": "v25.0", "tarball": "freicoin-25.0-aarch64-linux-gnu.tar.gz"},
     "e537c8630b05e63242d979c3004f851fd73c2a10b5b4fdbb161788427c7b3c0f": {"tag": "v25.0", "tarball": "freicoin-25.0-arm-linux-gnueabihf.tar.gz"},
     "3b35075d6c1209743611c705a13575be2668bc069bc6301ce78a2e1e53ebe7cc": {"tag": "v25.0", "tarball": "freicoin-25.0-arm64-apple-darwin.tar.gz"},
@@ -127,7 +109,6 @@ SHA256_SUMS = {
     "fe6e347a66043946920c72c9c4afca301968101e6b82fb90a63d7885ebcceb32": {"tag": "v25.0", "tarball": "freicoin-25.0-riscv64-linux-gnu.tar.gz"},
     "5708fc639cdfc27347cccfd50db9b73b53647b36fb5f3a4a93537cbe8828c27f": {"tag": "v25.0", "tarball": "freicoin-25.0-x86_64-apple-darwin.tar.gz"},
     "33930d432593e49d58a9bff4c30078823e9af5d98594d2935862788ce8a20aec": {"tag": "v25.0", "tarball": "freicoin-25.0-x86_64-linux-gnu.tar.gz"},
->>>>>>> tc-28.1
 }
 
 
