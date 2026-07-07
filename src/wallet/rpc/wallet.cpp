@@ -1,7 +1,18 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 
@@ -215,7 +226,7 @@ static RPCHelpMan loadwallet()
     return RPCHelpMan{
         "loadwallet",
         "Loads a wallet from a wallet file or directory."
-                "\nNote that all wallet command-line options used when starting bitcoind will be"
+                "\nNote that all wallet command-line options used when starting freicoind will be"
                 "\napplied to the new wallet.\n",
                 {
                     {"filename", RPCArg::Type::STR, RPCArg::Optional::NO, "The path to the directory of the wallet to be loaded, either absolute or relative to the \"wallets\" directory. The \"wallets\" directory is set by the -walletdir option and defaults to the \"wallets\" folder within the data directory."},
@@ -567,7 +578,7 @@ RPCHelpMan simulaterawtransaction()
         for (size_t i = 0; i < mtx.vout.size(); ++i) {
             const auto& txout = mtx.vout[i];
             bool is_mine = wallet.IsMine(txout);
-            changes += new_utxos[COutPoint(hash, i)] = is_mine ? txout.nValue : 0;
+            changes += new_utxos[COutPoint(hash, i)] = is_mine ? txout.GetReferenceValue() : 0;
         }
     }
 
@@ -764,8 +775,8 @@ static RPCHelpMan createwalletdescriptor()
             },
         },
         RPCExamples{
-            HelpExampleCli("createwalletdescriptor", "bech32m")
-            + HelpExampleRpc("createwalletdescriptor", "bech32m")
+            HelpExampleCli("createwalletdescriptor", "bech32")
+            + HelpExampleRpc("createwalletdescriptor", "bech32")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
@@ -881,11 +892,11 @@ RPCHelpMan sendtoaddress();
 RPCHelpMan sendmany();
 RPCHelpMan fundrawtransaction();
 RPCHelpMan bumpfee();
-RPCHelpMan psbtbumpfee();
+RPCHelpMan pstbumpfee();
 RPCHelpMan send();
 RPCHelpMan sendall();
-RPCHelpMan walletprocesspsbt();
-RPCHelpMan walletcreatefundedpsbt();
+RPCHelpMan walletprocesspst();
+RPCHelpMan walletcreatefundedpst();
 RPCHelpMan signrawtransactionwithwallet();
 
 // signmessage
@@ -909,7 +920,7 @@ std::span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &abortrescan},
         {"wallet", &backupwallet},
         {"wallet", &bumpfee},
-        {"wallet", &psbtbumpfee},
+        {"wallet", &pstbumpfee},
         {"wallet", &createwallet},
         {"wallet", &createwalletdescriptor},
         {"wallet", &restorewallet},
@@ -954,14 +965,14 @@ std::span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &simulaterawtransaction},
         {"wallet", &sendall},
         {"wallet", &unloadwallet},
-        {"wallet", &walletcreatefundedpsbt},
+        {"wallet", &walletcreatefundedpst},
 #ifdef ENABLE_EXTERNAL_SIGNER
         {"wallet", &walletdisplayaddress},
 #endif // ENABLE_EXTERNAL_SIGNER
         {"wallet", &walletlock},
         {"wallet", &walletpassphrase},
         {"wallet", &walletpassphrasechange},
-        {"wallet", &walletprocesspsbt},
+        {"wallet", &walletprocesspst},
     };
     return commands;
 }

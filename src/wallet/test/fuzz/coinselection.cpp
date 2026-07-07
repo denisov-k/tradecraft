@@ -1,6 +1,17 @@
-// Copyright (c) 2022-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <policy/feerate.h>
 #include <policy/policy.h>
@@ -21,9 +32,9 @@ static void AddCoin(const CAmount& value, int n_input, int n_input_bytes, int lo
 {
     CMutableTransaction tx;
     tx.vout.resize(n_input + 1);
-    tx.vout[n_input].nValue = value;
+    tx.vout[n_input].SetReferenceValue(value);
     tx.nLockTime = locktime; // all transactions get different hashes
-    coins.emplace_back(COutPoint(tx.GetHash(), n_input), tx.vout.at(n_input), /*depth=*/0, n_input_bytes, /*solvable=*/true, /*safe=*/true, /*time=*/0, /*from_me=*/true, fee_rate);
+    coins.emplace_back(/*atheight=*/1, value, COutPoint(tx.GetHash(), n_input), SpentOutput{tx.vout.at(n_input), /*refheight=*/ 1}, /*depth=*/0, n_input_bytes, /*spendable=*/true, /*solvable=*/true, /*safe=*/true, /*time=*/0, /*from_me=*/true, fee_rate);
 }
 
 // Randomly distribute coins to instances of OutputGroup
@@ -143,7 +154,7 @@ FUZZ_TARGET(coin_grinder_is_optimal)
     FastRandomContext fast_random_context{ConsumeUInt256(fuzzed_data_provider)};
     CoinSelectionParams coin_params{fast_random_context};
     coin_params.m_subtract_fee_outputs = false;
-    // Set effective feerate up to MAX_MONEY sats per 1'000'000 vB (2'100'000'000 sat/vB = 21'000 BTC/kvB).
+    // Set effective feerate up to MAX_MONEY sats per 1'000'000 vB (2'100'000'000 sat/vB = 21'000 FRC/kvB).
     coin_params.m_effective_feerate = CFeeRate{ConsumeMoney(fuzzed_data_provider, MAX_MONEY), 1'000'000};
     coin_params.m_min_change_target = ConsumeMoney(fuzzed_data_provider);
 

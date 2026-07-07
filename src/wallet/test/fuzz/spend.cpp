@@ -66,7 +66,7 @@ FUZZ_TARGET(wallet_create_transaction, .init = initialize_setup)
         CAmount n_value{ConsumeMoney(fuzzed_data_provider)};
         all_values += n_value;
         if (all_values > MAX_MONEY) return;
-        tx.vout[0].nValue = n_value;
+        tx.vout[0].SetReferenceValue(n_value);
         tx.vout[0].scriptPubKey = GetScriptForDestination(fuzzed_wallet.GetDestination(fuzzed_data_provider));
         LOCK(fuzzed_wallet.wallet->cs_wallet);
         auto txid{tx.GetHash()};
@@ -98,7 +98,7 @@ FUZZ_TARGET(wallet_create_transaction, .init = initialize_setup)
 
     std::optional<unsigned int> change_pos;
     if (fuzzed_data_provider.ConsumeBool()) change_pos = fuzzed_data_provider.ConsumeIntegral<unsigned int>();
-    (void)CreateTransaction(*fuzzed_wallet.wallet, recipients, change_pos, coin_control);
+    (void)CreateTransaction(*fuzzed_wallet.wallet, recipients, /*refheight=*/std::nullopt, change_pos, coin_control);
 }
 } // namespace
 } // namespace wallet

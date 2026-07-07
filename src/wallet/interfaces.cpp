@@ -1,6 +1,17 @@
-// Copyright (c) 2018-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2018-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <interfaces/wallet.h>
 
@@ -34,7 +45,7 @@
 #include <utility>
 #include <vector>
 
-using common::PSBTError;
+using common::PSTError;
 using interfaces::Chain;
 using interfaces::FoundBlock;
 using interfaces::Handler;
@@ -114,6 +125,7 @@ WalletTxOut MakeWalletTxOut(const CWallet& wallet,
 {
     WalletTxOut result;
     result.txout = wtx.tx->vout[n];
+    result.refheight = wtx.tx->lock_height;
     result.time = wtx.GetTxTime();
     result.depth_in_main_chain = depth;
     result.is_spent = wallet.IsSpent(COutPoint(wtx.GetHash(), n));
@@ -125,6 +137,7 @@ WalletTxOut MakeWalletTxOut(const CWallet& wallet,
 {
     WalletTxOut result;
     result.txout = output.txout;
+    result.refheight = output.refheight;
     result.time = output.time;
     result.depth_in_main_chain = output.depth;
     result.is_spent = wallet.IsSpent(output.outpoint);
@@ -258,12 +271,13 @@ public:
         return m_wallet->ListLockedCoins(outputs);
     }
     util::Result<wallet::CreatedTransactionResult> createTransaction(const std::vector<CRecipient>& recipients,
+        std::optional<uint32_t> refheight,
         const CCoinControl& coin_control,
         bool sign,
         std::optional<unsigned int> change_pos) override
     {
         LOCK(m_wallet->cs_wallet);
-        return CreateTransaction(*m_wallet, recipients, change_pos, coin_control, sign);
+        return CreateTransaction(*m_wallet, recipients, refheight, change_pos, coin_control, sign);
     }
     void commitTransaction(CTransactionRef tx,
         WalletValueMap value_map,
@@ -364,14 +378,14 @@ public:
         }
         return {};
     }
-    std::optional<PSBTError> fillPSBT(std::optional<int> sighash_type,
+    std::optional<PSTError> fillPST(int sighash_type,
         bool sign,
         bool bip32derivs,
         size_t* n_signed,
-        PartiallySignedTransaction& psbtx,
+        PartiallySignedTransaction& pstx,
         bool& complete) override
     {
-        return m_wallet->FillPSBT(psbtx, complete, sighash_type, sign, bip32derivs, n_signed);
+        return m_wallet->FillPST(pstx, complete, sighash_type, sign, bip32derivs, n_signed);
     }
     WalletBalances getBalances() override
     {
@@ -393,7 +407,7 @@ public:
         return true;
     }
     CAmount getBalance() override { return GetBalance(*m_wallet).m_mine_trusted; }
-    CAmount getAvailableBalance(const CCoinControl& coin_control) override
+    CAmount getAvailableBalance(uint32_t atheight, const CCoinControl& coin_control) override
     {
         LOCK(m_wallet->cs_wallet);
         CAmount total_amount = 0;
@@ -402,14 +416,14 @@ public:
             FastRandomContext rng{};
             CoinSelectionParams params(rng);
             // Note: for now, swallow any error.
-            if (auto res = FetchSelectedInputs(*m_wallet, coin_control, params)) {
+            if (auto res = FetchSelectedInputs(*m_wallet, atheight, coin_control, params)) {
                 total_amount += res->GetTotalAmount();
             }
         }
 
         // And fetch the wallet available coins
         if (coin_control.m_allow_other_inputs) {
-            total_amount += AvailableCoins(*m_wallet, &coin_control).GetTotalAmount();
+            total_amount += AvailableCoins(*m_wallet, atheight, &coin_control).GetTotalAmount();
         }
 
         return total_amount;
@@ -482,10 +496,6 @@ public:
     bool canGetAddresses() override { return m_wallet->CanGetAddresses(); }
     bool hasExternalSigner() override { return m_wallet->IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER); }
     bool privateKeysDisabled() override { return m_wallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS); }
-    bool taprootEnabled() override {
-        auto spk_man = m_wallet->GetScriptPubKeyMan(OutputType::BECH32M, /*internal=*/false);
-        return spk_man != nullptr;
-    }
     OutputType getDefaultAddressType() override { return m_wallet->m_default_address_type; }
     CAmount getDefaultMaxTxFee() override { return m_wallet->m_default_max_tx_fee; }
     void remove() override

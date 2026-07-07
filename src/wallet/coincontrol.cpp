@@ -1,6 +1,17 @@
-// Copyright (c) 2018-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2018-2021 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <wallet/coincontrol.h>
 
@@ -25,16 +36,16 @@ bool CCoinControl::IsSelected(const COutPoint& outpoint) const
 bool CCoinControl::IsExternalSelected(const COutPoint& outpoint) const
 {
     const auto it = m_selected.find(outpoint);
-    return it != m_selected.end() && it->second.HasTxOut();
+    return it != m_selected.end() && it->second.HasSpentOutput();
 }
 
-std::optional<CTxOut> CCoinControl::GetExternalOutput(const COutPoint& outpoint) const
+std::optional<SpentOutput> CCoinControl::GetExternalOutput(const COutPoint& outpoint) const
 {
     const auto it = m_selected.find(outpoint);
-    if (it == m_selected.end() || !it->second.HasTxOut()) {
+    if (it == m_selected.end() || !it->second.HasSpentOutput()) {
         return std::nullopt;
     }
-    return it->second.GetTxOut();
+    return it->second.GetSpentOutput();
 }
 
 PreselectedInput& CCoinControl::Select(const COutPoint& outpoint)
@@ -87,20 +98,20 @@ std::pair<std::optional<CScript>, std::optional<CScriptWitness>> CCoinControl::G
     return it != m_selected.end() ? m_selected.at(outpoint).GetScripts() : std::make_pair(std::nullopt, std::nullopt);
 }
 
-void PreselectedInput::SetTxOut(const CTxOut& txout)
+void PreselectedInput::SetSpentOutput(const CTxOut& txout, uint32_t refheight)
 {
-    m_txout = txout;
+    m_spent_output = SpentOutput{txout, refheight};
 }
 
-CTxOut PreselectedInput::GetTxOut() const
+SpentOutput PreselectedInput::GetSpentOutput() const
 {
-    assert(m_txout.has_value());
-    return m_txout.value();
+    assert(m_spent_output.has_value());
+    return m_spent_output.value();
 }
 
-bool PreselectedInput::HasTxOut() const
+bool PreselectedInput::HasSpentOutput() const
 {
-    return m_txout.has_value();
+    return m_spent_output.has_value();
 }
 
 void PreselectedInput::SetInputWeight(int64_t weight)
