@@ -548,7 +548,15 @@ BOOST_FIXTURE_TEST_CASE(calc_feerate_diagram_rbf, TestChain100Setup)
         changeset->StageAddition(replacement_tx, high_fee, 0, 1, 0, false, 4, LockPoints());
         const auto replace_too_large{changeset->CalculateChunksForRBF()};
         BOOST_CHECK(!replace_too_large.has_value());
-        BOOST_CHECK_EQUAL(util::ErrorString(replace_too_large).original, strprintf("%s has 2 ancestors, max 1 allowed", normal_tx->GetHash().GetHex()));
+        // Which topology violation is reported first depends on the txid sort
+        // order of the conflict set, which differs from upstream because
+        // Freicoin txids commit to lock_height. Both diagnostics describe the
+        // same invalid 3-tx cluster.
+        const std::string topo_err{util::ErrorString(replace_too_large).original};
+        BOOST_CHECK_MESSAGE(
+            topo_err == strprintf("%s has 2 ancestors, max 1 allowed", normal_tx->GetHash().GetHex()) ||
+            topo_err == strprintf("%s has both ancestor and descendant, exceeding cluster limit of 2", high_tx->GetHash().GetHex()),
+            topo_err);
     }
 
     // Make a size 2 cluster that is itself two chunks; evict both txns
