@@ -2,43 +2,24 @@
 
 | Name                     | Description |
 |--------------------------|-------------|
-<<<<<<< v29.0
-| *libbitcoin_cli*         | RPC client functionality used by *bitcoin-cli* executable |
+| *libbitcoin_cli*         | RPC client functionality used by *freicoin-cli* executable |
 | *libbitcoin_common*      | Home for common functionality shared by different executables and libraries. Similar to *libbitcoin_util*, but higher-level (see [Dependencies](#dependencies)). |
 | *libbitcoin_consensus*   | Consensus functionality used by *libbitcoin_node* and *libbitcoin_wallet*. |
 | *libbitcoin_crypto*      | Hardware-optimized functions for data encryption, hashing, message authentication, and key derivation. |
 | *libbitcoin_kernel*      | Consensus engine and support library used for validation by *libbitcoin_node*. |
-| *libbitcoinqt*           | GUI functionality used by *bitcoin-qt* and *bitcoin-gui* executables. |
-| *libbitcoin_ipc*         | IPC functionality used by *bitcoin-node*, *bitcoin-wallet*, *bitcoin-gui* executables to communicate when [`-DWITH_MULTIPROCESS=ON`](multiprocess.md) is used. |
-| *libbitcoin_node*        | P2P and RPC server functionality used by *bitcoind* and *bitcoin-qt* executables. |
+| *libbitcoinqt*           | GUI functionality used by *freicoin-qt* and *bitcoin-gui* executables. |
+| *libbitcoin_ipc*         | IPC functionality used by *bitcoin-node*, *freicoin-wallet*, *bitcoin-gui* executables to communicate when [`-DWITH_MULTIPROCESS=ON`](multiprocess.md) is used. |
+| *libbitcoin_node*        | P2P and RPC server functionality used by *freicoind* and *freicoin-qt* executables. |
 | *libbitcoin_util*        | Home for common functionality shared by different executables and libraries. Similar to *libbitcoin_common*, but lower-level (see [Dependencies](#dependencies)). |
-| *libbitcoin_wallet*      | Wallet functionality used by *bitcoind* and *bitcoin-wallet* executables. |
-| *libbitcoin_wallet_tool* | Lower-level wallet functionality used by *bitcoin-wallet* executable. |
-| *libbitcoin_zmq*         | [ZeroMQ](../zmq.md) functionality used by *bitcoind* and *bitcoin-qt* executables. |
-=======
-| *libfreicoin_cli*         | RPC client functionality used by *freicoin-cli* executable |
-| *libfreicoin_common*      | Home for common functionality shared by different executables and libraries. Similar to *libfreicoin_util*, but higher-level (see [Dependencies](#dependencies)). |
-| *libfreicoin_consensus*   | Stable, backwards-compatible consensus functionality used by *libfreicoin_node* and *libfreicoin_wallet*. |
-| *libfreicoin_crypto*      | Hardware-optimized functions for data encryption, hashing, message authentication, and key derivation. |
-| *libfreicoin_kernel*      | Consensus engine and support library used for validation by *libfreicoin_node*. |
-| *libfreicoinqt*           | GUI functionality used by *freicoin-qt* and *freicoin-gui* executables. |
-| *libfreicoin_ipc*         | IPC functionality used by *freicoin-node*, *freicoin-wallet*, *freicoin-gui* executables to communicate when [`--enable-multiprocess`](multiprocess.md) is used. |
-| *libfreicoin_node*        | P2P and RPC server functionality used by *freicoind* and *freicoin-qt* executables. |
-| *libfreicoin_util*        | Home for common functionality shared by different executables and libraries. Similar to *libfreicoin_common*, but lower-level (see [Dependencies](#dependencies)). |
-| *libfreicoin_wallet*      | Wallet functionality used by *freicoind* and *freicoin-wallet* executables. |
-| *libfreicoin_wallet_tool* | Lower-level wallet functionality used by *freicoin-wallet* executable. |
-| *libfreicoin_zmq*         | [ZeroMQ](../zmq.md) functionality used by *freicoind* and *freicoin-qt* executables. |
->>>>>>> tc-28.1
+| *libbitcoin_wallet*      | Wallet functionality used by *freicoind* and *freicoin-wallet* executables. |
+| *libbitcoin_wallet_tool* | Lower-level wallet functionality used by *freicoin-wallet* executable. |
+| *libbitcoin_zmq*         | [ZeroMQ](../zmq.md) functionality used by *freicoind* and *freicoin-qt* executables. |
 
 ## Conventions
 
 - Most libraries are internal libraries and have APIs which are completely unstable! There are few or no restrictions on backwards compatibility or rules about external dependencies. An exception is *libfreicoin_kernel*, which, at some future point, will have a documented external interface.
 
-<<<<<<< v29.0
 - Generally each library should have a corresponding source directory and namespace. Source code organization is a work in progress, so it is true that some namespaces are applied inconsistently, and if you look at [`add_library(bitcoin_* ...)`](../../src/CMakeLists.txt) lists you can see that many libraries pull in files from outside their source directory. But when working with libraries, it is good to follow a consistent pattern like:
-=======
-- Generally each library should have a corresponding source directory and namespace. Source code organization is a work in progress, so it is true that some namespaces are applied inconsistently, and if you look at [`libfreicoin_*_SOURCES`](../../src/Makefile.am) lists you can see that many libraries pull in files from outside their source directory. But when working with libraries, it is good to follow a consistent pattern like:
->>>>>>> tc-28.1
 
   - *libfreicoin_node* code lives in `src/node/` in the `node::` namespace
   - *libfreicoin_wallet* code lives in `src/wallet/` in the `wallet::` namespace
@@ -122,11 +103,7 @@ class freicoin-qt,freicoind,freicoin-cli,freicoin-wallet bold
 
 - *libfreicoin_kernel* should only depend on *libfreicoin_util*, *libfreicoin_consensus*, and *libfreicoin_crypto*.
 
-<<<<<<< v29.0
 - The only thing that should depend on *libbitcoin_kernel* internally should be *libbitcoin_node*. GUI and wallet libraries *libbitcoinqt* and *libbitcoin_wallet* in particular should not depend on *libbitcoin_kernel* and the unneeded functionality it would pull in, like block validation. To the extent that GUI and wallet code need scripting and signing functionality, they should be able to get it from *libbitcoin_consensus*, *libbitcoin_common*, *libbitcoin_crypto*, and *libbitcoin_util*, instead of *libbitcoin_kernel*.
-=======
-- The only thing that should depend on *libfreicoin_kernel* internally should be *libfreicoin_node*. GUI and wallet libraries *libfreicoinqt* and *libfreicoin_wallet* in particular should not depend on *libfreicoin_kernel* and the unneeded functionality it would pull in, like block validation. To the extent that GUI and wallet code need scripting and signing functionality, they should be get able it from *libfreicoin_consensus*, *libfreicoin_common*, *libfreicoin_crypto*, and *libfreicoin_util*, instead of *libfreicoin_kernel*.
->>>>>>> tc-28.1
 
 - GUI, node, and wallet code internal implementations should all be independent of each other, and the *libfreicoinqt*, *libfreicoin_node*, *libfreicoin_wallet* libraries should never reference each other's symbols. They should only call each other through [`src/interfaces/`](../../src/interfaces/) abstract interfaces.
 

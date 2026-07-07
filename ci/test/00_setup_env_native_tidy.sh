@@ -29,7 +29,6 @@ export RUN_FUZZ_TESTS=false
 export RUN_CHECK_DEPS=true
 export RUN_TIDY=true
 export GOAL="install"
-<<<<<<< v29.0
 export BITCOIN_CONFIG="\
  -DWITH_ZMQ=ON -DBUILD_GUI=ON -DBUILD_BENCH=ON -DWITH_USDT=ON -DWITH_BDB=ON -DWARN_INCOMPATIBLE_BDB=OFF \
  -DENABLE_HARDENING=OFF \
@@ -38,7 +37,3 @@ export BITCOIN_CONFIG="\
  -DCMAKE_C_FLAGS_RELWITHDEBINFO='-O0 -g0' \
  -DCMAKE_CXX_FLAGS_RELWITHDEBINFO='-O0 -g0' \
 "
-=======
-export FREICOIN_CONFIG="CC=clang-${TIDY_LLVM_V} CXX=clang++-${TIDY_LLVM_V} --with-incompatible-bdb --disable-hardening CFLAGS='-O0 -g0' CXXFLAGS='-O0 -g0'"
-export CCACHE_MAXSIZE=200M
->>>>>>> tc-28.1

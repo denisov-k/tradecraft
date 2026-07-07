@@ -34,7 +34,6 @@ export APT_LLVM_V="20"
 export PACKAGES="systemtap-sdt-dev clang-${APT_LLVM_V} llvm-${APT_LLVM_V} libclang-rt-${APT_LLVM_V}-dev python3-zmq qtbase5-dev qttools5-dev qttools5-dev-tools libevent-dev libboost-dev libdb5.3++-dev libzmq3-dev libqrencode-dev libsqlite3-dev ${BPFCC_PACKAGE}"
 export NO_DEPENDS=1
 export GOAL="install"
-<<<<<<< v29.0
 export BITCOIN_CONFIG="\
  -DWITH_USDT=ON -DWITH_ZMQ=ON -DWITH_BDB=ON -DWARN_INCOMPATIBLE_BDB=OFF -DBUILD_GUI=ON \
  -DSANITIZERS=address,float-divide-by-zero,integer,undefined \
@@ -45,10 +44,3 @@ export BITCOIN_CONFIG="\
  -DAPPEND_CXXFLAGS='-std=c++23' \
  -DAPPEND_CPPFLAGS='-DARENA_DEBUG -DDEBUG_LOCKORDER' \
 "
-=======
-export FREICOIN_CONFIG="--enable-usdt --enable-zmq --with-incompatible-bdb --with-gui=qt5 \
-CPPFLAGS='-DARENA_DEBUG -DDEBUG_LOCKORDER' \
---with-sanitizers=address,float-divide-by-zero,integer,undefined \
-CC='clang-18 -ftrivial-auto-var-init=pattern' CXX='clang++-18 -ftrivial-auto-var-init=pattern'"
-export CCACHE_MAXSIZE=300M
->>>>>>> tc-28.1

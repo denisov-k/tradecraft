@@ -200,11 +200,7 @@ as well, use `discover` instead:
 
     ./freicoind ... -discover
 
-<<<<<<< v29.0
 and open port 8333 on your firewall (or use port mapping, i.e., `-natpmp`).
-=======
-and open port 8639 on your firewall (or use port mapping, i.e., `-upnp` or `-natpmp`).
->>>>>>> tc-28.1
 
 If you only want to use Tor to reach .onion addresses, but not use it as a proxy
 for normal IPv4/IPv6 communication, use:

@@ -3,11 +3,7 @@ Freicoin
 
 Setup
 ---------------------
-<<<<<<< v29.0
-Bitcoin Core is the original Bitcoin client and it builds the backbone of the network. It downloads and, by default, stores the entire history of Bitcoin transactions, which requires several hundred gigabytes or more of disk space. Depending on the speed of your computer and network connection, the synchronization process can take anywhere from a few hours to several days or more.
-=======
-Freicoin is the original Freicoin client and it builds the backbone of the network. It downloads and, by default, stores the entire history of Freicoin transactions, which requires a few hundred gigabytes of disk space. Depending on the speed of your computer and network connection, the synchronization process can take anywhere from a few hours to a day or more.
->>>>>>> tc-28.1
+Freicoin is the original Bitcoin client and it builds the backbone of the network. It downloads and, by default, stores the entire history of Bitcoin transactions, which requires several hundred gigabytes or more of disk space. Depending on the speed of your computer and network connection, the synchronization process can take anywhere from a few hours to several days or more.
 
 To download Freicoin, visit [freico.in](http://freico.in/en/download/).
 

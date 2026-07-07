@@ -21,12 +21,8 @@ export LC_ALL=C.UTF-8
 # Therefore, `--break-system-packages` is needed.
 export PIP_PACKAGES="--break-system-packages zmq"
 export GOAL="install"
-<<<<<<< v29.0
 export CMAKE_GENERATOR="Ninja"
 export BITCOIN_CONFIG="-DBUILD_GUI=ON -DWITH_ZMQ=ON -DREDUCE_EXPORTS=ON"
-=======
-export FREICOIN_CONFIG="--with-gui --with-miniupnpc --with-natpmp --enable-reduce-exports"
->>>>>>> tc-28.1
 export CI_OS_NAME="macos"
 export NO_DEPENDS=1
 export OSX_SDK=""

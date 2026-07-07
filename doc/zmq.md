@@ -46,14 +46,8 @@ operation.
 
 ## Enabling
 
-<<<<<<< v29.0
 By default, the ZeroMQ feature is not automatically compiled.
 To enable, use `-DWITH_ZMQ=ON` when configuring the build system:
-=======
-By default, the ZeroMQ feature is automatically compiled in if the
-necessary prerequisites are found.  To disable, use --disable-zmq
-during the *configure* step of building freicoind:
->>>>>>> tc-28.1
 
     $ cmake -B build -DWITH_ZMQ=ON
 

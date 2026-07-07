@@ -5,15 +5,9 @@ Release Process
 
 ### Before every release candidate
 
-<<<<<<< v29.0
 * Update release candidate version in `CMakeLists.txt` (`CLIENT_VERSION_RC`).
 * Update manpages (after rebuilding the binaries), see [gen-manpages.py](/contrib/devtools/README.md#gen-manpagespy).
-* Update bitcoin.conf and commit changes if they exist, see [gen-bitcoin-conf.sh](/contrib/devtools/README.md#gen-bitcoin-confsh).
-=======
-* Update release candidate version in `configure.ac` (`CLIENT_VERSION_RC`).
-* Update manpages (after rebuilding the binaries), see [gen-manpages.py](https://github.com/tradecraftio/tradecraft/blob/master/contrib/devtools/README.md#gen-manpagespy).
-* Update freicoin.conf and commit changes if they exist, see [gen-freicoin-conf.sh](https://github.com/tradecraftio/tradecraft/blob/master/contrib/devtools/README.md#gen-freicoin-confsh).
->>>>>>> tc-28.1
+* Update freicoin.conf and commit changes if they exist, see [gen-bitcoin-conf.sh](/contrib/devtools/README.md#gen-bitcoin-confsh).
 
 ### Before every major and minor release
 
@@ -26,24 +20,15 @@ Release Process
 ### Before every major release
 
 * On both the master branch and the new release branch:
-<<<<<<< v29.0
   - update `CLIENT_VERSION_MAJOR` in [`CMakeLists.txt`](../CMakeLists.txt)
 * On the new release branch in [`CMakeLists.txt`](../CMakeLists.txt)(see [this commit](https://github.com/bitcoin/bitcoin/commit/742f7dd)):
-=======
-  - update `CLIENT_VERSION_MAJOR` in [`configure.ac`](../configure.ac)
-* On the new release branch in [`configure.ac`](../configure.ac)(see [this commit](https://github.com/tradecraftio/tradecraft/commit/742f7dd)):
->>>>>>> tc-28.1
   - set `CLIENT_VERSION_MINOR` to `0`
   - set `CLIENT_VERSION_BUILD` to `0`
   - set `CLIENT_VERSION_IS_RELEASE` to `true`
 
 #### Before branch-off
 
-<<<<<<< v29.0
 * Update translations see [translation_process.md](/doc/translation_process.md#synchronising-translations).
-=======
-* Update translations see [translation_process.md](https://github.com/tradecraftio/tradecraft/blob/master/doc/translation_process.md#synchronising-translations).
->>>>>>> tc-28.1
 * Update hardcoded [seeds](/contrib/seeds/README.md), see [this pull request](https://github.com/bitcoin/bitcoin/pull/27488) for an example.
 * Update the following variables in [`src/kernel/chainparams.cpp`](/src/kernel/chainparams.cpp) for mainnet, testnet, and signet:
   - `m_assumed_blockchain_size` and `m_assumed_chain_state_size` with the current size plus some overhead (see
@@ -181,13 +166,8 @@ Then open a Pull Request to the [guix.sigs repository](https://github.com/freico
 
 In the `guix-build-${VERSION}/output/x86_64-apple-darwin` and `guix-build-${VERSION}/output/arm64-apple-darwin` directories:
 
-<<<<<<< v29.0
     tar xf bitcoin-${VERSION}-${ARCH}-apple-darwin-codesigning.tar.gz
     ./detached-sig-create.sh /path/to/codesign.p12 /path/to/AuthKey_foo.p8 uuid
-=======
-    tar xf freicoin-osx-unsigned.tar.gz
-    ./detached-sig-create.sh /path/to/codesign.p12
->>>>>>> tc-28.1
     Enter the keychain password and authorize the signature
     signature-osx.tar.gz will be created
 
@@ -195,13 +175,8 @@ In the `guix-build-${VERSION}/output/x86_64-apple-darwin` and `guix-build-${VERS
 
 In the `guix-build-${VERSION}/output/x86_64-w64-mingw32` directory:
 
-<<<<<<< v29.0
     tar xf bitcoin-${VERSION}-win64-codesigning.tar.gz
     ./detached-sig-create.sh /path/to/codesign.key
-=======
-    tar xf freicoin-win-unsigned.tar.gz
-    ./detached-sig-create.sh -key /path/to/codesign.key
->>>>>>> tc-28.1
     Enter the passphrase for the key when prompted
     signature-win.tar.gz will be created
 

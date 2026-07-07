@@ -1,14 +1,11 @@
 Freicoin is a fork of Bitcoin, and the Bitcoin code was licensed to the
 Freicoin Developers under the terms of the MIT license (see: mit-license.txt).
 
-<<<<<<< v29.0
 Copyright (c) 2009-2025 The Bitcoin Core developers
 Copyright (c) 2009-2025 Bitcoin Developers
-=======
 However all code added by the Freicoin Developers has copyright held by the
 Freicoin Developers and is licensed only under the terms of the GNU Affero
 General Public License v3.0 (see: agpl-3.0.txt).
->>>>>>> tc-28.1
 
 As permitted by the MIT license, the Bitcoin portions are sublicensed for
 distribution under the terms of the GNU Affero General Public License v3.0,

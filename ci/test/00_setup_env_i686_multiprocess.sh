@@ -25,7 +25,6 @@ export PACKAGES="llvm clang g++-multilib"
 export DEP_OPTS="DEBUG=1 MULTIPROCESS=1"
 export GOAL="install"
 export TEST_RUNNER_EXTRA="--v2transport"
-<<<<<<< v29.0
 export BITCOIN_CONFIG="\
  -DCMAKE_BUILD_TYPE=Debug \
  -DCMAKE_C_COMPILER='clang;-m32' \
@@ -33,8 +32,3 @@ export BITCOIN_CONFIG="\
  -DAPPEND_CPPFLAGS='-DBOOST_MULTI_INDEX_ENABLE_SAFE_MODE' \
 "
 export BITCOIND=bitcoin-node  # Used in functional tests
-=======
-export FREICOIN_CONFIG="--enable-debug CC='clang -m32' CXX='clang++ -m32' \
-CPPFLAGS='-DBOOST_MULTI_INDEX_ENABLE_SAFE_MODE' CXXFLAGS='-Wno-error=documentation'"
-export FREICOIND=freicoin-node  # Used in functional tests
->>>>>>> tc-28.1

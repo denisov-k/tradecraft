@@ -41,23 +41,8 @@ Acquire the source in the usual way:
     git clone https://github.com/tradecraftio/tradecraft.git
     cd freicoin
 
-<<<<<<< v29.0
-Note that for WSL the Bitcoin Core source path MUST be somewhere in the default mount file system, for
-example /usr/src/bitcoin, AND not under /mnt/d/. If this is not the case the dependency autoconf scripts will fail.
-=======
-## Building for 64-bit Windows
-
-The first step is to install the mingw-w64 cross-compilation tool chain:
-
-```sh
-sudo apt install g++-mingw-w64-x86-64-posix
-```
-
-Once the toolchain is installed the build steps are common:
-
 Note that for WSL the Freicoin source path MUST be somewhere in the default mount file system, for
-example /usr/src/freicoin, AND not under /mnt/d/. If this is not the case the dependency autoconf scripts will fail.
->>>>>>> tc-28.1
+example /usr/src/bitcoin, AND not under /mnt/d/. If this is not the case the dependency autoconf scripts will fail.
 This means you cannot use a directory that is located directly on the host Windows file system to perform the build.
 
 Build using:
@@ -76,7 +61,6 @@ Installation
 After building using the Windows subsystem it can be useful to copy the compiled
 executables to a directory on the Windows drive in the same directory structure
 as they appear in the release `.zip` archive. This can be done in the following
-<<<<<<< v29.0
 way. This will install to `c:\workspace\bitcoin`, for example:
 ```shell
 cmake --install build --prefix /mnt/c/workspace/bitcoin
@@ -87,11 +71,6 @@ if you do not need the debug information, you can prune it during install by cal
 ```shell
 cmake --install build --prefix /mnt/c/workspace/bitcoin --strip
 ```
-=======
-way. This will install to `c:\workspace\freicoin`, for example:
-
-    make install DESTDIR=/mnt/c/workspace/freicoin
->>>>>>> tc-28.1
 
 You can also create an installer using:
 ```shell

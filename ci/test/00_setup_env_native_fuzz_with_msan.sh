@@ -30,7 +30,6 @@ export DEP_OPTS="DEBUG=1 NO_BDB=1 NO_QT=1 CC=clang CXX=clang++ CFLAGS='${MSAN_FL
 export GOAL="all"
 # Setting CMAKE_{C,CXX}_FLAGS_DEBUG flags to an empty string ensures that the flags set in MSAN_FLAGS remain unaltered.
 # _FORTIFY_SOURCE is not compatible with MSAN.
-<<<<<<< v29.0
 export BITCOIN_CONFIG="\
  -DCMAKE_BUILD_TYPE=Debug \
  -DCMAKE_C_FLAGS_DEBUG='' \
@@ -39,9 +38,6 @@ export BITCOIN_CONFIG="\
  -DSANITIZERS=fuzzer,memory \
  -DAPPEND_CPPFLAGS='-DBOOST_MULTI_INDEX_ENABLE_SAFE_MODE -U_FORTIFY_SOURCE' \
 "
-=======
-export FREICOIN_CONFIG="--enable-fuzz --with-sanitizers=fuzzer,memory CPPFLAGS='-DBOOST_MULTI_INDEX_ENABLE_SAFE_MODE -U_FORTIFY_SOURCE'"
->>>>>>> tc-28.1
 export USE_MEMORY_SANITIZER="true"
 export RUN_UNIT_TESTS="false"
 export RUN_FUNCTIONAL_TESTS="false"

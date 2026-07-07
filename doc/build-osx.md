@@ -2,11 +2,7 @@
 
 **Updated for MacOS [15](https://www.apple.com/macos/macos-sequoia/)**
 
-<<<<<<< v29.0
-This guide describes how to build bitcoind, command-line utilities, and GUI on macOS.
-=======
-This guide describes how to build freicoind, command-line utilities, and GUI on macOS
->>>>>>> tc-28.1
+This guide describes how to build freicoind, command-line utilities, and GUI on macOS.
 
 ## Preparation
 
@@ -55,25 +51,7 @@ To install, run the following from your terminal:
 brew install cmake boost pkgconf libevent
 ```
 
-<<<<<<< v29.0
 ### 4. Clone Bitcoin repository
-=======
-For macOS 11 (Big Sur) and 12 (Monterey) you need to install a more recent version of llvm.
-
-``` bash
-brew install llvm
-```
-
-And append the following to the configure commands below:
-
-``` bash
-CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++
-```
-
-Try `llvm@17` if compilation fails with the default version of llvm.
-
-### 4. Clone Freicoin repository
->>>>>>> tc-28.1
 
 `git` should already be installed by default on your system.
 Now that all the required dependencies are installed, let's clone the Freicoin repository to a directory.
@@ -110,14 +88,8 @@ brew install berkeley-db@4
 
 ###### Qt
 
-<<<<<<< v29.0
-Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
+Freicoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
 Qt, libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the GUI.
-=======
-Freicoin includes a GUI built with the cross-platform Qt Framework.
-To compile the GUI, we need to install `qt@5`.
-Skip if you don't intend to use the GUI.
->>>>>>> tc-28.1
 
 ``` bash
 brew install qt@5
@@ -168,11 +140,7 @@ brew install python
 
 #### Deploy Dependencies
 
-<<<<<<< v29.0
-You can [deploy](#3-deploy-optional) a `.zip` containing the Bitcoin Core application.
-=======
-You can deploy a `.zip` containing the Freicoin application using `make deploy`.
->>>>>>> tc-28.1
+You can [deploy](#3-deploy-optional) a `.zip` containing the Freicoin application.
 It is required that you have `python` installed.
 
 ## Building Freicoin
@@ -233,13 +201,8 @@ cmake --build build --target deploy
 
 ## Running Freicoin
 
-<<<<<<< v29.0
-Bitcoin Core should now be available at `./build/bin/bitcoind`.
-If you compiled support for the GUI, it should be available at `./build/bin/bitcoin-qt`.
-=======
-Freicoin should now be available at `./src/freicoind`.
-If you compiled support for the GUI, it should be available at `./src/qt/freicoin-qt`.
->>>>>>> tc-28.1
+Freicoin should now be available at `./build/bin/freicoind`.
+If you compiled support for the GUI, it should be available at `./build/bin/freicoin-qt`.
 
 The first time you run `freicoind` or `freicoin-qt`, it will start downloading the blockchain.
 This process could take many hours, or even days on slower than average systems.
@@ -269,15 +232,8 @@ tail -f $HOME/Library/Application\ Support/Freicoin/debug.log
 ## Other commands:
 
 ```shell
-<<<<<<< v29.0
-./build/bin/bitcoind -daemon      # Starts the bitcoin daemon.
-./build/bin/bitcoin-cli --help    # Outputs a list of command-line options.
-./build/bin/bitcoin-cli help      # Outputs a list of RPC commands when the daemon is running.
-./build/bin/bitcoin-qt -server # Starts the bitcoin-qt server mode, allows bitcoin-cli control
-=======
-./src/freicoind -daemon      # Starts the freicoin daemon.
-./src/freicoin-cli --help    # Outputs a list of command-line options.
-./src/freicoin-cli help      # Outputs a list of RPC commands when the daemon is running.
-./src/qt/freicoin-qt -server # Starts the freicoin-qt server mode, allows freicoin-cli control
->>>>>>> tc-28.1
+./build/bin/freicoind -daemon      # Starts the bitcoin daemon.
+./build/bin/freicoin-cli --help    # Outputs a list of command-line options.
+./build/bin/freicoin-cli help      # Outputs a list of RPC commands when the daemon is running.
+./build/bin/freicoin-qt -server # Starts the freicoin-qt server mode, allows freicoin-cli control
 ```

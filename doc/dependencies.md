@@ -25,29 +25,6 @@ Bitcoin Core requires one of the following compilers.
 
 ## Optional
 
-<<<<<<< v29.0
-=======
-### GUI
-| Dependency | Releases | Version used | Minimum required | Runtime |
-| --- | --- | --- | --- | --- |
-| [Fontconfig](../depends/packages/fontconfig.mk) | [link](https://www.freedesktop.org/wiki/Software/fontconfig/) | [2.12.6](https://github.com/bitcoin/bitcoin/pull/23495) | 2.6 | Yes |
-| [FreeType](../depends/packages/freetype.mk) | [link](https://freetype.org) | [2.11.0](https://github.com/tradecraftio/tradecraft/commit/01544dd78ccc0b0474571da854e27adef97137fb) | 2.3.0 | Yes |
-| [qrencode](../depends/packages/qrencode.mk) | [link](https://fukuchi.org/works/qrencode/) | [4.1.1](https://github.com/bitcoin/bitcoin/pull/27312) | | No |
-| [Qt](../depends/packages/qt.mk) | [link](https://download.qt.io/official_releases/qt/) | [5.15.14](https://github.com/bitcoin/bitcoin/pull/30198) | [5.11.3](https://github.com/bitcoin/bitcoin/pull/24132) | No |
-
-### Networking
-| Dependency | Releases | Version used | Minimum required | Runtime |
-| --- | --- | --- | --- | --- |
-| [libnatpmp](../depends/packages/libnatpmp.mk) | [link](https://github.com/miniupnp/libnatpmp/) | commit [f2433be...](https://github.com/bitcoin/bitcoin/pull/29708) | | No |
-| [MiniUPnPc](../depends/packages/miniupnpc.mk) | [link](https://miniupnp.tuxfamily.org/) | [2.2.7](https://github.com/bitcoin/bitcoin/pull/29707) | 2.1 | No |
-
-### Notifications
-| Dependency | Releases | Version used | Minimum required | Runtime |
-| --- | --- | --- | --- | --- |
-| [ZeroMQ](../depends/packages/zeromq.mk) | [link](https://github.com/zeromq/libzmq/releases) | [4.3.4](https://github.com/bitcoin/bitcoin/pull/23956) | 4.0.0 | No |
-
-### Wallet
->>>>>>> tc-28.1
 | Dependency | Releases | Version used | Minimum required | Runtime |
 | --- | --- | --- | --- | --- |
 | [Fontconfig](../depends/packages/fontconfig.mk) (gui) | [link](https://www.freedesktop.org/wiki/Software/fontconfig/) | [2.12.6](https://github.com/bitcoin/bitcoin/pull/23495) | 2.6 | Yes |

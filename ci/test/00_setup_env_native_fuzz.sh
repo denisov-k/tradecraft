@@ -27,7 +27,6 @@ export RUN_FUNCTIONAL_TESTS=false
 export RUN_FUZZ_TESTS=true
 export GOAL="all"
 export CI_CONTAINER_CAP="--cap-add SYS_PTRACE"  # If run with (ASan + LSan), the container needs access to ptrace (https://github.com/google/sanitizers/issues/764)
-<<<<<<< v29.0
 export BITCOIN_CONFIG="\
  -DBUILD_FOR_FUZZING=ON \
  -DSANITIZERS=fuzzer,address,undefined,float-divide-by-zero,integer \
@@ -37,9 +36,3 @@ export BITCOIN_CONFIG="\
  -DCMAKE_CXX_FLAGS='-ftrivial-auto-var-init=pattern' \
 "
 export LLVM_SYMBOLIZER_PATH="/usr/bin/llvm-symbolizer-${APT_LLVM_V}"
-=======
-export FREICOIN_CONFIG="--enable-fuzz --with-sanitizers=fuzzer,address,undefined,float-divide-by-zero,integer \
-CC='clang-18 -ftrivial-auto-var-init=pattern' CXX='clang++-18 -ftrivial-auto-var-init=pattern'"
-export CCACHE_MAXSIZE=200M
-export LLVM_SYMBOLIZER_PATH="/usr/bin/llvm-symbolizer-18"
->>>>>>> tc-28.1

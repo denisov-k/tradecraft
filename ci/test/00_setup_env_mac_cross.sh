@@ -28,8 +28,4 @@ export XCODE_BUILD_ID=15A240d
 export RUN_UNIT_TESTS=false
 export RUN_FUNCTIONAL_TESTS=false
 export GOAL="deploy"
-<<<<<<< v29.0
 export BITCOIN_CONFIG="-DBUILD_GUI=ON -DREDUCE_EXPORTS=ON"
-=======
-export FREICOIN_CONFIG="--with-gui --enable-reduce-exports"
->>>>>>> tc-28.1

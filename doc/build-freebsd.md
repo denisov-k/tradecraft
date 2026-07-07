@@ -15,17 +15,10 @@ pkg install boost-libs cmake git libevent pkgconf
 
 See [dependencies.md](dependencies.md) for a complete overview.
 
-<<<<<<< v29.0
 ### 2. Clone Bitcoin Repo
-Now that `git` and all the required dependencies are installed, let's clone the Bitcoin Core repository to a directory. All build scripts and commands will run from this directory.
+Now that `git` and all the required dependencies are installed, let's clone the Freicoin repository to a directory. All build scripts and commands will run from this directory.
 ```bash
 git clone https://github.com/bitcoin/bitcoin.git
-=======
-### 2. Clone Freicoin Repo
-Now that `git` and all the required dependencies are installed, let's clone the Freicoin repository to a directory. All build scripts and commands will run from this directory.
-``` bash
-git clone https://github.com/tradecraftio/tradecraft.git
->>>>>>> tc-28.1
 ```
 
 ### 3. Install Optional Dependencies
@@ -71,13 +64,9 @@ sh/bash: export BDB_PREFIX=[path displayed above]
 #### GUI Dependencies
 ###### Qt5
 
-<<<<<<< v29.0
-Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
+Freicoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
 the necessary parts of Qt, the libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the GUI.
 
-=======
-Freicoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install the necessary parts of Qt. Skip if you don't intend to use the GUI.
->>>>>>> tc-28.1
 ```bash
 pkg install qt5-buildtools qt5-core qt5-gui qt5-linguisttools qt5-testlib qt5-widgets
 ```

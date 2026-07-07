@@ -419,15 +419,9 @@ see [test/functional/](/test/functional) for tests that run in `-regtest` mode.
 
 ### DEBUG_LOCKORDER
 
-<<<<<<< v29.0
-Bitcoin Core is a multi-threaded application, and deadlocks or other
+Freicoin is a multi-threaded application, and deadlocks or other
 multi-threading bugs can be very difficult to track down. The `-DCMAKE_BUILD_TYPE=Debug`
 build option adds `-DDEBUG_LOCKORDER` to the compiler flags. This inserts
-=======
-Freicoin is a multi-threaded application, and deadlocks or other
-multi-threading bugs can be very difficult to track down. The `--enable-debug`
-configure option adds `-DDEBUG_LOCKORDER` to the compiler flags. This inserts
->>>>>>> tc-28.1
 run-time checks to keep track of which locks are held and adds warnings to the
 `debug.log` file if inconsistencies are detected.
 
@@ -437,16 +431,9 @@ Defining `DEBUG_LOCKCONTENTION` adds a "lock" logging category to the logging
 RPC that, when enabled, logs the location and duration of each lock contention
 to the `debug.log` file.
 
-<<<<<<< v29.0
 The `-DCMAKE_BUILD_TYPE=Debug` build option adds `-DDEBUG_LOCKCONTENTION` to the
 compiler flags. You may also enable it manually by building with `-DDEBUG_LOCKCONTENTION`
 added to your CPPFLAGS, i.e. `-DAPPEND_CPPFLAGS="-DDEBUG_LOCKCONTENTION"`.
-=======
-The `--enable-debug` configure option adds `-DDEBUG_LOCKCONTENTION` to the
-compiler flags. You may also enable it manually for a non-debug build by running
-configure with `-DDEBUG_LOCKCONTENTION` added to your CPPFLAGS,
-i.e. `CPPFLAGS="-DDEBUG_LOCKCONTENTION"`, then build and run freicoind.
->>>>>>> tc-28.1
 
 You can then use the `-debug=lock` configuration option at freicoind startup or
 `freicoin-cli logging '["lock"]'` at runtime to turn on lock contention logging.
@@ -488,19 +475,11 @@ which includes known Valgrind warnings in our dependencies that cannot be fixed
 in-tree. Example use:
 
 ```shell
-<<<<<<< v29.0
 $ valgrind --suppressions=contrib/valgrind.supp build/bin/test_bitcoin
 $ valgrind --suppressions=contrib/valgrind.supp --leak-check=full \
       --show-leak-kinds=all build/bin/test_bitcoin --log_level=test_suite
-$ valgrind -v --leak-check=full build/bin/bitcoind -printtoconsole
+$ valgrind -v --leak-check=full build/bin/freicoind -printtoconsole
 $ ./build/test/functional/test_runner.py --valgrind
-=======
-$ valgrind --suppressions=contrib/valgrind.supp src/test/test_freicoin
-$ valgrind --suppressions=contrib/valgrind.supp --leak-check=full \
-      --show-leak-kinds=all src/test/test_freicoin --log_level=test_suite
-$ valgrind -v --leak-check=full src/freicoind -printtoconsole
-$ ./test/functional/test_runner.py --valgrind
->>>>>>> tc-28.1
 ```
 
 ### Compiling for test coverage
@@ -516,13 +495,8 @@ cmake -B build -DCMAKE_BUILD_TYPE=Coverage
 cmake --build build
 cmake -P build/Coverage.cmake
 
-<<<<<<< v29.0
 # A coverage report will now be accessible at `./build/test_bitcoin.coverage/index.html`,
 # which covers unit tests, and `./build/total.coverage/index.html`, which covers
-=======
-# A coverage report will now be accessible at `./test_freicoin.coverage/index.html`,
-# which covers unit tests, and `./total.coverage/index.html`, which covers
->>>>>>> tc-28.1
 # unit and functional tests.
 ```
 
@@ -1089,13 +1063,8 @@ bool Chainstate::PreciousBlock(BlockValidationState& state, CBlockIndex* pindex)
 ```
 
 - Build and run tests with `-DDEBUG_LOCKORDER` to verify that no potential
-<<<<<<< v29.0
   deadlocks are introduced. This is defined by default when
   building with `-DCMAKE_BUILD_TYPE=Debug`.
-=======
-  deadlocks are introduced. As of 12.1, this is defined by default when
-  configuring with `--enable-debug`.
->>>>>>> tc-28.1
 
 - When using `LOCK`/`TRY_LOCK` be aware that the lock exists in the context of
   the current scope, so surround the statement and the code that needs the lock

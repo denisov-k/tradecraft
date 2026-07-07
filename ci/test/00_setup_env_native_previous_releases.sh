@@ -27,7 +27,6 @@ export RUN_UNIT_TESTS_SEQUENTIAL="true"
 export RUN_UNIT_TESTS="false"
 export GOAL="install"
 export DOWNLOAD_PREVIOUS_RELEASES="true"
-<<<<<<< v29.0
 export BITCOIN_CONFIG="\
  -DWITH_ZMQ=ON -DBUILD_GUI=ON -DREDUCE_EXPORTS=ON \
  -DCMAKE_BUILD_TYPE=Debug \
@@ -37,7 +36,3 @@ export BITCOIN_CONFIG="\
  -DCMAKE_CXX_FLAGS_DEBUG='-g0 -O2' \
  -DAPPEND_CPPFLAGS='-DBOOST_MULTI_INDEX_ENABLE_SAFE_MODE' \
 "
-=======
-export FREICOIN_CONFIG="--enable-zmq --with-gui=qt5 --enable-reduce-exports --enable-debug \
-CFLAGS=\"-g0 -O2 -funsigned-char\" CPPFLAGS='-DBOOST_MULTI_INDEX_ENABLE_SAFE_MODE' CXXFLAGS=\"-g0 -O2 -funsigned-char\""
->>>>>>> tc-28.1

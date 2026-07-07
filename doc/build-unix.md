@@ -20,13 +20,8 @@ distributions](#linux-distribution-specific-instructions), or the
 ## Memory Requirements
 
 C++ compilers are memory-hungry. It is recommended to have at least 1.5 GB of
-<<<<<<< v29.0
-memory available when compiling Bitcoin Core. On systems with less, gcc can be
-tuned to conserve memory with additional `CMAKE_CXX_FLAGS`:
-=======
 memory available when compiling Freicoin. On systems with less, gcc can be
-tuned to conserve memory with additional CXXFLAGS:
->>>>>>> tc-28.1
+tuned to conserve memory with additional `CMAKE_CXX_FLAGS`:
 
 
     cmake -B build -DCMAKE_CXX_FLAGS="--param ggc-min-expand=1 --param ggc-min-heapsize=32768"
@@ -75,16 +70,8 @@ User-Space, Statically Defined Tracing (USDT) dependencies:
 
 GUI dependencies:
 
-<<<<<<< v29.0
-Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
+Freicoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
 the necessary parts of Qt, the libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the GUI.
-=======
-If you want to build freicoin-qt, make sure that the required packages for Qt development
-are installed. Qt 5 is necessary to build the GUI.
-To build without GUI pass `--without-gui`.
-
-To build with Qt 5 you need the following:
->>>>>>> tc-28.1
 
     sudo apt-get install qtbase5-dev qttools5-dev qttools5-dev-tools
 
@@ -96,12 +83,7 @@ The GUI will be able to encode addresses in QR codes unless this feature is expl
 
     sudo apt-get install libqrencode-dev
 
-<<<<<<< v29.0
 Otherwise, if you don't need QR encoding support, use the `-DWITH_QRENCODE=OFF` option to disable this feature in order to compile the GUI.
-=======
-Once these are installed, they will be found by configure and a freicoin-qt executable will be
-built by default.
->>>>>>> tc-28.1
 
 
 ### Fedora
@@ -136,16 +118,8 @@ User-Space, Statically Defined Tracing (USDT) dependencies:
 
 GUI dependencies:
 
-<<<<<<< v29.0
-Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
+Freicoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
 the necessary parts of Qt, the libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the GUI.
-=======
-If you want to build freicoin-qt, make sure that the required packages for Qt development
-are installed. Qt 5 is necessary to build the GUI.
-To build without GUI pass `--without-gui`.
-
-To build with Qt 5 you need the following:
->>>>>>> tc-28.1
 
     sudo dnf install qt5-qttools-devel qt5-qtbase-devel
 
@@ -157,12 +131,7 @@ The GUI will be able to encode addresses in QR codes unless this feature is expl
 
     sudo dnf install qrencode-devel
 
-<<<<<<< v29.0
 Otherwise, if you don't need QR encoding support, use the `-DWITH_QRENCODE=OFF` option to disable this feature in order to compile the GUI.
-=======
-Once these are installed, they will be found by configure and a freicoin-qt executable will be
-built by default.
->>>>>>> tc-28.1
 
 ## Dependencies
 
@@ -213,22 +182,12 @@ Setup and Build Example: Arch Linux
 -----------------------------------
 This example lists the steps necessary to setup and build a command line only distribution of the latest changes on Arch Linux:
 
-<<<<<<< v29.0
     pacman --sync --needed cmake boost gcc git libevent make python sqlite
     git clone https://github.com/bitcoin/bitcoin.git
     cd bitcoin/
     cmake -B build
     cmake --build build
     ctest --test-dir build
-    ./build/bin/bitcoind
-=======
-    pacman --sync --needed autoconf automake boost gcc git libevent libtool make pkgconf python sqlite
-    git clone https://github.com/tradecraftio/tradecraft.git
-    cd freicoin/
-    ./autogen.sh
-    ./configure
-    make check
-    ./src/freicoind
->>>>>>> tc-28.1
+    ./build/bin/freicoind
 
 If you intend to work with legacy Berkeley DB wallets, see [Berkeley DB](#berkeley-db) section.

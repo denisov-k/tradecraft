@@ -66,12 +66,8 @@ pkgin install db4
 #### GUI Dependencies
 ###### Qt5
 
-<<<<<<< v29.0
-Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
+Freicoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
 the necessary parts of Qt, the libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the GUI.
-=======
-Freicoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, Qt 5 is required.
->>>>>>> tc-28.1
 
 ```bash
 pkgin install qt5-qtbase qt5-qttools
@@ -104,14 +100,7 @@ To run the test suite (recommended), you will need to have Python 3 installed:
 pkgin install python310 py310-zmq
 ```
 
-<<<<<<< v29.0
-## Building Bitcoin Core
-=======
-### Building Freicoin
-
-**Note**: Use `gmake` (the non-GNU `make` will exit with an error).
-
->>>>>>> tc-28.1
+## Building Freicoin
 
 ### 1. Configuration
 

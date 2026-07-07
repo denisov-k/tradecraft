@@ -69,15 +69,9 @@ When rebuilding during development, note that running `cmake --build build`, wit
 Obviously, it is important to build and run the tests at appropriate times -- but when you just want a quick compile to check your work, consider picking one or a set of build targets relevant to what you're working on, e.g.:
 
 ```sh
-<<<<<<< v29.0
-cmake --build build --target bitcoind bitcoin-cli
-cmake --build build --target bitcoin-qt
+cmake --build build --target freicoind freicoin-cli
+cmake --build build --target freicoin-qt
 cmake --build build --target bench_bitcoin
-=======
-make src/freicoind src/freicoin-cli
-make src/qt/freicoin-qt
-make -C src freicoin_bench
->>>>>>> tc-28.1
 ```
 
 (You can and should combine this with `-j`, as above, for a parallel build.)
