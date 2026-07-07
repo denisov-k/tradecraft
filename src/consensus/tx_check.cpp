@@ -1,22 +1,34 @@
 // Copyright (c) 2017-2021 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <consensus/tx_check.h>
 
 #include <consensus/amount.h>
+#include <consensus/params.h>
 #include <primitives/transaction.h>
 #include <consensus/validation.h>
 
-bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
+bool CheckTransaction(const CTransaction& tx, TxValidationState& state, Consensus::RuleSet rules)
 {
     // Basic checks that don't depend on any context
     if (tx.vin.empty())
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-vin-empty");
-    if (tx.vout.empty())
+    if (!(rules & Consensus::PROTOCOL_CLEANUP) && tx.vout.empty())
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-vout-empty");
     // Size limits (this doesn't take the witness into account, as that hasn't been checked for malleability)
-    if (::GetSerializeSize(TX_NO_WITNESS(tx)) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT) {
+    if (::GetSerializeSize(TX_NO_WITNESS(tx)) * WITNESS_SCALE_FACTOR > ((rules & Consensus::SIZE_EXPANSION) ? SIZE_EXPANSION_MAX_BLOCK_WEIGHT : MAX_BLOCK_WEIGHT)) {
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-oversize");
     }
 
@@ -24,11 +36,11 @@ bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
     CAmount nValueOut = 0;
     for (const auto& txout : tx.vout)
     {
-        if (txout.nValue < 0)
+        if (txout.GetReferenceValue() < 0)
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-vout-negative");
-        if (txout.nValue > MAX_MONEY)
+        if (txout.GetReferenceValue() > MAX_MONEY)
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-vout-toolarge");
-        nValueOut += txout.nValue;
+        nValueOut += txout.GetReferenceValue();
         if (!MoneyRange(nValueOut))
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-txouttotal-toolarge");
     }
@@ -46,7 +58,7 @@ bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
 
     if (tx.IsCoinBase())
     {
-        if (tx.vin[0].scriptSig.size() < 2 || tx.vin[0].scriptSig.size() > 100)
+        if (!(rules & Consensus::PROTOCOL_CLEANUP) && (tx.vin[0].scriptSig.size() < 2 || tx.vin[0].scriptSig.size() > 100))
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cb-length");
     }
     else

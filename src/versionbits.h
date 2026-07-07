@@ -1,9 +1,20 @@
 // Copyright (c) 2016-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_VERSIONBITS_H
-#define BITCOIN_VERSIONBITS_H
+#ifndef FREICOIN_VERSIONBITS_H
+#define FREICOIN_VERSIONBITS_H
 
 #include <chain.h>
 #include <sync.h>
@@ -16,7 +27,7 @@
 class CChainParams;
 
 /** What block version to use for new blocks (pre versionbits) */
-static const int32_t VERSIONBITS_LAST_OLD_BLOCK_VERSION = 4;
+static const int32_t VERSIONBITS_LAST_OLD_BLOCK_VERSION = 3;
 /** What bits to set in version for versionbits blocks */
 static const int32_t VERSIONBITS_TOP_BITS = 0x20000000UL;
 /** What bitmask determines whether versionbits is in use */
@@ -99,4 +110,4 @@ public:
     void Clear() EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);
 };
 
-#endif // BITCOIN_VERSIONBITS_H
+#endif // FREICOIN_VERSIONBITS_H

@@ -1,8 +1,19 @@
 // Copyright (c) 2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
-#ifndef BITCOIN_KERNEL_MEMPOOL_OPTIONS_H
-#define BITCOIN_KERNEL_MEMPOOL_OPTIONS_H
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#ifndef FREICOIN_KERNEL_MEMPOOL_OPTIONS_H
+#define FREICOIN_KERNEL_MEMPOOL_OPTIONS_H
 
 #include <kernel/mempool_limits.h>
 
@@ -48,7 +59,10 @@ struct MemPoolOptions {
      * type is designated as TxoutType::NULL_DATA.
      *
      * Maximum size of TxoutType::NULL_DATA scripts that this node considers standard.
-     * If nullopt, any size is nonstandard.
+     * If nullopt, any size (other than zero) is nonstandard.
+     *
+     * Zero-sized OP_RETURN outputs are classed as TxoutType::UNSPENDABLE
+     * and are always allowed as a way of destroying coin.
      */
     std::optional<unsigned> max_datacarrier_bytes{DEFAULT_ACCEPT_DATACARRIER ? std::optional{MAX_OP_RETURN_RELAY} : std::nullopt};
     bool permit_bare_multisig{DEFAULT_PERMIT_BAREMULTISIG};
@@ -60,4 +74,4 @@ struct MemPoolOptions {
 };
 } // namespace kernel
 
-#endif // BITCOIN_KERNEL_MEMPOOL_OPTIONS_H
+#endif // FREICOIN_KERNEL_MEMPOOL_OPTIONS_H

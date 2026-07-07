@@ -1,9 +1,20 @@
 // Copyright (c) 2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_KERNEL_CHAINSTATEMANAGER_OPTS_H
-#define BITCOIN_KERNEL_CHAINSTATEMANAGER_OPTS_H
+#ifndef FREICOIN_KERNEL_CHAINSTATEMANAGER_OPTS_H
+#define FREICOIN_KERNEL_CHAINSTATEMANAGER_OPTS_H
 
 #include <kernel/notifications_interface.h>
 
@@ -21,7 +32,8 @@
 class CChainParams;
 class ValidationSignals;
 
-static constexpr auto DEFAULT_MAX_TIP_AGE{24h};
+static constexpr bool DEFAULT_CHECKPOINTS_ENABLED{true};
+static constexpr auto DEFAULT_MAX_TIP_AGE{14 * 24h};
 
 namespace kernel {
 
@@ -52,4 +64,4 @@ struct ChainstateManagerOpts {
 
 } // namespace kernel
 
-#endif // BITCOIN_KERNEL_CHAINSTATEMANAGER_OPTS_H
+#endif // FREICOIN_KERNEL_CHAINSTATEMANAGER_OPTS_H

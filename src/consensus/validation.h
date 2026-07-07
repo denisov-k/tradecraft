@@ -1,21 +1,43 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_CONSENSUS_VALIDATION_H
-#define BITCOIN_CONSENSUS_VALIDATION_H
+#ifndef FREICOIN_CONSENSUS_VALIDATION_H
+#define FREICOIN_CONSENSUS_VALIDATION_H
 
 #include <string>
 #include <consensus/consensus.h>
 #include <primitives/transaction.h>
 #include <primitives/block.h>
+#include <streams.h>
 
 /** Index marker for when no witness commitment is present in a coinbase transaction. */
 static constexpr int NO_WITNESS_COMMITMENT{-1};
 
 /** Minimum size of a witness commitment structure. Defined in BIP 141. **/
-static constexpr size_t MINIMUM_WITNESS_COMMITMENT{38};
+static constexpr size_t MINIMUM_WITNESS_COMMITMENT{1 + 1 + 32 + 4};
+static constexpr size_t MAXIMUM_WITNESS_COMMITMENT{1 + 0x4b};
+
+/** */
+static const CScript EMPTY_SEGWIT_COMMITMENT = CScript() << std::vector<unsigned char>{
+    /* path */   0x00,
+    /* hash */   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    /* suffix */ 0x4b, 0x4a, 0x49, 0x48};
 
 /** A "reason" why a transaction was invalid, suitable for determining whether the
   * provider of the transaction should be banned/ignored/disconnected/etc.
@@ -27,6 +49,7 @@ enum class TxValidationResult {
     TX_NOT_STANDARD,          //!< otherwise didn't meet our local policy rules
     TX_MISSING_INPUTS,        //!< transaction was missing some of its inputs
     TX_PREMATURE_SPEND,       //!< transaction spends a coinbase too early, or violates locktime/sequence locks
+    TX_SPEND_BLOCK_FINAL,     //!< spends one of the prior block-final transaction's output(s)
     /**
      * Transaction might have a witness prior to SegWit
      * activation, or witness may have been malleated (which includes
@@ -135,7 +158,8 @@ static inline int32_t GetTransactionWeight(const CTransaction& tx)
 }
 static inline int64_t GetBlockWeight(const CBlock& block)
 {
-    return ::GetSerializeSize(TX_NO_WITNESS(block)) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(TX_WITH_WITNESS(block));
+    const size_t excess_block_size = ::GetSerializeSize(block.GetBlockHeader()) - 80;
+    return ::GetSerializeSize(TX_NO_WITNESS(block)) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(TX_WITH_WITNESS(block)) - excess_block_size * WITNESS_SCALE_FACTOR;
 }
 static inline int64_t GetTransactionInputWeight(const CTxIn& txin)
 {
@@ -143,25 +167,46 @@ static inline int64_t GetTransactionInputWeight(const CTxIn& txin)
     return ::GetSerializeSize(TX_NO_WITNESS(txin)) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(TX_WITH_WITNESS(txin)) + ::GetSerializeSize(txin.scriptWitness.stack);
 }
 
-/** Compute at which vout of the block's coinbase transaction the witness commitment occurs, or -1 if not found */
-inline int GetWitnessCommitmentIndex(const CBlock& block)
+/** Extract witness commitment information from the coinbase transaction. */
+inline bool GetWitnessCommitment(const CBlock& block, uint8_t* path, uint256* hash)
 {
-    int commitpos = NO_WITNESS_COMMITMENT;
-    if (!block.vtx.empty()) {
-        for (size_t o = 0; o < block.vtx[0]->vout.size(); o++) {
-            const CTxOut& vout = block.vtx[0]->vout[o];
-            if (vout.scriptPubKey.size() >= MINIMUM_WITNESS_COMMITMENT &&
-                vout.scriptPubKey[0] == OP_RETURN &&
-                vout.scriptPubKey[1] == 0x24 &&
-                vout.scriptPubKey[2] == 0xaa &&
-                vout.scriptPubKey[3] == 0x21 &&
-                vout.scriptPubKey[4] == 0xa9 &&
-                vout.scriptPubKey[5] == 0xed) {
-                commitpos = o;
-            }
-        }
+    // The witness commitment is in the block-final transaction, so there must
+    // be a block-final transaction.
+    if (block.vtx.empty()) {
+        return false;
     }
-    return commitpos;
+
+    // Since the consumer of a midstate compression proof does not have access
+    // to the whole transaction, they cannot prove the size of the last output's
+    // scriptPubKey.  It is possible that a determined adversary could grind a
+    // transaction which has a witness commitment spread across more than just
+    // the last output, and the consumer of a midstate proof would have no way
+    // of knowing.
+
+    // TODO: It would be more efficient to reverse-serialize the last 45 bytes,
+    // which is all we need, and in the common case just pull the info we want
+    // from the last output's scriptPubKey.  Such code would need to be written
+    // very carefully so as to have the same behavior in all cases as this:
+    DataStream tx;
+    tx << TX_NO_WITNESS(block.vtx.back());
+
+    if (tx.size() < (1 + 32 + 4 + 4 + 4)         // <- 1 byte for witness path
+        || tx[tx.size()-8-4] != std::byte{0x4b}  //   32 bytes for merkle root
+        || tx[tx.size()-8-3] != std::byte{0x4a}  //    4 bytes for magic value
+        || tx[tx.size()-8-2] != std::byte{0x49}  //    4 bytes for nLockTime
+        || tx[tx.size()-8-1] != std::byte{0x48}) //    4 bytes for lock_height
+    {                                            //      (end of transaction)
+        return false;
+    }
+
+    if (path) {
+        *path = std::to_integer<uint8_t>(tx[tx.size()-8-4-32-1]);
+    }
+    if (hash) {
+        *hash = uint256(std::vector<unsigned char>(UCharCast(&tx[tx.size()-8-4-32]), UCharCast(&tx[tx.size()-8-4])));
+    }
+
+    return true;
 }
 
-#endif // BITCOIN_CONSENSUS_VALIDATION_H
+#endif // FREICOIN_CONSENSUS_VALIDATION_H
