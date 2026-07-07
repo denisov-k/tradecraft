@@ -1,7 +1,19 @@
 /***********************************************************************
  * Copyright (c) 2013, 2014, 2015 Pieter Wuille, Gregory Maxwell       *
- * Distributed under the MIT software license, see the accompanying    *
- * file COPYING or https://www.opensource.org/licenses/mit-license.php.*
+ * Copyright (c) 2018-2024 The Freicoin Developers                     *
+ *                                                                     *
+ * This program is free software: you can redistribute it and/or       *
+ * modify it under the terms of version 3 of the GNU Affero General    *
+ * Public License as published by the Free Software Foundation.        *
+ *                                                                     *
+ * This program is distributed in the hope that it will be useful,     *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of      *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU   *
+ * Affero General Public License for more details.                     *
+ *                                                                     *
+ * You should have received a copy of the GNU Affero General Public    *
+ * License along with this program.  If not, see                       *
+ * <https://www.gnu.org/licenses/>.                                    *
  ***********************************************************************/
 
 #include <stdio.h>
@@ -7398,7 +7410,7 @@ static void run_ecdsa_edge_cases(void) {
 The tests check for known attacks (range checks in (r,s), arithmetic errors, malleability).
 */
 static void test_ecdsa_wycheproof(void) {
-    #include "wycheproof/ecdsa_secp256k1_sha256_bitcoin_test.h"
+    #include "wycheproof/ecdsa_secp256k1_sha256_freicoin_test.h"
 
     int t;
     for (t = 0; t < SECP256K1_ECDSA_WYCHEPROOF_NUMBER_TESTVECTORS; t++) {
