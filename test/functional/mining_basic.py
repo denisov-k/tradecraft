@@ -194,7 +194,12 @@ class MiningTest(FreicoinTestFramework):
 
         # Restart the node to allow large transactions
         LARGE_TXS_COUNT = 10
-        LARGE_VSIZE = int(((MAX_BLOCK_WEIGHT - DEFAULT_BLOCK_RESERVED_WEIGHT) / WITNESS_SCALE_FACTOR) / LARGE_TXS_COUNT)
+        # Freicoin: the template reserves 408 additional weight units for the
+        # block-final transaction; size the large transactions to exactly fill
+        # the remaining budget so the original test logic holds.
+        FINALTX_RESERVED_WEIGHT = 408
+        template_budget = MAX_BLOCK_WEIGHT - DEFAULT_BLOCK_RESERVED_WEIGHT - FINALTX_RESERVED_WEIGHT
+        LARGE_VSIZE = int((template_budget / WITNESS_SCALE_FACTOR) / LARGE_TXS_COUNT)
         HIGH_FEERATE = Decimal("0.0003")
         # Freicoin: -datacarrier defaults to off, enable it explicitly.
         self.restart_node(0, extra_args=["-datacarrier=1", f"-datacarriersize={LARGE_VSIZE}"])
@@ -230,16 +235,19 @@ class MiningTest(FreicoinTestFramework):
         self.log.info("Testing the block template with custom -blockmaxweight to include 9 large and 2 normal transactions.")
         self.verify_block_template(
             expected_tx_count=11,
-            expected_weight=MAX_BLOCK_WEIGHT - DEFAULT_BLOCK_RESERVED_WEIGHT - 2000,
+            expected_weight=template_budget - 2000,
         )
 
         # Ensure the block weight does not exceed the maximum
         self.log.info(f"Testing that the block weight will never exceed {MAX_BLOCK_WEIGHT - DEFAULT_BLOCK_RESERVED_WEIGHT}.")
-        self.restart_node(0, extra_args=[f"-datacarriersize={LARGE_VSIZE}", f"-blockmaxweight={MAX_BLOCK_WEIGHT}"])
+        self.restart_node(0, extra_args=["-datacarrier=1", f"-datacarriersize={LARGE_VSIZE}", f"-blockmaxweight={MAX_BLOCK_WEIGHT}"])
         self.log.info("Sending 2 additional normal transactions to fill the mempool to the maximum block weight.")
         self.send_transactions(utxos[LARGE_TXS_COUNT + 2:], NORMAL_FEERATE, NORMAL_VSIZE)
-        self.log.info(f"Testing that the mempool's weight matches the maximum block weight: {MAX_BLOCK_WEIGHT}.")
-        assert_equal(self.nodes[0].getmempoolinfo()['bytes'] * WITNESS_SCALE_FACTOR, MAX_BLOCK_WEIGHT)
+        # Freicoin: the large transactions are sized against the block-final-adjusted
+        # template budget, so the mempool total is slightly below MAX_BLOCK_WEIGHT.
+        mempool_weight = (LARGE_TXS_COUNT * LARGE_VSIZE + 4 * NORMAL_VSIZE) * WITNESS_SCALE_FACTOR
+        self.log.info(f"Testing that the mempool's weight matches the expected total: {mempool_weight}.")
+        assert_equal(self.nodes[0].getmempoolinfo()['bytes'] * WITNESS_SCALE_FACTOR, mempool_weight)
 
         self.log.info("Testing that the block template includes only 10 transactions and cannot reach full block weight.")
         self.verify_block_template(
@@ -249,7 +257,7 @@ class MiningTest(FreicoinTestFramework):
 
         self.log.info("Test -blockreservedweight startup option.")
         # Lowering the -blockreservedweight by 4000 will allow for two more transactions.
-        self.restart_node(0, extra_args=[f"-datacarriersize={LARGE_VSIZE}", "-blockreservedweight=4000"])
+        self.restart_node(0, extra_args=["-datacarrier=1", f"-datacarriersize={LARGE_VSIZE}", "-blockreservedweight=4000"])
         self.verify_block_template(
             expected_tx_count=12,
             expected_weight=MAX_BLOCK_WEIGHT - 4000,
