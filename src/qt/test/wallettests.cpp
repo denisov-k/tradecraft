@@ -1,6 +1,17 @@
 // Copyright (c) 2015-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <qt/test/wallettests.h>
 #include <qt/test/util.h>
@@ -9,8 +20,8 @@
 #include <interfaces/chain.h>
 #include <interfaces/node.h>
 #include <key_io.h>
-#include <qt/bitcoinamountfield.h>
-#include <qt/bitcoinunits.h>
+#include <qt/freicoinamountfield.h>
+#include <qt/freicoinunits.h>
 #include <qt/clientmodel.h>
 #include <qt/optionsmodel.h>
 #include <qt/overviewpage.h>
@@ -81,7 +92,7 @@ uint256 SendCoins(CWallet& wallet, SendCoinsDialog& sendCoinsDialog, const CTxDe
     QVBoxLayout* entries = sendCoinsDialog.findChild<QVBoxLayout*>("entries");
     SendCoinsEntry* entry = qobject_cast<SendCoinsEntry*>(entries->itemAt(0)->widget());
     entry->findChild<QValidatedLineEdit*>("payTo")->setText(QString::fromStdString(EncodeDestination(address)));
-    entry->findChild<BitcoinAmountField*>("payAmount")->setValue(amount);
+    entry->findChild<FreicoinAmountField*>("payAmount")->setValue(amount);
     sendCoinsDialog.findChild<QFrame*>("frameFee")
         ->findChild<QFrame*>("frameFeeSelection")
         ->findChild<QCheckBox*>("optInRBF")
@@ -138,8 +149,8 @@ void BumpFee(TransactionView& view, const uint256& txid, bool expectDisabled, st
 
 void CompareBalance(WalletModel& walletModel, CAmount expected_balance, QLabel* balance_label_to_check)
 {
-    BitcoinUnit unit = walletModel.getOptionsModel()->getDisplayUnit();
-    QString balanceComparison = BitcoinUnits::formatWithUnit(unit, expected_balance, false, BitcoinUnits::SeparatorStyle::ALWAYS);
+    FreicoinUnit unit = walletModel.getOptionsModel()->getDisplayUnit();
+    QString balanceComparison = FreicoinUnits::formatWithUnit(unit, expected_balance, false, FreicoinUnits::SeparatorStyle::ALWAYS);
     QCOMPARE(balance_label_to_check->text().trimmed(), balanceComparison);
 }
 
@@ -159,6 +170,8 @@ void VerifyUseAvailableBalance(SendCoinsDialog& sendCoinsDialog, const WalletMod
     Q_EMIT send_entry->useAvailableBalance(send_entry);
     QVERIFY(send_entry->getValue().amount == walletModel.getCachedBalance().balance);
 
+    const int next_height = walletModel.node().getNumBlocks() + 1;
+
     // Now manually select two coins and click on "useAvailableBalance". Then check updated balance
     // (only the sum of the selected coins should be set).
     int COINS_TO_SELECT = 2;
@@ -168,7 +181,7 @@ void VerifyUseAvailableBalance(SendCoinsDialog& sendCoinsDialog, const WalletMod
     QVERIFY(coins.size() == 1); // context check, coins received only on one destination
     for (const auto& [outpoint, tx_out] : coins.begin()->second) {
         sendCoinsDialog.getCoinControl()->Select(outpoint);
-        sum_selected_coins += tx_out.txout.nValue;
+        sum_selected_coins += tx_out.GetPresentValue(next_height);
         if (++selected == COINS_TO_SELECT) break;
     }
     QVERIFY(selected == COINS_TO_SELECT);
@@ -189,6 +202,9 @@ void SyncUpWallet(const std::shared_ptr<CWallet>& wallet, interfaces::Node& node
     QVERIFY(result.last_failed_block.IsNull());
 }
 
+// Note: Freicoin's TestChain100Setup mines 101 blocks (an initial anyone-can-spend
+// block plus COINBASE_MATURITY to the coinbase key), so after the five blocks
+// the GUI tests mine the tip is at height 106.
 std::shared_ptr<CWallet> SetupLegacyWatchOnlyWallet(interfaces::Node& node, TestChain100Setup& test)
 {
     std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(node.context()->chain.get(), "", CreateMockableWalletDatabase());
@@ -201,7 +217,7 @@ std::shared_ptr<CWallet> SetupLegacyWatchOnlyWallet(interfaces::Node& node, Test
         CPubKey pubKey = test.coinbaseKey.GetPubKey();
         bool import_keys = wallet->ImportPubKeys({{pubKey.GetID(), false}}, {{pubKey.GetID(), pubKey}} , /*key_origins=*/{}, /*add_keypool=*/false, /*timestamp=*/1);
         assert(import_keys);
-        wallet->SetLastBlockProcessed(105, WITH_LOCK(node.context()->chainman->GetMutex(), return node.context()->chainman->ActiveChain().Tip()->GetBlockHash()));
+        wallet->SetLastBlockProcessed(106, WITH_LOCK(node.context()->chainman->GetMutex(), return node.context()->chainman->ActiveChain().Tip()->GetBlockHash()));
     }
     SyncUpWallet(wallet, node);
     return wallet;
@@ -226,7 +242,7 @@ std::shared_ptr<CWallet> SetupDescriptorsWallet(interfaces::Node& node, TestChai
     if (!wallet->AddWalletDescriptor(w_desc, provider, "", false)) assert(false);
     CTxDestination dest = GetDestinationForKey(test.coinbaseKey.GetPubKey(), wallet->m_default_address_type);
     wallet->SetAddressBook(dest, "", wallet::AddressPurpose::RECEIVE);
-    wallet->SetLastBlockProcessed(105, WITH_LOCK(node.context()->chainman->GetMutex(), return node.context()->chainman->ActiveChain().Tip()->GetBlockHash()));
+    wallet->SetLastBlockProcessed(106, WITH_LOCK(node.context()->chainman->GetMutex(), return node.context()->chainman->ActiveChain().Tip()->GetBlockHash()));
     SyncUpWallet(wallet, node);
     wallet->SetBroadcastTransactions(true);
     return wallet;
@@ -268,9 +284,9 @@ public:
 //
 // This also requires overriding the default minimal Qt platform:
 //
-//     QT_QPA_PLATFORM=xcb     build/bin/test_bitcoin-qt  # Linux
-//     QT_QPA_PLATFORM=windows build/bin/test_bitcoin-qt  # Windows
-//     QT_QPA_PLATFORM=cocoa   build/bin/test_bitcoin-qt  # macOS
+//     QT_QPA_PLATFORM=xcb     build/bin/test_freicoin-qt  # Linux
+//     QT_QPA_PLATFORM=windows build/bin/test_freicoin-qt  # Windows
+//     QT_QPA_PLATFORM=cocoa   build/bin/test_freicoin-qt  # macOS
 void TestGUI(interfaces::Node& node, const std::shared_ptr<CWallet>& wallet)
 {
     // Create widgets for sending coins and listing transactions.
@@ -322,7 +338,7 @@ void TestGUI(interfaces::Node& node, const std::shared_ptr<CWallet>& wallet)
     labelInput->setText("TEST_LABEL_1");
 
     // Amount input
-    BitcoinAmountField* amountInput = receiveCoinsDialog.findChild<BitcoinAmountField*>("reqAmount");
+    FreicoinAmountField* amountInput = receiveCoinsDialog.findChild<FreicoinAmountField*>("reqAmount");
     amountInput->setValue(1);
 
     // Message input
@@ -338,7 +354,7 @@ void TestGUI(interfaces::Node& node, const std::shared_ptr<CWallet>& wallet)
             QCOMPARE(receiveRequestDialog->QObject::findChild<QLabel*>("payment_header")->text(), QString("Payment information"));
             QCOMPARE(receiveRequestDialog->QObject::findChild<QLabel*>("uri_tag")->text(), QString("URI:"));
             QString uri = receiveRequestDialog->QObject::findChild<QLabel*>("uri_content")->text();
-            QCOMPARE(uri.count("bitcoin:"), 2);
+            QCOMPARE(uri.count("freicoin:"), 2);
             QCOMPARE(receiveRequestDialog->QObject::findChild<QLabel*>("address_tag")->text(), QString("Address:"));
             QVERIFY(address.isEmpty());
             address = receiveRequestDialog->QObject::findChild<QLabel*>("address_content")->text();
@@ -346,7 +362,7 @@ void TestGUI(interfaces::Node& node, const std::shared_ptr<CWallet>& wallet)
 
             QCOMPARE(uri.count("amount=0.00000001"), 2);
             QCOMPARE(receiveRequestDialog->QObject::findChild<QLabel*>("amount_tag")->text(), QString("Amount:"));
-            QCOMPARE(receiveRequestDialog->QObject::findChild<QLabel*>("amount_content")->text(), QString::fromStdString("0.00000001 " + CURRENCY_UNIT));
+            QCOMPARE(receiveRequestDialog->QObject::findChild<QLabel*>("amount_content")->text(), QString::fromStdString("0.000\u2009000\u200901 " + CURRENCY_UNIT));
 
             QCOMPARE(uri.count("label=TEST_LABEL_1"), 2);
             QCOMPARE(receiveRequestDialog->QObject::findChild<QLabel*>("label_tag")->text(), QString("Label:"));
@@ -415,12 +431,12 @@ void TestGUIWatchOnly(interfaces::Node& node, TestChain100Setup& test)
     // Set change address
     sendCoinsDialog.getCoinControl()->destChange = GetDestinationForKey(test.coinbaseKey.GetPubKey(), OutputType::LEGACY);
 
-    // Time to reject "save" PSBT dialog ('SendCoins' locks the main thread until the dialog receives the event).
+    // Time to reject "save" PST dialog ('SendCoins' locks the main thread until the dialog receives the event).
     QTimer timer;
     timer.setInterval(500);
     QObject::connect(&timer, &QTimer::timeout, [&](){
         for (QWidget* widget : QApplication::topLevelWidgets()) {
-            if (widget->inherits("QMessageBox") && widget->objectName().compare("psbt_copied_message") == 0) {
+            if (widget->inherits("QMessageBox") && widget->objectName().compare("pst_copied_message") == 0) {
                 QMessageBox* dialog = qobject_cast<QMessageBox*>(widget);
                 QAbstractButton* button = dialog->button(QMessageBox::Discard);
                 button->setEnabled(true);
@@ -432,17 +448,17 @@ void TestGUIWatchOnly(interfaces::Node& node, TestChain100Setup& test)
     });
     timer.start(500);
 
-    // Send tx and verify PSBT copied to the clipboard.
+    // Send tx and verify PST copied to the clipboard.
     SendCoins(*wallet.get(), sendCoinsDialog, PKHash(), 5 * COIN, /*rbf=*/false, QMessageBox::Save);
-    const std::string& psbt_string = QApplication::clipboard()->text().toStdString();
-    QVERIFY(!psbt_string.empty());
+    const std::string& pst_string = QApplication::clipboard()->text().toStdString();
+    QVERIFY(!pst_string.empty());
 
-    // Decode psbt
-    std::optional<std::vector<unsigned char>> decoded_psbt = DecodeBase64(psbt_string);
-    QVERIFY(decoded_psbt);
-    PartiallySignedTransaction psbt;
+    // Decode pst
+    QVERIFY(IsHex(pst_string));
+    std::vector<unsigned char> decoded_pst = ParseHex(pst_string);
+    PartiallySignedTransaction pst;
     std::string err;
-    QVERIFY(DecodeRawPSBT(psbt, MakeByteSpan(*decoded_psbt), err));
+    QVERIFY(DecodeRawPST(pst, MakeByteSpan(decoded_pst), err));
 }
 
 void TestGUI(interfaces::Node& node)
@@ -461,7 +477,7 @@ void TestGUI(interfaces::Node& node)
     TestGUI(node, desc_wallet);
 
     // Legacy watch-only wallet test
-    // Verify PSBT creation.
+    // Verify PST creation.
     TestGUIWatchOnly(node, test);
 }
 
@@ -476,7 +492,7 @@ void WalletTests::walletTests()
         // and fails to handle returned nulls
         // (https://bugreports.qt.io/browse/QTBUG-49686).
         qWarning() << "Skipping WalletTests on mac build with 'minimal' platform set due to Qt bugs. To run AppTests, invoke "
-                      "with 'QT_QPA_PLATFORM=cocoa test_bitcoin-qt' on mac, or else use a linux or windows build.";
+                      "with 'QT_QPA_PLATFORM=cocoa test_freicoin-qt' on mac, or else use a linux or windows build.";
         return;
     }
 #endif

@@ -1,12 +1,23 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_QT_OPTIONSMODEL_H
-#define BITCOIN_QT_OPTIONSMODEL_H
+#ifndef FREICOIN_QT_OPTIONSMODEL_H
+#define FREICOIN_QT_OPTIONSMODEL_H
 
 #include <cstdint>
-#include <qt/bitcoinunits.h>
+#include <qt/freicoinunits.h>
 #include <qt/guiconstants.h>
 
 #include <QAbstractListModel>
@@ -33,7 +44,7 @@ static inline int PruneMiBtoGB(int64_t mib) { return (mib * 1024 * 1024 + GB_BYT
  */
 static inline int64_t PruneGBtoMiB(int gb) { return gb * GB_BYTES / 1024 / 1024; }
 
-/** Interface from Qt to configuration data structure for Bitcoin client.
+/** Interface from Qt to configuration data structure for Freicoin client.
    To Qt, the options are presented as a list with the different options
    laid out vertically.
    This can be changed to a tree once the settings become sufficiently
@@ -58,7 +69,7 @@ public:
         ProxyUseTor,            // bool
         ProxyIPTor,             // QString
         ProxyPortTor,           // int
-        DisplayUnit,            // BitcoinUnit
+        DisplayUnit,            // FreicoinUnit
         ThirdPartyTxUrls,       // QString
         Language,               // QString
         FontForMoney,           // FontChoice
@@ -72,7 +83,7 @@ public:
         SpendZeroConfChange,    // bool
         Listen,                 // bool
         Server,                 // bool
-        EnablePSBTControls,     // bool
+        EnablePSFRControls,     // bool
         MaskValues,             // bool
         OptionIDRowCount,
     };
@@ -100,12 +111,12 @@ public:
     bool getShowTrayIcon() const { return m_show_tray_icon; }
     bool getMinimizeToTray() const { return fMinimizeToTray; }
     bool getMinimizeOnClose() const { return fMinimizeOnClose; }
-    BitcoinUnit getDisplayUnit() const { return m_display_bitcoin_unit; }
+    FreicoinUnit getDisplayUnit() const { return m_display_freicoin_unit; }
     QString getThirdPartyTxUrls() const { return strThirdPartyTxUrls; }
     QFont getFontForMoney() const;
     bool getCoinControlFeatures() const { return fCoinControlFeatures; }
     bool getSubFeeFromAmount() const { return m_sub_fee_from_amount; }
-    bool getEnablePSBTControls() const { return m_enable_psbt_controls; }
+    bool getEnablePSFRControls() const { return m_enable_pst_controls; }
     const QString& getOverriddenByCommandLine() { return strOverriddenByCommandLine; }
 
     /** Whether -signer was set or not */
@@ -127,12 +138,12 @@ private:
     bool fMinimizeToTray;
     bool fMinimizeOnClose;
     QString language;
-    BitcoinUnit m_display_bitcoin_unit;
+    FreicoinUnit m_display_freicoin_unit;
     QString strThirdPartyTxUrls;
     FontChoice m_font_money{FontChoiceAbstract::EmbeddedFont};
     bool fCoinControlFeatures;
     bool m_sub_fee_from_amount;
-    bool m_enable_psbt_controls;
+    bool m_enable_pst_controls;
     bool m_mask_values;
 
     /* settings that were overridden by command-line */
@@ -148,7 +159,7 @@ private:
     void checkAndMigrate();
 
 Q_SIGNALS:
-    void displayUnitChanged(BitcoinUnit unit);
+    void displayUnitChanged(FreicoinUnit unit);
     void coinControlFeaturesChanged(bool);
     void showTrayIconChanged(bool);
     void fontForMoneyChanged(const QFont&);
@@ -156,4 +167,4 @@ Q_SIGNALS:
 
 Q_DECLARE_METATYPE(OptionsModel::FontChoice)
 
-#endif // BITCOIN_QT_OPTIONSMODEL_H
+#endif // FREICOIN_QT_OPTIONSMODEL_H

@@ -1,6 +1,17 @@
 // Copyright (c) 2014-2021 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <qt/networkstyle.h>
 
@@ -19,7 +30,6 @@ static const struct {
 } network_styles[] = {
     {ChainType::MAIN, QAPP_APP_NAME_DEFAULT, 0, 0},
     {ChainType::TESTNET, QAPP_APP_NAME_TESTNET, 70, 30},
-    {ChainType::TESTNET4, QAPP_APP_NAME_TESTNET4, 70, 30},
     {ChainType::SIGNET, QAPP_APP_NAME_SIGNET, 35, 15},
     {ChainType::REGTEST, QAPP_APP_NAME_REGTEST, 160, 30},
 };
@@ -30,7 +40,7 @@ NetworkStyle::NetworkStyle(const QString &_appName, const int iconColorHueShift,
     titleAddText(qApp->translate("SplashScreen", _titleAddText))
 {
     // load pixmap
-    QPixmap pixmap(":/icons/bitcoin");
+    QPixmap pixmap(":/icons/freicoin");
 
     if(iconColorHueShift != 0 && iconColorSaturationReduction != 0)
     {

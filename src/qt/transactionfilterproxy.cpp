@@ -1,6 +1,17 @@
 // Copyright (c) 2011-2021 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <qt/transactionfilterproxy.h>
 
@@ -53,6 +64,10 @@ bool TransactionFilterProxy::filterAcceptsRow(int sourceRow, const QModelIndex &
     if (amount < minAmount)
         return false;
 
+    quint32 lock_height = index.data(TransactionTableModel::LockHeightRole).toUInt();
+    if(lock_height < minLockHeight)
+        return false;
+
     return true;
 }
 
@@ -79,6 +94,12 @@ void TransactionFilterProxy::setTypeFilter(quint32 modes)
 void TransactionFilterProxy::setMinAmount(const CAmount& minimum)
 {
     this->minAmount = minimum;
+    invalidateFilter();
+}
+
+void TransactionFilterProxy::setMinLockHeight(quint32 minimum)
+{
+    this->minLockHeight = minimum;
     invalidateFilter();
 }
 
