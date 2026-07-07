@@ -67,7 +67,7 @@ noinst_HEADERS += src/hash_impl.h
 noinst_HEADERS += src/field.h
 noinst_HEADERS += src/field_impl.h
 noinst_HEADERS += src/bench.h
-noinst_HEADERS += src/wycheproof/ecdsa_secp256k1_sha256_bitcoin_test.h
+noinst_HEADERS += src/wycheproof/ecdsa_secp256k1_sha256_freicoin_test.h
 noinst_HEADERS += src/hsort.h
 noinst_HEADERS += src/hsort_impl.h
 noinst_HEADERS += contrib/lax_der_parsing.h
@@ -251,7 +251,7 @@ maintainer-clean-local: clean-precomp
 
 ### Pregenerated test vectors
 ### (see the comments in the previous section for detailed rationale)
-TESTVECTORS = src/wycheproof/ecdsa_secp256k1_sha256_bitcoin_test.h
+TESTVECTORS = src/wycheproof/ecdsa_secp256k1_sha256_freicoin_test.h
 
 if ENABLE_MODULE_ECDH
 TESTVECTORS += src/wycheproof/ecdh_secp256k1_test.h
