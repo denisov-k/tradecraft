@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_CHAIN_H
-#define BITCOIN_CHAIN_H
+#ifndef FREICOIN_CHAIN_H
+#define FREICOIN_CHAIN_H
 
 #include <arith_uint256.h>
 #include <consensus/params.h>
@@ -128,6 +139,8 @@ enum BlockStatus : uint32_t {
 
     BLOCK_OPT_WITNESS        =   128, //!< block data in blk*.dat was received with a witness-enforcing client
 
+    BLOCK_OPT_MERGE_MINING   =   256, //!< block data in blk*.dat was received with a merge-mining-enforcing client
+
     BLOCK_STATUS_RESERVED    =   256, //!< Unused flag that was previously set on assumeutxo snapshot blocks and their
                                       //!< ancestors before they were validated, and unset when they were validated.
 };
@@ -189,6 +202,7 @@ public:
     uint32_t nTime{0};
     uint32_t nBits{0};
     uint32_t nNonce{0};
+    AuxProofOfWork m_aux_pow{};
 
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.
     int32_t nSequenceId{0};
@@ -201,7 +215,8 @@ public:
           hashMerkleRoot{block.hashMerkleRoot},
           nTime{block.nTime},
           nBits{block.nBits},
-          nNonce{block.nNonce}
+          nNonce{block.nNonce},
+          m_aux_pow{block.m_aux_pow}
     {
     }
 
@@ -237,6 +252,7 @@ public:
         block.nTime = nTime;
         block.nBits = nBits;
         block.nNonce = nNonce;
+        block.m_aux_pow = m_aux_pow;
         return block;
     }
 
@@ -271,6 +287,11 @@ public:
     int64_t GetBlockTimeMax() const
     {
         return (int64_t)nTimeMax;
+    }
+
+    int64_t GetFilteredBlockTime() const
+    {
+        return GetBlockHeader().GetFilteredTime();
     }
 
     static constexpr int nMedianTimeSpan = 11;
@@ -374,26 +395,60 @@ public:
         hashPrev = (pprev ? pprev->GetBlockHash() : uint256());
     }
 
-    SERIALIZE_METHODS(CDiskBlockIndex, obj)
-    {
+    template <typename Stream>
+    void Serialize(Stream& s) const {
         LOCK(::cs_main);
         int _nVersion = DUMMY_VERSION;
-        READWRITE(VARINT_MODE(_nVersion, VarIntMode::NONNEGATIVE_SIGNED));
+        ::Serialize(s, VARINT_MODE(_nVersion, VarIntMode::NONNEGATIVE_SIGNED));
 
-        READWRITE(VARINT_MODE(obj.nHeight, VarIntMode::NONNEGATIVE_SIGNED));
-        READWRITE(VARINT(obj.nStatus));
-        READWRITE(VARINT(obj.nTx));
-        if (obj.nStatus & (BLOCK_HAVE_DATA | BLOCK_HAVE_UNDO)) READWRITE(VARINT_MODE(obj.nFile, VarIntMode::NONNEGATIVE_SIGNED));
-        if (obj.nStatus & BLOCK_HAVE_DATA) READWRITE(VARINT(obj.nDataPos));
-        if (obj.nStatus & BLOCK_HAVE_UNDO) READWRITE(VARINT(obj.nUndoPos));
+        ::Serialize(s, VARINT_MODE(nHeight, VarIntMode::NONNEGATIVE_SIGNED));
+        ::Serialize(s, VARINT(nStatus));
+        ::Serialize(s, VARINT(nTx));
+        if (nStatus & (BLOCK_HAVE_DATA | BLOCK_HAVE_UNDO)) {
+            ::Serialize(s, VARINT_MODE(nFile, VarIntMode::NONNEGATIVE_SIGNED));
+        }
+        if (nStatus & BLOCK_HAVE_DATA) {
+            ::Serialize(s, VARINT(nDataPos));
+        }
+        if (nStatus & BLOCK_HAVE_UNDO) {
+            ::Serialize(s, VARINT(nUndoPos));
+        }
 
         // block header
-        READWRITE(obj.nVersion);
-        READWRITE(obj.hashPrev);
-        READWRITE(obj.hashMerkleRoot);
-        READWRITE(obj.nTime);
-        READWRITE(obj.nBits);
-        READWRITE(obj.nNonce);
+        CBlockHeader blkhdr;
+        blkhdr = GetBlockHeader();
+        ::Serialize(s, blkhdr);
+    }
+
+    template <typename Stream>
+    void Unserialize(Stream& s) {
+        LOCK(::cs_main);
+        int _nVersion = DUMMY_VERSION;
+        ::Unserialize(s, VARINT_MODE(_nVersion, VarIntMode::NONNEGATIVE_SIGNED));
+
+        ::Unserialize(s, VARINT_MODE(nHeight, VarIntMode::NONNEGATIVE_SIGNED));
+        ::Unserialize(s, VARINT(nStatus));
+        ::Unserialize(s, VARINT(nTx));
+        if (nStatus & (BLOCK_HAVE_DATA | BLOCK_HAVE_UNDO)) {
+            ::Unserialize(s, VARINT_MODE(nFile, VarIntMode::NONNEGATIVE_SIGNED));
+        }
+        if (nStatus & BLOCK_HAVE_DATA) {
+            ::Unserialize(s, VARINT(nDataPos));
+        }
+        if (nStatus & BLOCK_HAVE_UNDO) {
+            ::Unserialize(s, VARINT(nUndoPos));
+        }
+
+        // block header
+        CBlockHeader blkhdr;
+        ::Unserialize(s, blkhdr);
+        nVersion       = blkhdr.nVersion;
+        hashPrev       = blkhdr.hashPrevBlock;
+        hashMerkleRoot = blkhdr.hashMerkleRoot;
+        nTime          = blkhdr.nTime;
+        nBits          = blkhdr.nBits;
+        nNonce         = blkhdr.nNonce;
+        m_aux_pow      = blkhdr.m_aux_pow;
     }
 
     uint256 ConstructBlockHash() const
@@ -483,4 +538,4 @@ CBlockLocator GetLocator(const CBlockIndex* index);
 /** Construct a list of hash entries to put in a locator.  */
 std::vector<uint256> LocatorEntries(const CBlockIndex* index);
 
-#endif // BITCOIN_CHAIN_H
+#endif // FREICOIN_CHAIN_H

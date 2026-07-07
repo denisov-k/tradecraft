@@ -1,6 +1,17 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <node/blockstorage.h>
 
@@ -129,10 +140,11 @@ bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, s
                 pindexNew->nTime          = diskindex.nTime;
                 pindexNew->nBits          = diskindex.nBits;
                 pindexNew->nNonce         = diskindex.nNonce;
+                pindexNew->m_aux_pow      = diskindex.m_aux_pow;
                 pindexNew->nStatus        = diskindex.nStatus;
                 pindexNew->nTx            = diskindex.nTx;
 
-                if (!CheckProofOfWork(pindexNew->GetBlockHash(), pindexNew->nBits, consensusParams)) {
+                if (!CheckAuxiliaryProofOfWork(pindexNew->GetBlockHeader(), consensusParams) || (!IsProtocolCleanupActive(consensusParams, *pindexNew) && !CheckProofOfWork(pindexNew->GetBlockHeader(), consensusParams))) {
                     LogError("%s: CheckProofOfWork failed: %s\n", __func__, pindexNew->ToString());
                     return false;
                 }
@@ -803,7 +815,7 @@ fs::path BlockManager::GetBlockPosFilename(const FlatFilePos& pos) const
     return m_block_file_seq.FileName(pos);
 }
 
-FlatFilePos BlockManager::FindNextBlockPos(unsigned int nAddSize, unsigned int nHeight, uint64_t nTime)
+FlatFilePos BlockManager::FindNextBlockPos(unsigned int nAddSize, const Consensus::Params& consensus_params, unsigned int nHeight, uint64_t nTime)
 {
     LOCK(cs_LastBlockFile);
 
@@ -823,8 +835,10 @@ FlatFilePos BlockManager::FindNextBlockPos(unsigned int nAddSize, unsigned int n
         m_blockfile_info.resize(nFile + 1);
     }
 
+    const Consensus::RuleSet rules = GetActiveRules(consensus_params, std::chrono::seconds{TicksSinceEpoch<std::chrono::seconds>(NodeClock::now())});
+
     bool finalize_undo = false;
-    unsigned int max_blockfile_size{MAX_BLOCKFILE_SIZE};
+    unsigned int max_blockfile_size{rules & Consensus::SIZE_EXPANSION ? SIZE_EXPANSION_MAX_BLOCKFILE_SIZE : MAX_BLOCKFILE_SIZE};
     // Use smaller blockfiles in test-only -fastprune mode - but avoid
     // the possibility of having a block not fit into the block file.
     if (m_opts.fast_prune) {
@@ -1016,7 +1030,7 @@ bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos) const
     }
 
     // Check the header
-    if (!CheckProofOfWork(block.GetHash(), block.nBits, GetConsensus())) {
+    if (!CheckAuxiliaryProofOfWork(block, GetConsensus()) || (!IsProtocolCleanupActive(GetConsensus(), block) && !CheckProofOfWork(block, GetConsensus()))) {
         LogError("%s: Errors in block header at %s\n", __func__, pos.ToString());
         return false;
     }
@@ -1037,6 +1051,25 @@ bool BlockManager::ReadBlock(CBlock& block, const CBlockIndex& index) const
     if (!ReadBlock(block, block_pos)) {
         return false;
     }
+
+    // The activation of auxiliary proof-of-work introduces some unavoidable
+    // malleability into the block serialization format.  A merge-mined block
+    // can be serialized with or without its auxiliary proof-of-work header, and
+    // the choice does not change the calculated block hash.  Through a process
+    // which is at this time not well characterized, it appears possible for
+    // nodes to get into a state in which the block file on disk is missing the
+    // auxiliary proof-of-work of a fully validated block, but the chainstate
+    // database (which contains the block headers in the form of CBlockIndex
+    // records) has the complete header with auxiliary proof-of-work fields.
+    //
+    // Until the underlying bug is found and fixed, the workaround is to copy
+    // the auxiliary proof-of-work fields from the chainstate database when
+    // loading a block from disk.  In tests this is shown to make the complete
+    // block header available wherever the block is used.
+    if (block.m_aux_pow.IsNull()) {
+        block.m_aux_pow = index.m_aux_pow;
+    }
+
     if (block.GetHash() != index.GetBlockHash()) {
         LogError("%s: GetHash() doesn't match index for %s at %s\n", __func__, index.ToString(), block_pos.ToString());
         return false;
@@ -1091,10 +1124,12 @@ bool BlockManager::ReadRawBlock(std::vector<uint8_t>& block, const FlatFilePos& 
 
 FlatFilePos BlockManager::WriteBlock(const CBlock& block, int nHeight)
 {
-    const unsigned int block_size{static_cast<unsigned int>(GetSerializeSize(TX_WITH_WITNESS(block)))};
-    FlatFilePos pos{FindNextBlockPos(block_size + BLOCK_SERIALIZATION_HEADER_SIZE, nHeight, block.GetBlockTime())};
+    unsigned int block_size = ::GetSerializeSize(TX_WITH_WITNESS(block));
+    // Account for the 4 magic message start bytes + the 4 length bytes (8 bytes total,
+    // defined as BLOCK_SERIALIZATION_HEADER_SIZE)
+    FlatFilePos pos{FindNextBlockPos(block_size + static_cast<unsigned int>(BLOCK_SERIALIZATION_HEADER_SIZE), GetParams().GetConsensus(), nHeight, block.GetBlockTime())};
     if (pos.IsNull()) {
-        LogError("FindNextBlockPos failed");
+        LogError("%s: FindNextBlockPos failed\n", __func__);
         return FlatFilePos();
     }
     AutoFile fileout{OpenBlockFile(pos)};

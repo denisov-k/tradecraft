@@ -10,6 +10,7 @@ include(GNUInstallDirs)
 #       which are absolutely necessary.
 add_library(bitcoinkernel
   bitcoinkernel.cpp
+  freicoinkernel.cpp
   chain.cpp
   checks.cpp
   chainparams.cpp
@@ -22,7 +23,10 @@ add_library(bitcoinkernel
   ../chain.cpp
   ../coins.cpp
   ../compressor.cpp
+  # Freicoin: demurrage arithmetic and MAST merkle proofs are consensus-critical.
+  ../consensus/amount.cpp
   ../consensus/merkle.cpp
+  ../consensus/merkleproof.cpp
   ../consensus/tx_check.cpp
   ../consensus/tx_verify.cpp
   ../core_read.cpp

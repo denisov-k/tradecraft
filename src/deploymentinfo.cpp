@@ -1,6 +1,17 @@
 // Copyright (c) 2016-2021 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <deploymentinfo.h>
 
@@ -14,9 +25,13 @@ const struct VBDeploymentInfo VersionBitsDeploymentInfo[Consensus::MAX_VERSION_B
         /*.gbt_force =*/ true,
     },
     {
-        /*.name =*/ "taproot",
-        /*.gbt_force =*/ true,
+        /*.name =*/ "finaltx",
+        /*.gbt_force =*/ false,
     },
+    {
+        /*.name =*/ "auxpow",
+        /*.gbt_force =*/ false,
+    }
 };
 
 std::string DeploymentName(Consensus::BuriedDeployment dep)
@@ -25,30 +40,30 @@ std::string DeploymentName(Consensus::BuriedDeployment dep)
     switch (dep) {
     case Consensus::DEPLOYMENT_HEIGHTINCB:
         return "bip34";
-    case Consensus::DEPLOYMENT_CLTV:
-        return "bip65";
     case Consensus::DEPLOYMENT_DERSIG:
         return "bip66";
-    case Consensus::DEPLOYMENT_CSV:
-        return "csv";
+    case Consensus::DEPLOYMENT_LOCKTIME:
+        return "locktime";
     case Consensus::DEPLOYMENT_SEGWIT:
         return "segwit";
+    case Consensus::DEPLOYMENT_CLEANUP:
+        return "cleanup";
     } // no default case, so the compiler can warn about missing cases
     return "";
 }
 
 std::optional<Consensus::BuriedDeployment> GetBuriedDeployment(const std::string_view name)
 {
-    if (name == "segwit") {
+    if (name == "cleanup") {
+        return Consensus::BuriedDeployment::DEPLOYMENT_CLEANUP;
+    } else if (name == "segwit") {
         return Consensus::BuriedDeployment::DEPLOYMENT_SEGWIT;
     } else if (name == "bip34") {
         return Consensus::BuriedDeployment::DEPLOYMENT_HEIGHTINCB;
     } else if (name == "dersig") {
         return Consensus::BuriedDeployment::DEPLOYMENT_DERSIG;
-    } else if (name == "cltv") {
-        return Consensus::BuriedDeployment::DEPLOYMENT_CLTV;
-    } else if (name == "csv") {
-        return Consensus::BuriedDeployment::DEPLOYMENT_CSV;
+    } else if (name == "locktime") {
+        return Consensus::BuriedDeployment::DEPLOYMENT_LOCKTIME;
     }
     return std::nullopt;
 }
