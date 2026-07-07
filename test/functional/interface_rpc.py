@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
 # Copyright (c) 2018-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Tests some generic aspects of the RPC interface."""
 
 import json
 import os
 from dataclasses import dataclass
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_equal, assert_greater_than_or_equal
 from threading import Thread
 from typing import Optional
@@ -88,7 +99,7 @@ def test_work_queue_getblock(node, got_exceeded_error):
             got_exceeded_error.append(True)
 
 
-class RPCInterfaceTest(BitcoinTestFramework):
+class RPCInterfaceTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
@@ -120,7 +131,7 @@ class RPCInterfaceTest(BitcoinTestFramework):
         results = [
             {"result": 0},
             {"error": {"code": RPC_METHOD_NOT_FOUND, "message": "Method not found"}},
-            {"result": "0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"},
+            {"result": "67756db06265141574ff8e7c3f97ebd57c443791e0ca27ee8b03758d6056edb8"},
             {"error": {"code": RPC_INVALID_REQUEST, "message": "Missing method"}},
         ]
 
@@ -218,7 +229,7 @@ class RPCInterfaceTest(BitcoinTestFramework):
         expect_http_rpc_status(200, None,                   self.nodes[0], "getblockcount", [],  2, False)
         block_count = self.nodes[0].getblockcount()
         # Notification response status code: HTTP_NO_CONTENT
-        expect_http_rpc_status(204, None,                   self.nodes[0], "generatetoaddress", [1, "bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqdku202"],  2, True)
+        expect_http_rpc_status(204, None,                   self.nodes[0], "generatetoaddress", [1, "fcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq7z4ddu"],  2, True)
         # The command worked even though there was no response
         assert_equal(block_count + 1, self.nodes[0].getblockcount())
         # No error response for notifications even if they are invalid

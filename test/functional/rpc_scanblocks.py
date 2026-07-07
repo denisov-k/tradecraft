@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2021-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the scanblocks RPC call."""
 from test_framework.address import address_to_scriptpubkey
 from test_framework.blockfilter import (
@@ -9,7 +20,7 @@ from test_framework.blockfilter import (
     bip158_relevant_scriptpubkeys,
 )
 from test_framework.messages import COIN
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
@@ -20,7 +31,7 @@ from test_framework.wallet import (
 )
 
 
-class ScanblocksTest(BitcoinTestFramework):
+class ScanblocksTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
         self.extra_args = [["-blockfilterindex=1"], []]
@@ -88,12 +99,12 @@ class ScanblocksTest(BitcoinTestFramework):
         # coinbase output and verify that their BIP158 ranged hashes match
         genesis_blockhash = node.getblockhash(0)
         genesis_spks = bip158_relevant_scriptpubkeys(node, genesis_blockhash)
-        assert_equal(len(genesis_spks), 1)
-        genesis_coinbase_spk = list(genesis_spks)[0]
-        false_positive_spk = bytes.fromhex("001400000000000000000000000000000000000cadcb")
+        assert_equal(len(genesis_spks), 8)
+        genesis_coinbase_spk = list(sorted(genesis_spks))[0]
+        false_positive_spk = bytes.fromhex("00140000000000000000000000000000000000230495")
 
-        genesis_coinbase_hash = bip158_basic_element_hash(genesis_coinbase_spk, 1, genesis_blockhash)
-        false_positive_hash = bip158_basic_element_hash(false_positive_spk, 1, genesis_blockhash)
+        genesis_coinbase_hash = bip158_basic_element_hash(genesis_coinbase_spk, 8, genesis_blockhash)
+        false_positive_hash = bip158_basic_element_hash(false_positive_spk, 8, genesis_blockhash)
         assert_equal(genesis_coinbase_hash, false_positive_hash)
 
         assert genesis_blockhash in node.scanblocks(

@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2024-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Test opportunistic 1p1c package submission logic.
 """
@@ -20,10 +31,14 @@ from test_framework.messages import (
     msg_tx,
     tx_from_hex,
 )
+from test_framework.script import (
+    CScript,
+    OP_FALSE,
+)
 from test_framework.p2p import (
     P2PInterface,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -33,7 +48,7 @@ from test_framework.wallet import (
     MiniWalletMode,
 )
 
-# 1sat/vB feerate denominated in BTC/KvB
+# 1sat/vB feerate denominated in FRC/KvB
 FEERATE_1SAT_VB = Decimal("0.00001000")
 # Number of seconds to wait to ensure no getdata is received
 GETDATA_WAIT = 60
@@ -54,11 +69,12 @@ def cleanup(func):
             self.nodes[0].setmocktime(0)
     return wrapper
 
-class PackageRelayTest(BitcoinTestFramework):
+class PackageRelayTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
         self.extra_args = [[
+            "-datacarrier=1",
             "-datacarriersize=100000",
             "-maxmempool=5",
         ]]
@@ -265,7 +281,7 @@ class PackageRelayTest(BitcoinTestFramework):
         # Create invalid version of parent with a bad signature.
         tx_parent_bad_wit = tx_from_hex(low_fee_parent["hex"])
         tx_parent_bad_wit.wit.vtxinwit.append(CTxInWitness())
-        tx_parent_bad_wit.wit.vtxinwit[0].scriptWitness.stack = [b'garbage']
+        tx_parent_bad_wit.wit.vtxinwit[0].scriptWitness.stack = [b'\x00' + CScript([OP_FALSE]), b'']
 
         package_sender = node.add_p2p_connection(P2PInterface())
         fake_parent_sender = node.add_p2p_connection(P2PInterface())

@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 # Copyright (c) 2018-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the scantxoutset rpc call."""
 from test_framework.address import address_to_scriptpubkey
 from test_framework.messages import COIN
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_equal, assert_raises_rpc_error
 from test_framework.wallet import (
     MiniWallet,
@@ -19,7 +30,7 @@ def descriptors(out):
     return sorted(u['desc'] for u in out['unspents'])
 
 
-class ScantxoutsetTest(BitcoinTestFramework):
+class ScantxoutsetTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -36,10 +47,8 @@ class ScantxoutsetTest(BitcoinTestFramework):
         assert_equal(sum(u["coinbase"] for u in self.nodes[0].scantxoutset("start", [self.wallet.get_descriptor()])["unspents"]), 49)
 
         self.log.info("Create UTXOs...")
-        pubk1, spk_P2SH_SEGWIT, addr_P2SH_SEGWIT = getnewdestination("p2sh-segwit")
         pubk2, spk_LEGACY, addr_LEGACY = getnewdestination("legacy")
         pubk3, spk_BECH32, addr_BECH32 = getnewdestination("bech32")
-        self.sendtodestination(spk_P2SH_SEGWIT, 0.001)
         self.sendtodestination(spk_LEGACY, 0.002)
         self.sendtodestination(spk_BECH32, 0.004)
 
@@ -67,12 +76,9 @@ class ScantxoutsetTest(BitcoinTestFramework):
         assert_equal(scan['bestblock'], info['bestblock'])
 
         self.log.info("Test if we have found the non HD unspent outputs.")
-        assert_equal(self.nodes[0].scantxoutset("start", ["pkh(" + pubk1.hex() + ")", "pkh(" + pubk2.hex() + ")", "pkh(" + pubk3.hex() + ")"])['total_amount'], Decimal("0.002"))
-        assert_equal(self.nodes[0].scantxoutset("start", ["wpkh(" + pubk1.hex() + ")", "wpkh(" + pubk2.hex() + ")", "wpkh(" + pubk3.hex() + ")"])['total_amount'], Decimal("0.004"))
-        assert_equal(self.nodes[0].scantxoutset("start", ["sh(wpkh(" + pubk1.hex() + "))", "sh(wpkh(" + pubk2.hex() + "))", "sh(wpkh(" + pubk3.hex() + "))"])['total_amount'], Decimal("0.001"))
-        assert_equal(self.nodes[0].scantxoutset("start", ["combo(" + pubk1.hex() + ")", "combo(" + pubk2.hex() + ")", "combo(" + pubk3.hex() + ")"])['total_amount'], Decimal("0.007"))
-        assert_equal(self.nodes[0].scantxoutset("start", ["addr(" + addr_P2SH_SEGWIT + ")", "addr(" + addr_LEGACY + ")", "addr(" + addr_BECH32 + ")"])['total_amount'], Decimal("0.007"))
-        assert_equal(self.nodes[0].scantxoutset("start", ["addr(" + addr_P2SH_SEGWIT + ")", "addr(" + addr_LEGACY + ")", "combo(" + pubk3.hex() + ")"])['total_amount'], Decimal("0.007"))
+        assert_equal(self.nodes[0].scantxoutset("start", ["pkh(" + pubk2.hex() + ")", "pkh(" + pubk3.hex() + ")"])['total_amount'], Decimal("0.002"))
+        assert_equal(self.nodes[0].scantxoutset("start", ["wpk(" + pubk2.hex() + ")", "wpk(" + pubk3.hex() + ")"])['total_amount'], Decimal("0.004"))
+        assert_equal(self.nodes[0].scantxoutset("start", ["combo(" + pubk2.hex() + ")", "combo(" + pubk3.hex() + ")"])['total_amount'], Decimal("0.006"))
 
         self.log.info("Test range validation.")
         assert_raises_rpc_error(-8, "End of range is too high", self.nodes[0].scantxoutset, "start", [{"desc": "desc", "range": -1}])
@@ -83,7 +89,7 @@ class ScantxoutsetTest(BitcoinTestFramework):
 
         self.log.info("Test extended key derivation.")
         # Run various scans, and verify that the sum of the amounts of the matches corresponds to the expected subset.
-        # Note that all amounts in the UTXO set are powers of 2 multiplied by 0.001 BTC, so each amounts uniquely identifies a subset.
+        # Note that all amounts in the UTXO set are powers of 2 multiplied by 0.001 FRC, so each amounts uniquely identifies a subset.
         assert_equal(self.nodes[0].scantxoutset("start", ["combo(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/0'/0h/0h)"])['total_amount'], Decimal("0.008"))
         assert_equal(self.nodes[0].scantxoutset("start", ["combo(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/0'/0'/1h)"])['total_amount'], Decimal("0.016"))
         assert_equal(self.nodes[0].scantxoutset("start", ["combo(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/0h/0'/1500')"])['total_amount'], Decimal("0.032"))

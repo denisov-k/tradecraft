@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 # Copyright (c) 2024 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from decimal import Decimal
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -36,7 +47,7 @@ def cleanup(extra_args=None):
         return wrapper
     return decorator
 
-class MempoolTRUC(BitcoinTestFramework):
+class MempoolTRUC(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [[]]
@@ -48,7 +59,7 @@ class MempoolTRUC(BitcoinTestFramework):
         assert_equal(len(txids), len(mempool_contents))
         assert all([txid in txids for txid in mempool_contents])
 
-    @cleanup(extra_args=["-datacarriersize=20000"])
+    @cleanup(extra_args=["-datacarrier=1", "-datacarriersize=20000"])
     def test_truc_max_vsize(self):
         node = self.nodes[0]
         self.log.info("Test TRUC-specific maximum transaction vsize")
@@ -62,7 +73,7 @@ class MempoolTRUC(BitcoinTestFramework):
         tx_v2_heavy = self.wallet.send_self_transfer(from_node=node, target_vsize=TRUC_MAX_VSIZE + 1, version=2)
         self.check_mempool([tx_v2_heavy["txid"]])
 
-    @cleanup(extra_args=["-datacarriersize=1000"])
+    @cleanup(extra_args=["-datacarrier=1", "-datacarriersize=1000"])
     def test_truc_acceptance(self):
         node = self.nodes[0]
         self.log.info("Test a child of a TRUC transaction cannot be more than 1000vB")
@@ -159,7 +170,7 @@ class MempoolTRUC(BitcoinTestFramework):
         self.check_mempool([tx_v3_bip125_rbf_v2["txid"], tx_v3_parent["txid"], tx_v3_child["txid"]])
 
 
-    @cleanup(extra_args=["-datacarriersize=40000"])
+    @cleanup(extra_args=["-datacarrier=1", "-datacarriersize=40000"])
     def test_truc_reorg(self):
         node = self.nodes[0]
         self.log.info("Test that, during a reorg, TRUC rules are not enforced")
@@ -181,7 +192,7 @@ class MempoolTRUC(BitcoinTestFramework):
         node.reconsiderblock(block[0])
 
 
-    @cleanup(extra_args=["-limitdescendantsize=10", "-datacarriersize=40000"])
+    @cleanup(extra_args=["-limitdescendantsize=10", "-datacarrier=1", "-datacarriersize=40000"])
     def test_nondefault_package_limits(self):
         """
         Max standard tx size + TRUC rules imply the ancestor/descendant rules (at their default
@@ -214,7 +225,7 @@ class MempoolTRUC(BitcoinTestFramework):
         self.generate(node, 1)
 
         self.log.info("Test that a decreased limitancestorsize also applies to v3 parent")
-        self.restart_node(0, extra_args=["-limitancestorsize=10", "-datacarriersize=40000"])
+        self.restart_node(0, extra_args=["-limitancestorsize=10", "-datacarrier=1", "-datacarriersize=40000"])
         tx_v3_parent_large2 = self.wallet.send_self_transfer(
             from_node=node,
             target_vsize=parent_target_vsize,
@@ -234,7 +245,7 @@ class MempoolTRUC(BitcoinTestFramework):
         assert_raises_rpc_error(-26, "too-long-mempool-chain, exceeds ancestor size limit", node.sendrawtransaction, tx_v3_child_large2["hex"])
         self.check_mempool([tx_v3_parent_large2["txid"]])
 
-    @cleanup(extra_args=["-datacarriersize=1000"])
+    @cleanup(extra_args=["-datacarrier=1", "-datacarriersize=1000"])
     def test_truc_ancestors_package(self):
         self.log.info("Test that TRUC ancestor limits are checked within the package")
         node = self.nodes[0]
@@ -383,7 +394,7 @@ class MempoolTRUC(BitcoinTestFramework):
         assert_equal(result_package_cpfp["tx-results"][tx_sibling_3['wtxid']]['error'], expected_error_cpfp)
 
 
-    @cleanup(extra_args=["-datacarriersize=1000"])
+    @cleanup(extra_args=["-datacarrier=1", "-datacarriersize=1000"])
     def test_truc_package_inheritance(self):
         self.log.info("Test that TRUC inheritance is checked within package")
         node = self.nodes[0]

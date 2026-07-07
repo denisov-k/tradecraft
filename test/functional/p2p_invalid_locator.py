@@ -1,16 +1,27 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-2021 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test node responses to invalid locators.
 """
 
 from test_framework.messages import msg_getheaders, msg_getblocks, MAX_LOCATOR_SZ
 from test_framework.p2p import P2PInterface
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 
 
-class InvalidLocatorTest(BitcoinTestFramework):
+class InvalidLocatorTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 

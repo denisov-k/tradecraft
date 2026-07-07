@@ -1,21 +1,32 @@
 #!/usr/bin/env python3
 # Copyright (c) 2024 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test that descriptor wallets rescan mempool transactions properly when importing."""
 
 from test_framework.address import (
     address_to_scriptpubkey,
-    ADDRESS_BCRT1_UNSPENDABLE,
+    ADDRESS_FCRT1_UNSPENDABLE,
 )
 from test_framework.messages import COIN
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_equal
 from test_framework.wallet import MiniWallet
 from test_framework.wallet_util import test_address
 
 
-class WalletRescanUnconfirmed(BitcoinTestFramework):
+class WalletRescanUnconfirmed(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser, legacy=False)
 
@@ -57,7 +68,7 @@ class WalletRescanUnconfirmed(BitcoinTestFramework):
         # The only UTXO available to spend is tx_parent_to_reorg.
         assert_equal(len(w0_utxos), 1)
         assert_equal(w0_utxos[0]["txid"], tx_parent_to_reorg["txid"])
-        tx_child_unconfirmed_sweep = w0.sendall([ADDRESS_BCRT1_UNSPENDABLE])
+        tx_child_unconfirmed_sweep = w0.sendall([ADDRESS_FCRT1_UNSPENDABLE], options={"lockheight": max(utxo['refheight'] for utxo in w0_utxos) or 1})
         assert tx_child_unconfirmed_sweep["txid"] in node.getrawmempool()
         node.syncwithvalidationinterfacequeue()
 

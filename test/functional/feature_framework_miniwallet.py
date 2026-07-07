@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
 # Copyright (c) 2024 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test MiniWallet."""
 import random
 import string
 
 from test_framework.blocktools import COINBASE_MATURITY
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
@@ -17,7 +28,7 @@ from test_framework.wallet import (
 )
 
 
-class FeatureFrameworkMiniWalletTest(BitcoinTestFramework):
+class FeatureFrameworkMiniWalletTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -44,7 +55,7 @@ class FeatureFrameworkMiniWalletTest(BitcoinTestFramework):
             tag = ''.join(random.choice(string.ascii_letters) for _ in range(20))
             self.log.debug(f"-> ({i}) tag name: {tag}")
             tagged_wallet = MiniWallet(node, tag_name=tag)
-            untagged_wallet.send_to(from_node=node, scriptPubKey=tagged_wallet.get_output_script(), amount=100000)
+            untagged_wallet.send_to(from_node=node, scriptPubKey=tagged_wallet.get_output_script(), amount=100000, fee=100000)
             tagged_wallet.rescan_utxos()
             tagged_wallet.send_self_transfer(from_node=node)
         self.generate(node, 1)  # clear mempool

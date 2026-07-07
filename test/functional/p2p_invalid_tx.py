@@ -1,11 +1,27 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test node responses to invalid transactions.
 
 In this test we connect to one node over p2p, and test tx requests."""
-from test_framework.blocktools import create_block, create_coinbase
+from test_framework.blocktools import (
+    create_block,
+    create_coinbase,
+    get_final_tx_info,
+    add_final_tx,
+)
 from test_framework.messages import (
     COIN,
     COutPoint,
@@ -14,14 +30,14 @@ from test_framework.messages import (
     CTxOut,
 )
 from test_framework.p2p import P2PDataStore
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
 from data import invalid_txs
 
 
-class InvalidTxRequestTest(BitcoinTestFramework):
+class InvalidTxRequestTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [[
@@ -49,13 +65,16 @@ class InvalidTxRequestTest(BitcoinTestFramework):
 
         self.bootstrap_p2p()  # Add one p2p connection to the node
 
+        # Let freicoind handle the block-final initial output logic
+        self.generate(self.nodes[0], 1)
+
         best_block = self.nodes[0].getbestblockhash()
         tip = int(best_block, 16)
         best_block_time = self.nodes[0].getblock(best_block)['time']
         block_time = best_block_time + 1
 
         self.log.info("Create a new block with an anyone-can-spend coinbase.")
-        height = 1
+        height = self.nodes[0].getblockcount() + 1
         block = create_block(tip, create_coinbase(height), block_time)
         block.solve()
         # Save the coinbase for later
@@ -93,29 +112,34 @@ class InvalidTxRequestTest(BitcoinTestFramework):
         tx_withhold = CTransaction()
         tx_withhold.vin.append(CTxIn(outpoint=COutPoint(block1.vtx[0].sha256, 0)))
         tx_withhold.vout = [CTxOut(nValue=25 * COIN - 12000, scriptPubKey=SCRIPT_PUB_KEY_OP_TRUE)] * 2
+        tx_withhold.lock_height = block1.vtx[0].lock_height
         tx_withhold.calc_sha256()
 
         # Our first orphan tx with some outputs to create further orphan txs
         tx_orphan_1 = CTransaction()
         tx_orphan_1.vin.append(CTxIn(outpoint=COutPoint(tx_withhold.sha256, 0)))
         tx_orphan_1.vout = [CTxOut(nValue=8 * COIN, scriptPubKey=SCRIPT_PUB_KEY_OP_TRUE)] * 3
+        tx_orphan_1.lock_height = tx_withhold.lock_height
         tx_orphan_1.calc_sha256()
 
         # A valid transaction with low fee
         tx_orphan_2_no_fee = CTransaction()
         tx_orphan_2_no_fee.vin.append(CTxIn(outpoint=COutPoint(tx_orphan_1.sha256, 0)))
         tx_orphan_2_no_fee.vout.append(CTxOut(nValue=8 * COIN, scriptPubKey=SCRIPT_PUB_KEY_OP_TRUE))
+        tx_orphan_2_no_fee.lock_height = tx_orphan_1.lock_height
 
         # A valid transaction with sufficient fee
         tx_orphan_2_valid = CTransaction()
         tx_orphan_2_valid.vin.append(CTxIn(outpoint=COutPoint(tx_orphan_1.sha256, 1)))
         tx_orphan_2_valid.vout.append(CTxOut(nValue=8 * COIN - 12000, scriptPubKey=SCRIPT_PUB_KEY_OP_TRUE))
+        tx_orphan_2_valid.lock_height = tx_orphan_1.lock_height
         tx_orphan_2_valid.calc_sha256()
 
         # An invalid transaction with negative fee
         tx_orphan_2_invalid = CTransaction()
         tx_orphan_2_invalid.vin.append(CTxIn(outpoint=COutPoint(tx_orphan_1.sha256, 2)))
         tx_orphan_2_invalid.vout.append(CTxOut(nValue=11 * COIN, scriptPubKey=SCRIPT_PUB_KEY_OP_TRUE))
+        tx_orphan_2_invalid.lock_height = tx_orphan_1.lock_height
         tx_orphan_2_invalid.calc_sha256()
 
         self.log.info('Send the orphans ... ')
@@ -150,7 +174,7 @@ class InvalidTxRequestTest(BitcoinTestFramework):
         self.log.info('Test orphan pool overflow')
         orphan_tx_pool = [CTransaction() for _ in range(101)]
         for i in range(len(orphan_tx_pool)):
-            orphan_tx_pool[i].vin.append(CTxIn(outpoint=COutPoint(i, 333)))
+            orphan_tx_pool[i].vin.append(CTxIn(outpoint=COutPoint(i+1, 333)))
             orphan_tx_pool[i].vout.append(CTxOut(nValue=11 * COIN, scriptPubKey=SCRIPT_PUB_KEY_OP_TRUE))
 
         with node.assert_debug_log(['orphanage overflow, removed 1 tx']):
@@ -185,7 +209,9 @@ class InvalidTxRequestTest(BitcoinTestFramework):
         tip = int(node.getbestblockhash(), 16)
         height = node.getblockcount() + 1
         block_A = create_block(tip, create_coinbase(height))
+        final_tx = get_final_tx_info(node)
         block_A.vtx.extend([tx_withhold, tx_withhold_until_block_A, tx_orphan_include_by_block_A])
+        final_tx = add_final_tx(final_tx, block_A)
         block_A.hashMerkleRoot = block_A.calc_merkle_root()
         block_A.solve()
 
@@ -215,6 +241,7 @@ class InvalidTxRequestTest(BitcoinTestFramework):
         height = node.getblockcount() + 1
         block_B = create_block(tip, create_coinbase(height))
         block_B.vtx.extend([tx_withhold_until_block_B, tx_orphan_include_by_block_B])
+        final_tx = add_final_tx(final_tx, block_B)
         block_B.hashMerkleRoot = block_B.calc_merkle_root()
         block_B.solve()
 

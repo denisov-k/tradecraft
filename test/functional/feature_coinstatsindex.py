@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test coinstatsindex across nodes.
 
 Test that the values returned by gettxoutsetinfo are consistent
@@ -15,6 +26,8 @@ from test_framework.blocktools import (
     COINBASE_MATURITY,
     create_block,
     create_coinbase,
+    get_final_tx_info,
+    add_final_tx,
 )
 from test_framework.messages import (
     COIN,
@@ -25,7 +38,7 @@ from test_framework.script import (
     OP_FALSE,
     OP_RETURN,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
@@ -36,13 +49,13 @@ from test_framework.wallet import (
 )
 
 
-class CoinStatsIndexTest(BitcoinTestFramework):
+class CoinStatsIndexTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
         self.supports_cli = False
         self.extra_args = [
-            [],
+            ["-datacarrier=1"],
             ["-coinstatsindex"]
         ]
 
@@ -83,8 +96,8 @@ class CoinStatsIndexTest(BitcoinTestFramework):
 
         for hash_option in index_hash_options:
             res1 = index_node.gettxoutsetinfo(hash_option)
-            # The fields 'block_info' and 'total_unspendable_amount' only exist on the index
-            del res1['block_info'], res1['total_unspendable_amount']
+            # The fields 'block_info' and 'total_unspendable_value' only exist on the index
+            del res1['block_info'], res1['total_unspendable_value']
             res1.pop('muhash', None)
 
             # Everything left should be the same
@@ -98,13 +111,13 @@ class CoinStatsIndexTest(BitcoinTestFramework):
         for hash_option in index_hash_options:
             # Fetch old stats by height
             res2 = index_node.gettxoutsetinfo(hash_option, 102)
-            del res2['block_info'], res2['total_unspendable_amount']
+            del res2['block_info'], res2['total_unspendable_value']
             res2.pop('muhash', None)
             assert_equal(res0, res2)
 
             # Fetch old stats by hash
             res3 = index_node.gettxoutsetinfo(hash_option, res0['bestblock'])
-            del res3['block_info'], res3['total_unspendable_amount']
+            del res3['block_info'], res3['total_unspendable_value']
             res3.pop('muhash', None)
             assert_equal(res0, res3)
 
@@ -116,8 +129,9 @@ class CoinStatsIndexTest(BitcoinTestFramework):
         for hash_option in index_hash_options:
             # Genesis block is unspendable
             res4 = index_node.gettxoutsetinfo(hash_option, 0)
-            assert_equal(res4['total_unspendable_amount'], 50)
+            assert_equal(res4['total_unspendable_value'], 50)
             assert_equal(res4['block_info'], {
+                'demurrage': 0,
                 'unspendable': 50,
                 'prevout_spent': 0,
                 'new_outputs_ex_coinbase': 0,
@@ -133,12 +147,13 @@ class CoinStatsIndexTest(BitcoinTestFramework):
 
             # Test an older block height that included a normal tx
             res5 = index_node.gettxoutsetinfo(hash_option, 102)
-            assert_equal(res5['total_unspendable_amount'], 50)
+            assert_equal(res5['total_unspendable_value'], 50)
             assert_equal(res5['block_info'], {
+                'demurrage': 0,
                 'unspendable': 0,
                 'prevout_spent': 50,
-                'new_outputs_ex_coinbase': Decimal('49.99968800'),
-                'coinbase': Decimal('50.00031200'),
+                'new_outputs_ex_coinbase': Decimal('49.99970000'),
+                'coinbase': Decimal('50.00030000'),
                 'unspendables': {
                     'genesis_block': 0,
                     'bip30': 0,
@@ -155,13 +170,14 @@ class CoinStatsIndexTest(BitcoinTestFramework):
             amount=21 * COIN,
         )
 
-        # Find the right position of the 21 BTC output
+        # Find the right position of the 21 FRC output
         tx1_out_21 = self.wallet.get_utxo(txid=tx1["txid"], vout=tx1["sent_vout"])
 
         # Generate and send another tx with an OP_RETURN output (which is unspendable)
         tx2 = self.wallet.create_self_transfer(utxo_to_spend=tx1_out_21)['tx']
         tx2_val = '20.99'
-        tx2.vout = [CTxOut(int(Decimal(tx2_val) * COIN), CScript([OP_RETURN] + [OP_FALSE] * 30))]
+        tx2.vout = [CTxOut(int(Decimal(tx2_val) * COIN), CScript([OP_RETURN] + [OP_FALSE] * 33))]
+        tx2.lock_height = tx1_out_21["refheight"]
         tx2_hex = tx2.serialize().hex()
         self.nodes[0].sendrawtransaction(tx2_hex, 0, tx2_val)
 
@@ -171,10 +187,11 @@ class CoinStatsIndexTest(BitcoinTestFramework):
         for hash_option in index_hash_options:
             # Check all amounts were registered correctly
             res6 = index_node.gettxoutsetinfo(hash_option, 108)
-            assert_equal(res6['total_unspendable_amount'], Decimal('70.99000000'))
+            assert_equal(res6['total_unspendable_value'], Decimal('70.99000000'))
             assert_equal(res6['block_info'], {
+                'demurrage': 0,
                 'unspendable': Decimal('20.99000000'),
-                'prevout_spent': 71,
+                'prevout_spent': Decimal('71.00000000'),
                 'new_outputs_ex_coinbase': Decimal('49.99999000'),
                 'coinbase': Decimal('50.01001000'),
                 'unspendables': {
@@ -196,14 +213,16 @@ class CoinStatsIndexTest(BitcoinTestFramework):
         tip = self.nodes[0].getbestblockhash()
         block_time = self.nodes[0].getblock(tip)['time'] + 1
         block = create_block(int(tip, 16), cb, block_time)
+        add_final_tx(get_final_tx_info(self.nodes[0]), block)
         block.solve()
         self.nodes[0].submitblock(block.serialize().hex())
         self.sync_all()
 
         for hash_option in index_hash_options:
             res7 = index_node.gettxoutsetinfo(hash_option, 109)
-            assert_equal(res7['total_unspendable_amount'], Decimal('80.99000000'))
+            assert_equal(res7['total_unspendable_value'], Decimal('80.99000000'))
             assert_equal(res7['block_info'], {
+                'demurrage': 0,
                 'unspendable': 10,
                 'prevout_spent': 0,
                 'new_outputs_ex_coinbase': 0,

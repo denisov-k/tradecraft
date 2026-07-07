@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the prioritisetransaction mining RPC."""
 
 from decimal import Decimal
@@ -11,7 +22,7 @@ from test_framework.messages import (
     COIN,
     MAX_BLOCK_WEIGHT,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
@@ -21,11 +32,12 @@ from test_framework.util import (
 from test_framework.wallet import MiniWallet
 
 
-class PrioritiseTransactionTest(BitcoinTestFramework):
+class PrioritiseTransactionTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [[
             "-printpriority=1",
+            "-datacarrier=1",
             "-datacarriersize=100000",
         ]] * self.num_nodes
         self.supports_cli = False
@@ -41,7 +53,7 @@ class PrioritiseTransactionTest(BitcoinTestFramework):
         conflicting_input = self.wallet.get_utxo()
         tx_replacee = self.wallet.create_self_transfer(utxo_to_spend=conflicting_input, fee_rate=Decimal("0.0001"))
         tx_replacement = self.wallet.create_self_transfer(utxo_to_spend=conflicting_input, fee_rate=Decimal("0.005"))
-        # Add 1 satoshi fee delta to replacee
+        # Add 1 kria fee delta to replacee
         self.nodes[0].prioritisetransaction(tx_replacee["txid"], 0, 100)
         assert_equal(self.nodes[0].getprioritisedtransactions(), { tx_replacee["txid"] : { "fee_delta" : 100, "in_mempool" : False}})
         self.nodes[0].sendrawtransaction(tx_replacee["hex"])
@@ -293,14 +305,14 @@ class PrioritiseTransactionTest(BitcoinTestFramework):
         # getblocktemplate to (eventually) return a new block.
         mock_time = int(time.time())
         self.nodes[0].setmocktime(mock_time)
-        template = self.nodes[0].getblocktemplate({'rules': ['segwit']})
+        template = self.nodes[0].getblocktemplate({'rules': ['segwit','finaltx','auxpow']})
         self.nodes[0].prioritisetransaction(txid=tx_id, fee_delta=-int(self.relayfee*COIN))
 
         # Calling prioritisetransaction with the inverse amount should delete its prioritisation entry
         assert tx_id not in self.nodes[0].getprioritisedtransactions()
 
         self.nodes[0].setmocktime(mock_time+10)
-        new_template = self.nodes[0].getblocktemplate({'rules': ['segwit']})
+        new_template = self.nodes[0].getblocktemplate({'rules': ['segwit','finaltx','auxpow']})
 
         assert template != new_template
 

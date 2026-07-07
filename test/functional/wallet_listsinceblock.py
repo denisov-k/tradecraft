@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
 # Copyright (c) 2017-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the listsinceblock RPC."""
 
-from test_framework.address import key_to_p2wpkh
+from test_framework.address import key_to_p2wpk
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.descriptors import descsum_create
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.messages import MAX_BIP125_RBF_SEQUENCE
 from test_framework.util import (
     assert_array_result,
@@ -18,7 +29,7 @@ from test_framework.wallet_util import generate_keypair
 
 from decimal import Decimal
 
-class ListSinceBlockTest(BitcoinTestFramework):
+class ListSinceBlockTest(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -210,8 +221,8 @@ class ListSinceBlockTest(BitcoinTestFramework):
 
         Problematic case:
 
-        1. User 1 receives BTC in tx1 from utxo1 in block aa1.
-        2. User 2 receives BTC in tx2 from utxo1 (same) in block bb1
+        1. User 1 receives FRC in tx1 from utxo1 in block aa1.
+        2. User 2 receives FRC in tx2 from utxo1 (same) in block bb1
         3. User 1 sees 2 confirmations at block aa3.
         4. Reorg into bb chain.
         5. User 1 asks `listsinceblock aa3` and does not see that tx1 is now
@@ -228,7 +239,7 @@ class ListSinceBlockTest(BitcoinTestFramework):
 
         # share utxo between nodes[1] and nodes[2]
         privkey, pubkey = generate_keypair(wif=True)
-        address = key_to_p2wpkh(pubkey)
+        address = key_to_p2wpk(pubkey)
         self.nodes[2].sendtoaddress(address, 10)
         self.generate(self.nodes[2], 6)
         self.nodes[2].importprivkey(privkey)
@@ -240,7 +251,7 @@ class ListSinceBlockTest(BitcoinTestFramework):
         self.split_network()
 
         # send from nodes[1] using utxo to nodes[0]
-        change = '%.8f' % (float(utxo['amount']) - 1.0003)
+        change = '%.8f' % (float(utxo['value']) - 1.0003)
         recipient_dict = {
             self.nodes[0].getnewaddress(): 1,
             self.nodes[1].getnewaddress(): change,
@@ -316,7 +327,7 @@ class ListSinceBlockTest(BitcoinTestFramework):
         # create and sign a transaction
         utxos = self.nodes[2].listunspent()
         utxo = utxos[0]
-        change = '%.8f' % (float(utxo['amount']) - 1.0003)
+        change = '%.8f' % (float(utxo['value']) - 1.0003)
         recipient_dict = {
             self.nodes[0].getnewaddress(): 1,
             self.nodes[2].getnewaddress(): change,
@@ -382,7 +393,7 @@ class ListSinceBlockTest(BitcoinTestFramework):
         tx_input = dict(
             sequence=MAX_BIP125_RBF_SEQUENCE, **next(u for u in spending_node.listunspent()))
         rawtx = spending_node.createrawtransaction(
-            [tx_input], {dest_address: tx_input["amount"] - Decimal("0.00051000"),
+            [tx_input], {dest_address: tx_input["value"] - Decimal("0.00051000"),
                          spending_node.getrawchangeaddress(): Decimal("0.00050000")})
         signedtx = spending_node.signrawtransactionwithwallet(rawtx)
         orig_tx_id = spending_node.sendrawtransaction(signedtx["hex"])
@@ -480,10 +491,10 @@ class ListSinceBlockTest(BitcoinTestFramework):
         """Test if OP_RETURN outputs will be displayed correctly."""
         block_hash = self.nodes[2].getbestblockhash()
 
-        raw_tx = self.nodes[2].createrawtransaction([], [{'data': 'aa'}])
+        raw_tx = self.nodes[2].createrawtransaction([], [{'destroy': 0.0001}])
         funded_tx = self.nodes[2].fundrawtransaction(raw_tx)
         signed_tx = self.nodes[2].signrawtransactionwithwallet(funded_tx['hex'])
-        tx_id = self.nodes[2].sendrawtransaction(signed_tx['hex'])
+        tx_id = self.nodes[2].sendrawtransaction(signed_tx['hex'], maxburnamount=0.0001)
 
         op_ret_tx = [tx for tx in self.nodes[2].listsinceblock(blockhash=block_hash)["transactions"] if tx['txid'] == tx_id][0]
 

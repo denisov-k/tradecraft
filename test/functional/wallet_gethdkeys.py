@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 # Copyright (c) 2023 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test wallet gethdkeys RPC."""
 
 from test_framework.descriptors import descsum_create
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
@@ -13,7 +24,7 @@ from test_framework.util import (
 from test_framework.wallet_util import WalletUnlock
 
 
-class WalletGetHDKeyTest(BitcoinTestFramework):
+class WalletGetHDKeyTest(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser, descriptors=True, legacy=False)
 
@@ -112,7 +123,7 @@ class WalletGetHDKeyTest(BitcoinTestFramework):
         wallet = self.nodes[0].get_wallet_rpc("lonekey")
 
         assert_equal(wallet.gethdkeys(), [])
-        wallet.importdescriptors([{"desc": descsum_create("wpkh(cTe1f5rdT8A8DFgVWTjyPwACsDPJM9ff4QngFxUixCSvvbg1x6sh)"), "timestamp": "now"}])
+        wallet.importdescriptors([{"desc": descsum_create("wpk(cTe1f5rdT8A8DFgVWTjyPwACsDPJM9ff4QngFxUixCSvvbg1x6sh)"), "timestamp": "now"}])
         assert_equal(wallet.gethdkeys(), [])
 
         self.log.info("HD keys of non-ranged descriptors should appear in gethdkeys")
@@ -120,8 +131,8 @@ class WalletGetHDKeyTest(BitcoinTestFramework):
         xpub_info = def_wallet.gethdkeys(private=True)
         xpub = xpub_info[0]["xpub"]
         xprv = xpub_info[0]["xprv"]
-        prv_desc = descsum_create(f"wpkh({xprv})")
-        pub_desc = descsum_create(f"wpkh({xpub})")
+        prv_desc = descsum_create(f"wpk({xprv})")
+        pub_desc = descsum_create(f"wpk({xpub})")
         assert_equal(wallet.importdescriptors([{"desc": prv_desc, "timestamp": "now"}])[0]["success"], True)
         xpub_info = wallet.gethdkeys()
         assert_equal(len(xpub_info), 1)

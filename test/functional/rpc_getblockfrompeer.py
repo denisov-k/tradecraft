@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the getblockfrompeer RPC."""
 
 from test_framework.authproxy import JSONRPCException
@@ -15,14 +26,14 @@ from test_framework.p2p import (
     P2P_SERVICES,
     P2PInterface,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
 )
 
 
-class GetBlockFromPeerTest(BitcoinTestFramework):
+class GetBlockFromPeerTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 3
         self.extra_args = [
@@ -125,7 +136,7 @@ class GetBlockFromPeerTest(BitcoinTestFramework):
         self.generate(self.nodes[0], 400, sync_fun=self.no_op)
         self.sync_blocks([self.nodes[0], pruned_node])
         pruneheight = pruned_node.pruneblockchain(300)
-        assert_equal(pruneheight, 248)
+        assert_equal(pruneheight, 258)
         # Ensure the block is actually pruned
         pruned_block = self.nodes[0].getblockhash(2)
         assert_raises_rpc_error(-1, "Block not available (pruned data)", pruned_node.getblock, pruned_block)
@@ -141,14 +152,14 @@ class GetBlockFromPeerTest(BitcoinTestFramework):
         self.log.info("Fetched block persists after next pruning event")
         self.generate(self.nodes[0], 250, sync_fun=self.no_op)
         self.sync_blocks([self.nodes[0], pruned_node])
-        pruneheight += 251
+        pruneheight += 227
         assert_equal(pruned_node.pruneblockchain(700), pruneheight)
-        assert_equal(pruned_node.getblock(pruned_block)["hash"], "36c56c5b5ebbaf90d76b0d1a074dcb32d42abab75b7ec6fa0ffd9b4fbce8f0f7")
+        assert_equal(pruned_node.getblock(pruned_block)["hash"], "0893bfc8a505a34eb50708a9b4d8eb54fc2143e4384d6d60fc2304440e76c64e")
 
         self.log.info("Fetched block can be pruned again when prune height exceeds the height of the tip at the time when the block was fetched")
-        self.generate(self.nodes[0], 250, sync_fun=self.no_op)
+        self.generate(self.nodes[0], 208, sync_fun=self.no_op)
         self.sync_blocks([self.nodes[0], pruned_node])
-        pruneheight += 250
+        pruneheight += 226
         assert_equal(pruned_node.pruneblockchain(1000), pruneheight)
         assert_raises_rpc_error(-1, "Block not available (pruned data)", pruned_node.getblock, pruned_block)
 

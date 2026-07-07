@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the rawtransaction RPCs.
 
 Test the following RPCs:
@@ -29,7 +40,7 @@ from test_framework.script import (
     OP_INVALIDOPCODE,
     OP_RETURN,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -62,16 +73,16 @@ class multidict(dict):
         return self.x
 
 
-class RawTransactionsTest(BitcoinTestFramework):
+class RawTransactionsTest(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser, descriptors=False)
 
     def set_test_params(self):
         self.num_nodes = 3
         self.extra_args = [
-            ["-txindex"],
-            ["-txindex"],
-            ["-fastprune", "-prune=1"],
+            ["-datacarrier=1", "-txindex"],
+            ["-datacarrier=1", "-txindex"],
+            ["-datacarrier=1", "-fastprune", "-prune=1"],
         ]
         # whitelist peers to speed up tx relay / mempool sync
         self.noban_tx_relay = True
@@ -246,8 +257,11 @@ class RawTransactionsTest(BitcoinTestFramework):
         assert 'fee' not in gottx
         # check that verbosity 2 for a mempool tx will fallback to verbosity 1
         # Do this with a pruned chain, as a regression test for https://github.com/bitcoin/bitcoin/pull/29003
-        self.generate(self.nodes[2], 400)
-        assert_greater_than(self.nodes[2].pruneblockchain(250), 0)
+        # Freicoin block sizes shift the -fastprune file boundaries: file 0
+        # spans heights 0..~255, so prune above that (with headroom) to
+        # actually remove a file.
+        self.generate(self.nodes[2], 450)
+        assert_greater_than(self.nodes[2].pruneblockchain(325), 0)
         mempool_tx = self.wallet.send_self_transfer(from_node=self.nodes[2])['txid']
         gottx = self.nodes[2].getrawtransaction(txid=mempool_tx, verbosity=2)
         assert 'fee' not in gottx
@@ -259,7 +273,7 @@ class RawTransactionsTest(BitcoinTestFramework):
         assert_raises_rpc_error(-1, "createrawtransaction", self.nodes[0].createrawtransaction, [])
 
         # Test `createrawtransaction` invalid extra parameters
-        assert_raises_rpc_error(-1, "createrawtransaction", self.nodes[0].createrawtransaction, [], {}, 0, False, 'foo')
+        assert_raises_rpc_error(-1, "createrawtransaction", self.nodes[0].createrawtransaction, [], {}, 0, -1, False, 'foo')
 
         # Test `createrawtransaction` invalid `inputs`
         assert_raises_rpc_error(-3, "JSON value of type string is not of expected type array", self.nodes[0].createrawtransaction, 'foo', {})
@@ -293,7 +307,7 @@ class RawTransactionsTest(BitcoinTestFramework):
         self.nodes[0].createrawtransaction(inputs=[], outputs={})  # Should not throw for backwards compatibility
         self.nodes[0].createrawtransaction(inputs=[], outputs=[])
         assert_raises_rpc_error(-8, "Data must be hexadecimal string", self.nodes[0].createrawtransaction, [], {'data': 'foo'})
-        assert_raises_rpc_error(-5, "Invalid Bitcoin address", self.nodes[0].createrawtransaction, [], {'foo': 0})
+        assert_raises_rpc_error(-5, "Invalid Freicoin address", self.nodes[0].createrawtransaction, [], {'foo': 0})
         assert_raises_rpc_error(-3, "Invalid amount", self.nodes[0].createrawtransaction, [], {address: 'foo'})
         assert_raises_rpc_error(-3, "Amount out of range", self.nodes[0].createrawtransaction, [], {address: -1})
         assert_raises_rpc_error(-8, "Invalid parameter, duplicated address: %s" % address, self.nodes[0].createrawtransaction, [], multidict([(address, 1), (address, 1)]))
@@ -305,15 +319,20 @@ class RawTransactionsTest(BitcoinTestFramework):
 
         # Test `createrawtransaction` mismatch between sequence number(s) and `replaceable` option
         assert_raises_rpc_error(-8, "Invalid parameter combination: Sequence number(s) contradict replaceable option",
-                                self.nodes[0].createrawtransaction, [{'txid': TXID, 'vout': 0, 'sequence': MAX_BIP125_RBF_SEQUENCE+1}], {}, 0, True)
+                                self.nodes[0].createrawtransaction, [{'txid': TXID, 'vout': 0, 'sequence': MAX_BIP125_RBF_SEQUENCE+1}], {}, 0, -1, True)
 
         # Test `createrawtransaction` invalid `locktime`
         assert_raises_rpc_error(-3, "JSON value of type string is not of expected type number", self.nodes[0].createrawtransaction, [], {}, 'foo')
         assert_raises_rpc_error(-8, "Invalid parameter, locktime out of range", self.nodes[0].createrawtransaction, [], {}, -1)
         assert_raises_rpc_error(-8, "Invalid parameter, locktime out of range", self.nodes[0].createrawtransaction, [], {}, 4294967296)
 
+        # Test `createrawtransaction` invalid `lockheight`
+        assert_raises_rpc_error(-3, "JSON value of type string is not of expected type number", self.nodes[0].createrawtransaction, [], {}, 0, 'foo')
+        assert_raises_rpc_error(-8, "Invalid parameter, lockheight out of range", self.nodes[0].createrawtransaction, [], {}, 0, -2)
+        assert_raises_rpc_error(-8, "Invalid parameter, lockheight out of range", self.nodes[0].createrawtransaction, [], {}, 0, 4294967296)
+
         # Test `createrawtransaction` invalid `replaceable`
-        assert_raises_rpc_error(-3, "JSON value of type string is not of expected type bool", self.nodes[0].createrawtransaction, [], {}, 0, 'foo')
+        assert_raises_rpc_error(-3, "JSON value of type string is not of expected type bool", self.nodes[0].createrawtransaction, [], {}, 0, -1, 'foo')
 
         # Test that createrawtransaction accepts an array and object as outputs
         # One output
@@ -403,7 +422,7 @@ class RawTransactionsTest(BitcoinTestFramework):
         fee_exceeds_max = "Fee exceeds maximum configured by user (e.g. -maxtxfee, maxfeerate)"
 
         # Test a transaction with a small fee.
-        # Fee rate is 0.00100000 BTC/kvB
+        # Fee rate is 0.00100000 FRC/kvB
         tx = self.wallet.create_self_transfer(fee_rate=Decimal('0.00100000'))
         # Thus, testmempoolaccept should reject
         testres = self.nodes[2].testmempoolaccept([tx['hex']], 0.00001000)[0]
@@ -417,7 +436,7 @@ class RawTransactionsTest(BitcoinTestFramework):
         self.nodes[2].sendrawtransaction(hexstring=tx['hex'])
 
         # Test a transaction with a large fee.
-        # Fee rate is 0.20000000 BTC/kvB
+        # Fee rate is 0.20000000 FRC/kvB
         tx = self.wallet.create_self_transfer(fee_rate=Decimal("0.20000000"))
         # Thus, testmempoolaccept should reject
         testres = self.nodes[2].testmempoolaccept([tx['hex']])[0]
@@ -441,18 +460,18 @@ class RawTransactionsTest(BitcoinTestFramework):
     def decoderawtransaction_tests(self):
         self.log.info("Test decoderawtransaction")
         # witness transaction
-        encrawtx = "010000000001010000000000000072c1a6a246ae63f74f931e8365e15a089c68d61900000000000000000000ffffffff0100e1f50500000000000102616100000000"
+        encrawtx = "01000000ff01010000000000000072c1a6a246ae63f74f931e8365e15a089c68d61900000000000000000000ffffffff0100e1f5050000000000010261610000000001000000"
         decrawtx = self.nodes[0].decoderawtransaction(encrawtx, True)  # decode as witness transaction
         assert_equal(decrawtx['vout'][0]['value'], Decimal('1.00000000'))
         assert_raises_rpc_error(-22, 'TX decode failed', self.nodes[0].decoderawtransaction, encrawtx, False) # force decode as non-witness transaction
         # non-witness transaction
-        encrawtx = "01000000010000000000000072c1a6a246ae63f74f931e8365e15a089c68d61900000000000000000000ffffffff0100e1f505000000000000000000"
+        encrawtx = "01000000010000000000000072c1a6a246ae63f74f931e8365e15a089c68d61900000000000000000000ffffffff0100e1f50500000000000000000001000000"
         decrawtx = self.nodes[0].decoderawtransaction(encrawtx, False)  # decode as non-witness transaction
         assert_equal(decrawtx['vout'][0]['value'], Decimal('1.00000000'))
         # known ambiguous transaction in the chain (see https://github.com/bitcoin/bitcoin/issues/20579)
         coinbase = "03c68708046ff8415c622f4254432e434f4d2ffabe6d6de1965d02c68f928e5b244ab1965115a36f56eb997633c7f690124bbf43644e23080000000ca3d3af6d005a65ff0200fd00000000"
-        encrawtx = f"020000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff4b{coinbase}" \
-                   "ffffffff03f4c1fb4b0000000016001497cfc76442fe717f2a3f0cc9c175f7561b6619970000000000000000266a24aa21a9ed957d1036a80343e0d1b659497e1b48a38ebe876a056d45965fac4a85cda84e1900000000000000002952534b424c4f434b3a8e092581ab01986cbadc84f4b43f4fa4bb9e7a2e2a0caf9b7cf64d939028e22c0120000000000000000000000000000000000000000000000000000000000000000000000000"
+        encrawtx = f"02000000ff01010000000000000000000000000000000000000000000000000000000000000000ffffffff4b{coinbase}" \
+                   "ffffffff03f4c1fb4b0000000016001497cfc76442fe717f2a3f0cc9c175f7561b6619970000000000000000266a24aa21a9ed957d1036a80343e0d1b659497e1b48a38ebe876a056d45965fac4a85cda84e1900000000000000002952534b424c4f434b3a8e092581ab01986cbadc84f4b43f4fa4bb9e7a2e2a0caf9b7cf64d939028e22c012000000000000000000000000000000000000000000000000000000000000000000000000001000000"
         decrawtx = self.nodes[0].decoderawtransaction(encrawtx)
         decrawtx_wit = self.nodes[0].decoderawtransaction(encrawtx, True)
         assert_raises_rpc_error(-22, 'TX decode failed', self.nodes[0].decoderawtransaction, encrawtx, False)  # fails to decode as non-witness transaction
@@ -494,7 +513,7 @@ class RawTransactionsTest(BitcoinTestFramework):
     def raw_multisig_transaction_legacy_tests(self):
         self.log.info("Test raw multisig transactions (legacy)")
         # The traditional multisig workflow does not work with descriptor wallets so these are legacy only.
-        # The multisig workflow with descriptor wallets uses PSBTs and is tested elsewhere, no need to do them here.
+        # The multisig workflow with descriptor wallets uses PSTs and is tested elsewhere, no need to do them here.
 
         # 2of2 test
         addr1 = self.nodes[2].getnewaddress()
@@ -515,7 +534,7 @@ class RawTransactionsTest(BitcoinTestFramework):
         # use balance deltas instead of absolute values
         bal = self.nodes[2].getbalance()
 
-        # send 1.2 BTC to msig adr
+        # send 1.2 FRC to msig adr
         txId = self.nodes[0].sendtoaddress(mSigObj, 1.2)
         self.sync_all()
         self.generate(self.nodes[0], 1)
@@ -550,7 +569,7 @@ class RawTransactionsTest(BitcoinTestFramework):
         vout = next(o for o in rawTx['vout'] if o['value'] == Decimal('2.20000000'))
 
         bal = self.nodes[0].getbalance()
-        inputs = [{"txid": txId, "vout": vout['n'], "scriptPubKey": vout['scriptPubKey']['hex'], "amount": vout['value']}]
+        inputs = [{"txid": txId, "vout": vout['n'], "scriptPubKey": vout['scriptPubKey']['hex'], "value": vout['value'], "refheight": rawTx['lockheight']}]
         outputs = {self.nodes[0].getnewaddress(): 2.19}
         rawTx = self.nodes[2].createrawtransaction(inputs, outputs)
         rawTxPartialSigned = self.nodes[1].signrawtransactionwithwallet(rawTx, inputs)
@@ -589,7 +608,7 @@ class RawTransactionsTest(BitcoinTestFramework):
         vout = next(o for o in rawTx2['vout'] if o['value'] == Decimal('2.20000000'))
 
         bal = self.nodes[0].getbalance()
-        inputs = [{"txid": txId, "vout": vout['n'], "scriptPubKey": vout['scriptPubKey']['hex'], "redeemScript": mSigObjValid['hex'], "amount": vout['value']}]
+        inputs = [{"txid": txId, "vout": vout['n'], "scriptPubKey": vout['scriptPubKey']['hex'], "redeemScript": mSigObjValid['hex'], "value": vout['value'], "refheight" : txDetails['refheight']}]
         outputs = {self.nodes[0].getnewaddress(): 2.19}
         rawTx2 = self.nodes[2].createrawtransaction(inputs, outputs)
         rawTxPartialSigned1 = self.nodes[1].signrawtransactionwithwallet(rawTx2, inputs)

@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test descendant package tracking carve-out allowing one final transaction in
    an otherwise-full package as long as it has only one parent and is <= 10k in
    size.
@@ -10,7 +21,7 @@
 from test_framework.messages import (
     DEFAULT_ANCESTOR_LIMIT,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
@@ -18,7 +29,7 @@ from test_framework.util import (
 from test_framework.wallet import MiniWallet
 
 
-class MempoolPackagesTest(BitcoinTestFramework):
+class MempoolPackagesTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -69,7 +80,7 @@ class MempoolPackagesTest(BitcoinTestFramework):
 
         # Ensure an individual transaction with single direct conflict can RBF the chain which used our carve-out rule
         replacement_tx = replaceable_tx["tx"]
-        replacement_tx.vout[0].nValue -= 1000000
+        replacement_tx.vout[0].nValue -= 500000
         self.nodes[0].sendrawtransaction(replacement_tx.serialize().hex())
 
         # Finally, check that we added two transactions

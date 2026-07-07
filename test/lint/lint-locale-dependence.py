@@ -1,27 +1,38 @@
 #!/usr/bin/env python3
 # Copyright (c) 2018-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
 #
-# Be aware that bitcoind and bitcoin-qt differ in terms of localization: Qt
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+# Be aware that freicoind and freicoin-qt differ in terms of localization: Qt
 # opts in to POSIX localization by running setlocale(LC_ALL, "") on startup,
-# whereas no such call is made in bitcoind.
+# whereas no such call is made in freicoind.
 #
 # Qt runs setlocale(LC_ALL, "") on initialization. This installs the locale
 # specified by the user's LC_ALL (or LC_*) environment variable as the new
 # C locale.
 #
-# In contrast, bitcoind does not opt in to localization -- no call to
+# In contrast, freicoind does not opt in to localization -- no call to
 # setlocale(LC_ALL, "") is made and the environment variables LC_* are
 # thus ignored.
 #
-# This results in situations where bitcoind is guaranteed to be running
-# with the classic locale ("C") whereas the locale of bitcoin-qt will vary
+# This results in situations where freicoind is guaranteed to be running
+# with the classic locale ("C") whereas the locale of freicoin-qt will vary
 # depending on the user's environment variables.
 #
 # An example: Assuming the environment variable LC_ALL=de_DE then the
-# call std::to_string(1.23) will return "1.230000" in bitcoind but
-# "1,230000" in bitcoin-qt.
+# call std::to_string(1.23) will return "1.230000" in freicoind but
+# "1,230000" in freicoin-qt.
 #
 # From the Qt documentation:
 # "On Unix/Linux Qt is configured to use the system locale settings by default.

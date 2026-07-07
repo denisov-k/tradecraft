@@ -1,10 +1,24 @@
 #!/usr/bin/env python3
 # Copyright (c) 2021-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test logic for limiting mempool and package ancestors/descendants."""
 from test_framework.blocktools import COINBASE_MATURITY
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.messages import (
+    WITNESS_SCALE_FACTOR,
+)
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
@@ -35,7 +49,7 @@ def check_package_limits(func):
     return func_wrapper
 
 
-class MempoolPackageLimitsTest(BitcoinTestFramework):
+class MempoolPackageLimitsTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
@@ -53,7 +67,7 @@ class MempoolPackageLimitsTest(BitcoinTestFramework):
         self.test_anc_count_limits_bushy()
 
         # The node will accept (nonstandard) extra large OP_RETURN outputs
-        self.restart_node(0, extra_args=["-datacarriersize=100000"])
+        self.restart_node(0, extra_args=["-datacarrier=1", "-datacarriersize=100000"])
         self.test_anc_size_limits()
         self.test_desc_size_limits()
 
@@ -285,7 +299,7 @@ class MempoolPackageLimitsTest(BitcoinTestFramework):
         """
         node = self.nodes[0]
         parent_utxos = []
-        target_vsize = 30_000
+        target_vsize = 29_996
         high_fee = 10 * target_vsize  # 10 sats/vB
         self.log.info("Check that in-mempool and in-package ancestor size limits are calculated properly in packages")
         # Mempool transactions A and B

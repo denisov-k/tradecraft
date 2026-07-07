@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2017-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test message sending before handshake completion.
 
 Before receiving a VERACK, a node should not send anything but VERSION/VERACK
@@ -23,7 +34,7 @@ from test_framework.p2p import (
     P2P_SERVICES,
     P2P_VERSION_RELAY,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than_or_equal,
@@ -97,7 +108,7 @@ class P2PVersionStore(P2PInterface):
         self.version_received = msg
 
 
-class P2PLeakTest(BitcoinTestFramework):
+class P2PLeakTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [[f"-peertimeout={PEER_TIMEOUT}"]]
@@ -119,9 +130,9 @@ class P2PLeakTest(BitcoinTestFramework):
         no_verack_idle_peer = self.nodes[0].add_p2p_connection(NoVerackIdlePeer(), wait_for_verack=False)
 
         # Pre-wtxidRelay peer that sends a version but not a verack and does not support feature negotiation
-        # messages which start at nVersion == 70016
+        # messages which start at nVersion == 70017
         pre_wtxidrelay_peer = self.nodes[0].add_p2p_connection(NoVerackIdlePeer(), send_version=False, wait_for_verack=False)
-        pre_wtxidrelay_peer.send_message(self.create_old_version(70015))
+        pre_wtxidrelay_peer.send_message(self.create_old_version(70016))
 
         # Wait until the peer gets the verack in response to the version. Though, don't wait for the node to receive the
         # verack, since the peer never sent one

@@ -1,35 +1,46 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test error messages for 'getaddressinfo' and 'validateaddress' RPC commands."""
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
 )
 
-BECH32_VALID = 'bcrt1qtmp74ayg7p24uslctssvjm06q5phz4yrxucgnv'
-BECH32_VALID_UNKNOWN_WITNESS = 'bcrt1p424qxxyd0r'
-BECH32_VALID_CAPITALS = 'BCRT1QPLMTZKC2XHARPPZDLNPAQL78RSHJ68U33RAH7R'
-BECH32_VALID_MULTISIG = 'bcrt1qdg3myrgvzw7ml9q0ejxhlkyxm7vl9r56yzkfgvzclrf4hkpx9yfqhpsuks'
+BECH32_VALID = 'fcrt1qtmp74ayg7p24uslctssvjm06q5phz4yr4g3036'
+BECH32_VALID_UNKNOWN_WITNESS = 'fcrt1p424q7tpc3m'
+BECH32_VALID_CAPITALS = 'FCRT1QPLMTZKC2XHARPPZDLNPAQL78RSHJ68U3ZH5SU4'
+BECH32_VALID_MULTISIG = 'fcrt1qdg3myrgvzw7ml9q0ejxhlkyxm7vl9r56yzkfgvzclrf4hkpx9yfqf50q49'
 
-BECH32_INVALID_BECH32 = 'bcrt1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqdmchcc'
-BECH32_INVALID_BECH32M = 'bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7k35mrzd'
-BECH32_INVALID_VERSION = 'bcrt130xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqynjegk'
-BECH32_INVALID_SIZE = 'bcrt1s0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav25430mtr'
-BECH32_INVALID_V0_SIZE = 'bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kqqq5k3my'
-BECH32_INVALID_PREFIX = 'bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7k7grplx'
-BECH32_TOO_LONG = 'bcrt1q049edschfnwystcqnsvyfpj23mpsg3jcedq9xv049edschfnwystcqnsvyfpj23mpsg3jcedq9xv049edschfnwystcqnsvyfpj23m'
-BECH32_ONE_ERROR = 'bcrt1q049edschfnwystcqnsvyfpj23mpsg3jcedq9xv'
-BECH32_ONE_ERROR_CAPITALS = 'BCRT1QPLMTZKC2XHARPPZDLNPAQL78RSHJ68U32RAH7R'
-BECH32_TWO_ERRORS = 'bcrt1qax9suht3qv95sw33xavx8crpxduefdrsvgsklu' # should be bcrt1qax9suht3qv95sw33wavx8crpxduefdrsvgsklx
-BECH32_NO_SEPARATOR = 'bcrtq049ldschfnwystcqnsvyfpj23mpsg3jcedq9xv'
-BECH32_INVALID_CHAR = 'bcrt1q04oldschfnwystcqnsvyfpj23mpsg3jcedq9xv'
-BECH32_MULTISIG_TWO_ERRORS = 'bcrt1qdg3myrgvzw7ml8q0ejxhlkyxn7vl9r56yzkfgvzclrf4hkpx9yfqhpsuks'
-BECH32_WRONG_VERSION = 'bcrt1ptmp74ayg7p24uslctssvjm06q5phz4yrxucgnv'
+BECH32_INVALID_BECH32 = 'fcrt1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqxjh870'
+BECH32_INVALID_BECH32M = 'fcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7khuzg9e'
+BECH32_INVALID_VERSION = 'fcrt130xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq06afwp'
+BECH32_INVALID_SIZE = 'fcrt1s0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav24umuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtes7d7vcfrh3dw'
+BECH32_INVALID_V0_SIZE = 'fcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kqqetwtn0'
+BECH32_INVALID_PREFIX = 'fc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kyf785h'
+BECH32_TOO_LONG = 'fcrt1qppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp8ca2mx'
+BECH32_ONE_ERROR = 'fcrt1qtmp74ayg7p24uslctssvjn06q5phz4yr4g3036'
+BECH32_ONE_ERROR_CAPITALS = 'FCRT1QTMP74AYG7P24USLCTSSVJN06Q5PHZ4YR4G3036'
+BECH32_TWO_ERRORS = 'fcrt1qax9suht3qv95sw33wavw8crpxduefdrslue3au' # should be fcrt1qax9suht3qv95sw33wavx8crpxduefdrslue3as
+BECH32_NO_SEPARATOR = 'fcrtq049ldschfnwystcqnsvyfpj23mpsg3jc2efzy6'
+BECH32_INVALID_CHAR = 'fcrt1q04oldschfnwystcqnsvyfpj23mpsg3jc2efzy6'
+BECH32_MULTISIG_TWO_ERRORS = 'fcrt1qdg3myrgvzw7ml8q0ejxhlkyxn7vl9r56yzkfgvzclrf4hkpx9yfqf50q49'
+BECH32_WRONG_VERSION = 'fcrt1ptmp74ayg7p24uslctssvjm06q5phz4yr4g3036'
 
 BASE58_VALID = 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn'
 BASE58_INVALID_PREFIX = '17VZNX1SN5NtKa8UQFxwQbFeFc3iqRYhem'
@@ -39,7 +50,7 @@ BASE58_INVALID_LENGTH = '2VKf7XKMrp4bVNVmuRbyCewkP8FhGLP2E54LHDPakr9Sq5mtU2'
 INVALID_ADDRESS = 'asfah14i8fajz0123f'
 INVALID_ADDRESS_2 = '1q049ldschfnwystcqnsvyfpj23mpsg3jcedq9xv'
 
-class InvalidAddressErrorMessageTest(BitcoinTestFramework):
+class InvalidAddressErrorMessageTest(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -64,20 +75,20 @@ class InvalidAddressErrorMessageTest(BitcoinTestFramework):
 
     def test_validateaddress(self):
         # Invalid Bech32
-        self.check_invalid(BECH32_INVALID_SIZE, "Invalid Bech32 address program size (41 bytes)")
+        self.check_invalid(BECH32_INVALID_SIZE, 'Bech32 string too long', error_locations=list(range(90, 134)))
         self.check_invalid(BECH32_INVALID_PREFIX, 'Invalid or unsupported Segwit (Bech32) or Base58 encoding.')
-        self.check_invalid(BECH32_INVALID_BECH32, 'Version 1+ witness address must use Bech32m checksum')
-        self.check_invalid(BECH32_INVALID_BECH32M, 'Version 0 witness address must use Bech32 checksum')
-        self.check_invalid(BECH32_INVALID_VERSION, 'Invalid Bech32 address witness version')
-        self.check_invalid(BECH32_INVALID_V0_SIZE, "Invalid Bech32 v0 address program size (21 bytes), per BIP141")
-        self.check_invalid(BECH32_TOO_LONG, 'Bech32 string too long', list(range(90, 108)))
-        self.check_invalid(BECH32_ONE_ERROR, 'Invalid Bech32 checksum', [9])
-        self.check_invalid(BECH32_TWO_ERRORS, 'Invalid Bech32 checksum', [22, 43])
-        self.check_invalid(BECH32_ONE_ERROR_CAPITALS, 'Invalid Bech32 checksum', [38])
+        self.check_invalid(BECH32_INVALID_BECH32, 'All address types in Freicoin use Bech32m checksum.')
+        self.check_valid(BECH32_INVALID_BECH32M) # Switch to bech32m for all segwit addresses, and change prefix.
+        self.check_valid(BECH32_INVALID_VERSION) # Expand allowed witness versions to be any of the 31 1-byte opcodes which can appear at the beginning of a legacy, pre-cleanup scriptPubKey.
+        self.check_valid(BECH32_INVALID_V0_SIZE) # Switch to bech32m for all segwit addresses, and change prefix.# Unrecognized witness lengths are treated as unknown segwit versions
+        self.check_invalid(BECH32_TOO_LONG, 'Bech32 string too long', [90])
+        self.check_invalid(BECH32_ONE_ERROR, 'Invalid Bech32m checksum', [27])
+        self.check_invalid(BECH32_TWO_ERRORS, 'Invalid Bech32m checksum', [25, 43])
+        self.check_invalid(BECH32_ONE_ERROR_CAPITALS, 'Invalid Bech32m checksum', [27])
         self.check_invalid(BECH32_NO_SEPARATOR, 'Missing separator')
         self.check_invalid(BECH32_INVALID_CHAR, 'Invalid Base 32 character', [8])
-        self.check_invalid(BECH32_MULTISIG_TWO_ERRORS, 'Invalid Bech32 checksum', [19, 30])
-        self.check_invalid(BECH32_WRONG_VERSION, 'Invalid Bech32 checksum', [5])
+        self.check_invalid(BECH32_MULTISIG_TWO_ERRORS, 'Invalid Bech32m checksum', [19, 30])
+        self.check_invalid(BECH32_WRONG_VERSION, 'Invalid Bech32m checksum', [5])
 
         # Valid Bech32
         self.check_valid(BECH32_VALID)
@@ -100,14 +111,14 @@ class InvalidAddressErrorMessageTest(BitcoinTestFramework):
         node = self.nodes[0]
 
         # Missing arg returns the help text
-        assert_raises_rpc_error(-1, "Return information about the given bitcoin address.", node.validateaddress)
+        assert_raises_rpc_error(-1, "Return information about the given freicoin address.", node.validateaddress)
         # Explicit None is not allowed for required parameters
         assert_raises_rpc_error(-3, "JSON value of type null is not of expected type string", node.validateaddress, None)
 
     def test_getaddressinfo(self):
         node = self.nodes[0]
 
-        assert_raises_rpc_error(-5, "Invalid Bech32 address program size (41 bytes)", node.getaddressinfo, BECH32_INVALID_SIZE)
+        assert_raises_rpc_error(-5, "Bech32 string too long", node.getaddressinfo, BECH32_INVALID_SIZE)
         assert_raises_rpc_error(-5, "Invalid or unsupported Segwit (Bech32) or Base58 encoding.", node.getaddressinfo, BECH32_INVALID_PREFIX)
         assert_raises_rpc_error(-5, "Invalid or unsupported Base58-encoded address.", node.getaddressinfo, BASE58_INVALID_PREFIX)
         assert_raises_rpc_error(-5, "Invalid or unsupported Segwit (Bech32) or Base58 encoding.", node.getaddressinfo, INVALID_ADDRESS)

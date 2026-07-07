@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2019-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test that we reject low difficulty headers to prevent our block tree from filling up with useless bloat"""
 
 from test_framework.messages import (
@@ -12,22 +23,22 @@ from test_framework.p2p import (
     P2PInterface,
     msg_headers,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 
 import os
 
 
-class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
+class RejectLowDifficultyHeadersTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.chain = 'testnet3'  # Use testnet chain because it has an early checkpoint
+        self.chain = 'testnet'  # Use testnet chain because it has an early checkpoint
         self.num_nodes = 2
         self.extra_args = [["-minimumchainwork=0x0", '-prune=550']] * self.num_nodes
 
     def add_options(self, parser):
         parser.add_argument(
             '--datafile',
-            default='data/blockheader_testnet3.hex',
+            default='data/blockheader_testnet.hex',
             help='Test data file (default: %(default)s)',
         )
 
@@ -37,7 +48,7 @@ class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
         with open(self.headers_file_path, encoding='utf-8') as headers_data:
             h_lines = [l.strip() for l in headers_data.readlines()]
 
-        # The headers data is taken from testnet3 for early blocks from genesis until the first checkpoint. There are
+        # The headers data is taken from testnet for early blocks from genesis until the first checkpoint. There are
         # two headers with valid POW at height 1 and 2, forking off from genesis. They are indicated by the FORK_PREFIX.
         FORK_PREFIX = 'fork:'
         self.headers = [l for l in h_lines if not l.startswith(FORK_PREFIX)]
@@ -48,11 +59,12 @@ class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
 
         self.log.info("Feed all non-fork headers, including and up to the first checkpoint")
         peer_checkpoint = self.nodes[0].add_p2p_connection(P2PInterface())
-        peer_checkpoint.send_and_ping(msg_headers(self.headers))
+        peer_checkpoint.send_and_ping(msg_headers(self.headers[:1500]))
+        peer_checkpoint.send_and_ping(msg_headers(self.headers[1500:]))
         assert {
-            'height': 546,
-            'hash': '000000002a936ca763904c3c35fce2f3556c559c0214345d31b1bcebf76acb70',
-            'branchlen': 546,
+            'height': 2016,
+            'hash': '00000000000017c5d079dfbe901cb7d0fae2a8eafd91be4e98f23481c73921d5',
+            'branchlen': 2016,
             'status': 'headers-only',
         } in self.nodes[0].getchaintips()
 
@@ -68,7 +80,7 @@ class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
         peer_no_checkpoint.send_and_ping(msg_headers(self.headers_fork))
         assert {
             "height": 2,
-            "hash": "00000000b0494bd6c3d5ff79c497cfce40831871cbf39b1bc28bd1dac817dc39",
+            "hash": "00000000d479d58ba68bb63ab00eadeaa56770fde588b7f9b667be8eef682c31",
             "branchlen": 2,
             "status": "headers-only",
         } in self.nodes[0].getchaintips()
@@ -78,7 +90,7 @@ class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
         peer_before_checkpoint.send_and_ping(msg_headers(self.headers_fork))
         assert {
             "height": 2,
-            "hash": "00000000b0494bd6c3d5ff79c497cfce40831871cbf39b1bc28bd1dac817dc39",
+            "hash": "00000000d479d58ba68bb63ab00eadeaa56770fde588b7f9b667be8eef682c31",
             "branchlen": 2,
             "status": "headers-only",
         } in self.nodes[1].getchaintips()

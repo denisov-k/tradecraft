@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test addr response caching"""
 
 import time
@@ -10,7 +21,7 @@ from test_framework.p2p import (
     P2PInterface,
     p2p_lock
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     p2p_port,
@@ -40,7 +51,7 @@ class AddrReceiver(P2PInterface):
         return self.received_addrs is not None
 
 
-class AddrTest(BitcoinTestFramework):
+class AddrTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         # Use some of the remaining p2p ports for the onion binds.
@@ -56,7 +67,7 @@ class AddrTest(BitcoinTestFramework):
             first_octet = i >> 8
             second_octet = i % 256
             a = "{}.{}.1.1".format(first_octet, second_octet)
-            self.nodes[0].addpeeraddress(a, 8333)
+            self.nodes[0].addpeeraddress(a, 8639)
 
         # Need to make sure we hit MAX_ADDR_TO_SEND records in the addr response later because
         # only a fraction of all known addresses can be cached and returned.

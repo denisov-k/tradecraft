@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2017-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test recovery from a crash during chainstate writing.
 
 - 4 nodes
@@ -34,7 +45,7 @@ from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.messages import (
     COIN,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
@@ -44,7 +55,7 @@ from test_framework.wallet import (
 )
 
 
-class ChainstateWriteCrashTest(BitcoinTestFramework):
+class ChainstateWriteCrashTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 4
         self.rpc_timeout = 480
@@ -89,14 +100,14 @@ class ChainstateWriteCrashTest(BitcoinTestFramework):
                 return utxo_hash
             except Exception:
                 # An exception here should mean the node is about to crash.
-                # If bitcoind exits, then try again.  wait_for_node_exit()
-                # should raise an exception if bitcoind doesn't exit.
+                # If freicoind exits, then try again.  wait_for_node_exit()
+                # should raise an exception if freicoind doesn't exit.
                 self.wait_for_node_exit(node_index, timeout=10)
             self.crashed_on_restart += 1
             time.sleep(1)
 
-        # If we got here, bitcoind isn't coming back up on restart.  Could be a
-        # bug in bitcoind, or we've gotten unlucky with our dbcrash ratio --
+        # If we got here, freicoind isn't coming back up on restart.  Could be a
+        # bug in freicoind, or we've gotten unlucky with our dbcrash ratio --
         # perhaps we generated a test case that blew up our cache?
         # TODO: If this happens a lot, we should try to restart without -dbcrashratio
         # and make sure that recovery happens.
