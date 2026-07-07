@@ -62,13 +62,8 @@ class LoadblockTest(FreicoinTestFramework):
             cfg.write(f"port={node_url.port}\n")
             cfg.write(f"host={node_url.hostname}\n")
             cfg.write(f"output_file={bootstrap_file}\n")
-<<<<<<< v29.0
-            cfg.write("max_height=100\n")
-            cfg.write("netmagic=fabfb5da\n")
-=======
             cfg.write(f"max_height=100\n")
             cfg.write(f"netmagic=ed999cf6\n")
->>>>>>> tc-28.1
             cfg.write(f"input={blocks_dir}\n")
             cfg.write(f"genesis={genesis_block}\n")
             cfg.write(f"hashlist={hash_list.name}\n")

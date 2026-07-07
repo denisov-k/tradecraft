@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-<<<<<<< v29.0
-# Copyright (c) 2015-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-=======
 # Copyright (c) 2015-2022 The Bitcoin Core developers
 # Copyright (c) 2010-2024 The Freicoin Developers
 #
@@ -18,7 +13,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
->>>>>>> tc-28.1
 """Utilities for manipulating blocks and transactions."""
 
 import struct
@@ -51,12 +45,9 @@ from .script import (
     CScript,
     CScriptNum,
     CScriptOp,
-<<<<<<< v29.0
     OP_0,
-    OP_RETURN,
-=======
     OP_1,
->>>>>>> tc-28.1
+    OP_RETURN,
     OP_TRUE,
 )
 from .script_util import (

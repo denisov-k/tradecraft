@@ -17,16 +17,11 @@
 to peers until a GETDATA is received."""
 
 from test_framework.p2p import P2PTxInvStore
-<<<<<<< v29.0
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     ensure_for,
 )
-=======
-from test_framework.test_framework import FreicoinTestFramework
-from test_framework.util import assert_equal
->>>>>>> tc-28.1
 from test_framework.wallet import MiniWallet
 
 MAX_INITIAL_BROADCAST_DELAY = 15 * 60 # 15 minutes in seconds

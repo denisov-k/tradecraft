@@ -36,16 +36,12 @@ def rpccall(node, user, method):
     return resp
 
 
-<<<<<<< v29.0
 def get_permissions(whitelist):
     return [perm for perm in whitelist.replace(" ", "").split(",") if perm]
 
 
-class RPCWhitelistTest(BitcoinTestFramework):
-
-=======
 class RPCWhitelistTest(FreicoinTestFramework):
->>>>>>> tc-28.1
+
     def set_test_params(self):
         self.num_nodes = 1
 

@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
 # Copyright (c) 2021-present The Bitcoin Core developers
-<<<<<<< v29.0
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Tests related to node initialization."""
-=======
 # Copyright (c) 2010-2024 The Freicoin Developers
 #
 # This program is free software: you can redistribute it and/or modify it under
@@ -19,7 +14,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Stress tests related to node initialization."""
->>>>>>> tc-28.1
 from pathlib import Path
 import os
 import platform
@@ -27,8 +21,7 @@ import shutil
 import signal
 import subprocess
 
-<<<<<<< v29.0
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.test_node import (
     BITCOIN_PID_FILENAME_DEFAULT,
     ErrorMatch,
@@ -36,15 +29,7 @@ from test_framework.test_node import (
 from test_framework.util import assert_equal
 
 
-class InitTest(BitcoinTestFramework):
-=======
-from test_framework.test_framework import FreicoinTestFramework, SkipTest
-from test_framework.test_node import ErrorMatch
-from test_framework.util import assert_equal
-
-
-class InitStressTest(FreicoinTestFramework):
->>>>>>> tc-28.1
+class InitTest(FreicoinTestFramework):
     """
     Ensure that initialization can be interrupted at a number of points and not impair
     subsequent starts.

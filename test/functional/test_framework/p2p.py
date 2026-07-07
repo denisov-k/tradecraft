@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2010 ArtForz -- public domain half-a-node
 # Copyright (c) 2012 Jeff Garzik
-<<<<<<< v29.0
-# Copyright (c) 2010-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test objects for interacting with a bitcoind node over the p2p protocol.
-=======
 # Copyright (c) 2010-2022 The Bitcoin Core developers
 # Copyright (c) 2010-2024 The Freicoin Developers
 #
@@ -22,7 +16,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test objects for interacting with a freicoind node over the p2p protocol.
->>>>>>> tc-28.1
 
 The P2PInterface objects interact with the freicoind nodes under test using the
 node's p2p interface. They can be used to send messages to the node, and

@@ -25,13 +25,9 @@ import textwrap
 
 from collections import OrderedDict
 
-<<<<<<< v29.0
 from test_framework.bdb import dump_bdb_kv
 from test_framework.messages import ser_string
-from test_framework.test_framework import BitcoinTestFramework
-=======
 from test_framework.test_framework import FreicoinTestFramework
->>>>>>> tc-28.1
 from test_framework.util import (
     assert_equal,
     assert_greater_than,

@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-<<<<<<< v29.0
-# Copyright (c) 2017-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-=======
 # Copyright (c) 2017-2022 The Bitcoin Core developers
 # Copyright (c) 2010-2024 The Freicoin Developers
 #
@@ -18,7 +13,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
->>>>>>> tc-28.1
 """Test various command line arguments and configuration file parameters."""
 
 import os
@@ -28,12 +22,8 @@ import re
 import tempfile
 import time
 
-<<<<<<< v29.0
 from test_framework.netutil import UNREACHABLE_PROXY_ARG
-from test_framework.test_framework import BitcoinTestFramework
-=======
 from test_framework.test_framework import FreicoinTestFramework
->>>>>>> tc-28.1
 from test_framework.test_node import ErrorMatch
 from test_framework import util
 
@@ -121,15 +111,9 @@ class ConfArgsTest(FreicoinTestFramework):
     def test_config_file_parser(self):
         self.log.info('Test config file parser')
 
-<<<<<<< v29.0
-        # Check that startup fails if conf= is set in bitcoin.conf or in an included conf file
-        bad_conf_file_path = self.nodes[0].datadir_path / "bitcoin_bad.conf"
-        util.write_config(bad_conf_file_path, n=0, chain='', extra_config='conf=some.conf\n')
-=======
         # Check that startup fails if conf= is set in freicoin.conf or in an included conf file
         bad_conf_file_path = self.nodes[0].datadir_path / "freicoin_bad.conf"
-        util.write_config(bad_conf_file_path, n=0, chain='', extra_config=f'conf=some.conf\n')
->>>>>>> tc-28.1
+        util.write_config(bad_conf_file_path, n=0, chain='', extra_config='conf=some.conf\n')
         conf_in_config_file_err = 'Error: Error reading configuration file: conf cannot be set in the configuration file; use includeconf= if you want to include additional config files'
         self.nodes[0].assert_start_raises_init_error(
             extra_args=[f'-conf={bad_conf_file_path}'],
@@ -497,31 +481,6 @@ class ConfArgsTest(FreicoinTestFramework):
             self.nodes[0].assert_start_raises_init_error(expected_msg=f'Error: acceptstalefeeestimates is not supported on {chain} chain.')
         util.write_config(conf_file, n=0, chain="regtest")  # Reset to regtest
 
-<<<<<<< v29.0
-    def test_testnet3_deprecation_msg(self):
-        self.log.info("Test testnet3 deprecation warning")
-        t3_warning_log = "Warning: Support for testnet3 is deprecated and will be removed in an upcoming release. Consider switching to testnet4."
-
-        self.log.debug("Testnet3 node will log the deprecation warning")
-        self.nodes[0].chain = 'testnet3'
-        self.nodes[0].replace_in_config([('regtest=', 'testnet='), ('[regtest]', '[test]')])
-        with self.nodes[0].assert_debug_log([t3_warning_log]):
-            self.start_node(0)
-        self.stop_node(0)
-
-        self.log.debug("Testnet4 node will not log the deprecation warning")
-        self.nodes[0].chain = 'testnet4'
-        self.nodes[0].replace_in_config([('testnet=', 'testnet4='), ('[test]', '[testnet4]')])
-        with self.nodes[0].assert_debug_log([], unexpected_msgs=[t3_warning_log]):
-            self.start_node(0)
-        self.stop_node(0)
-
-        self.log.debug("Reset to regtest")
-        self.nodes[0].chain = 'regtest'
-        self.nodes[0].replace_in_config([('testnet4=', 'regtest='), ('[testnet4]', '[regtest]')])
-
-=======
->>>>>>> tc-28.1
     def run_test(self):
         self.test_log_buffer()
         self.test_args_log()

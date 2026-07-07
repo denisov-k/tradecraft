@@ -17,16 +17,11 @@
 import random
 import string
 
-<<<<<<< v29.0
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.test_node import (
     BITCOIN_PID_FILENAME_DEFAULT,
     ErrorMatch,
 )
-=======
-from test_framework.test_framework import FreicoinTestFramework
-from test_framework.test_node import ErrorMatch
->>>>>>> tc-28.1
 
 class FilelockTest(FreicoinTestFramework):
     def add_options(self, parser):
@@ -47,29 +42,18 @@ class FilelockTest(FreicoinTestFramework):
         self.log.info(f"Using datadir {datadir}")
         self.log.info(f"Using blocksdir {blocksdir}")
 
-<<<<<<< v29.0
-        self.log.info("Check that we can't start a second bitcoind instance using the same datadir")
+        self.log.info("Check that we can't start a second freicoind instance using the same datadir")
         expected_msg = f"Error: Cannot obtain a lock on directory {datadir}. {self.config['environment']['CLIENT_NAME']} is probably already running."
         self.nodes[1].assert_start_raises_init_error(extra_args=[f'-datadir={self.nodes[0].datadir_path}', '-noserver'], expected_msg=expected_msg)
 
-        self.log.info("Check that we can't start a second bitcoind instance using the same blocksdir")
+        self.log.info("Check that we can't start a second freicoind instance using the same blocksdir")
         expected_msg = f"Error: Cannot obtain a lock on directory {blocksdir}. {self.config['environment']['CLIENT_NAME']} is probably already running."
         self.nodes[1].assert_start_raises_init_error(extra_args=[f'-blocksdir={self.nodes[0].datadir_path}', '-noserver'], expected_msg=expected_msg)
 
-        self.log.info("Check that cookie and PID file are not deleted when attempting to start a second bitcoind using the same datadir/blocksdir")
-        cookie_file = datadir / ".cookie"
-        assert cookie_file.exists()  # should not be deleted during the second bitcoind instance shutdown
-        pid_file = datadir / BITCOIN_PID_FILENAME_DEFAULT
-=======
-        self.log.info("Check that we can't start a second freicoind instance using the same datadir")
-        expected_msg = f"Error: Cannot obtain a lock on data directory {datadir}. {self.config['environment']['PACKAGE_NAME']} is probably already running."
-        self.nodes[1].assert_start_raises_init_error(extra_args=[f'-datadir={self.nodes[0].datadir_path}', '-noserver'], expected_msg=expected_msg)
-
-        self.log.info("Check that cookie and PID file are not deleted when attempting to start a second freicoind using the same datadir")
+        self.log.info("Check that cookie and PID file are not deleted when attempting to start a second freicoind using the same datadir/blocksdir")
         cookie_file = datadir / ".cookie"
         assert cookie_file.exists()  # should not be deleted during the second freicoind instance shutdown
-        pid_file = datadir / "freicoind.pid"
->>>>>>> tc-28.1
+        pid_file = datadir / BITCOIN_PID_FILENAME_DEFAULT
         assert pid_file.exists()
 
         if self.is_wallet_compiled():

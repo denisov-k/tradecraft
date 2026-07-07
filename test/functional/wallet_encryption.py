@@ -18,12 +18,8 @@
 import time
 import subprocess
 
-<<<<<<< v29.0
 from test_framework.messages import hash256
-from test_framework.test_framework import BitcoinTestFramework
-=======
 from test_framework.test_framework import FreicoinTestFramework
->>>>>>> tc-28.1
 from test_framework.util import (
     assert_raises_rpc_error,
     assert_equal,

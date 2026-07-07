@@ -104,31 +104,20 @@ BASE_SCRIPTS = [
     # Scripts that are run by default.
     # Longest test should go first, to favor running tests in parallel
     # vv Tests less than 5m vv
-<<<<<<< v29.0
-    'feature_fee_estimation.py',
-    'feature_taproot.py',
-    'feature_block.py',
+    'feature_fee_estimation.py --bitcoin-mode',
+    'feature_block.py --bitcoin-mode',
     'mempool_ephemeral_dust.py',
-    'wallet_conflicts.py --legacy-wallet',
-    'wallet_conflicts.py --descriptors',
+    'wallet_conflicts.py --legacy-wallet --bitcoin-mode',
+    'wallet_conflicts.py --descriptors --bitcoin-mode',
     'p2p_opportunistic_1p1c.py',
     'p2p_node_network_limited.py --v1transport',
     'p2p_node_network_limited.py --v2transport',
     # vv Tests less than 2m vv
-    'mining_getblocktemplate_longpoll.py',
-    'p2p_segwit.py',
-    'feature_maxuploadtarget.py',
-    'feature_assumeutxo.py',
-    'mempool_updatefromblock.py',
-=======
-    'feature_fee_estimation.py --bitcoin-mode',
-    'feature_block.py --bitcoin-mode',
-    # vv Tests less than 2m vv
     'mining_getblocktemplate_longpoll.py --bitcoin-mode',
     'p2p_segwit.py --bitcoin-mode',
     'feature_maxuploadtarget.py --bitcoin-mode',
+    'feature_assumeutxo.py',
     'mempool_updatefromblock.py --bitcoin-mode',
->>>>>>> tc-28.1
     'mempool_persist.py --descriptors',
     # vv Tests less than 60s vv
     'rpc_pst.py --legacy-wallet --bitcoin-mode',
@@ -222,12 +211,7 @@ BASE_SCRIPTS = [
     'rpc_getchaintips.py',
     'rpc_misc.py',
     'p2p_1p1c_network.py',
-<<<<<<< v29.0
-    'interface_rest.py',
-=======
-    'p2p_opportunistic_1p1c.py',
     'interface_rest.py --bitcoin-mode',
->>>>>>> tc-28.1
     'mempool_spend_coinbase.py',
     'wallet_avoid_mixing_output_types.py --descriptors',
     'mempool_reorg.py',
@@ -236,21 +220,11 @@ BASE_SCRIPTS = [
     'wallet_createwallet.py --legacy-wallet',
     'wallet_createwallet.py --usecli',
     'wallet_createwallet.py --descriptors',
-<<<<<<< v29.0
-    'wallet_watchonly.py --legacy-wallet',
-    'wallet_watchonly.py --usecli --legacy-wallet',
-    'wallet_reindex.py --legacy-wallet',
-    'wallet_reindex.py --descriptors',
-    'wallet_reorgsrestore.py',
-=======
     'wallet_watchonly.py --legacy-wallet --bitcoin-mode',
     'wallet_watchonly.py --usecli --legacy-wallet --bitcoin-mode',
     'wallet_reindex.py --legacy-wallet --bitcoin-mode',
     'wallet_reindex.py --descriptors --bitcoin-mode',
     'wallet_reorgsrestore.py --bitcoin-mode',
-    'wallet_conflicts.py --legacy-wallet --bitcoin-mode',
-    'wallet_conflicts.py --descriptors --bitcoin-mode',
->>>>>>> tc-28.1
     'interface_http.py',
     'interface_rpc.py',
     'interface_usdt_coinselection.py',
@@ -307,16 +281,9 @@ BASE_SCRIPTS = [
     'p2p_v2_misbehaving.py',
     'example_test.py',
     'mempool_truc.py',
-<<<<<<< v29.0
-    'wallet_txn_doublespend.py --legacy-wallet',
-    'wallet_multisig_descriptor_psbt.py --descriptors',
-    'wallet_miniscript_decaying_multisig_descriptor_psbt.py --descriptors',
-    'wallet_txn_doublespend.py --descriptors',
-=======
     'wallet_txn_doublespend.py --legacy-wallet --bitcoin-mode',
     'wallet_multisig_descriptor_pst.py --descriptors --bitcoin-mode',
     'wallet_txn_doublespend.py --descriptors --bitcoin-mode',
->>>>>>> tc-28.1
     'wallet_backwards_compatibility.py --legacy-wallet',
     'wallet_backwards_compatibility.py --descriptors',
     'wallet_txn_clone.py --mineblock --bitcoin-mode',
@@ -325,20 +292,12 @@ BASE_SCRIPTS = [
     'rpc_getblockfrompeer.py',
     'rpc_invalidateblock.py',
     'feature_utxo_set_hash.py',
-<<<<<<< v29.0
-    'feature_rbf.py',
-    'mempool_packages.py',
-    'mempool_package_onemore.py',
-    'mempool_package_limits.py',
-    'mempool_package_rbf.py',
-    'tool_utxo_to_sqlite.py',
-=======
     'feature_rbf.py --bitcoin-mode',
     'mempool_packages.py --bitcoin-mode',
     'mempool_package_onemore.py --bitcoin-mode',
     'mempool_package_limits.py --bitcoin-mode',
     'mempool_package_rbf.py --bitcoin-mode',
->>>>>>> tc-28.1
+    'tool_utxo_to_sqlite.py',
     'feature_versionbits_warning.py',
     'feature_blocksxor.py',
     'rpc_preciousblock.py',
@@ -365,11 +324,6 @@ BASE_SCRIPTS = [
     'wallet_upgradewallet.py --legacy-wallet',
     'wallet_crosschain.py',
     'mining_basic.py',
-<<<<<<< v29.0
-    'mining_mainnet.py',
-    'feature_signet.py',
-=======
->>>>>>> tc-28.1
     'p2p_mutated_blocks.py',
     'wallet_implicitsegwit.py --legacy-wallet',
     'rpc_named_arguments.py',

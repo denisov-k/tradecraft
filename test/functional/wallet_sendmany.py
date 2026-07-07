@@ -15,13 +15,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the sendmany RPC command."""
 
-<<<<<<< v29.0
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_raises_rpc_error
 
-=======
-from test_framework.test_framework import FreicoinTestFramework
->>>>>>> tc-28.1
 
 class SendmanyTest(FreicoinTestFramework):
     # Setup and helpers

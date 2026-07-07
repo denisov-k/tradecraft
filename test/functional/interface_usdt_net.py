@@ -209,7 +209,6 @@ int trace_closed_connection(struct pt_regs *ctx) {
 """
 
 
-<<<<<<< v29.0
 class Connection(ctypes.Structure):
     _fields_ = [
         ("id", ctypes.c_uint64),
@@ -252,10 +251,7 @@ class MisbehavingConnection(ctypes.Structure):
         return f"MisbehavingConnection(id={self.id}, message={self.message})"
 
 
-class NetTracepointTest(BitcoinTestFramework):
-=======
 class NetTracepointTest(FreicoinTestFramework):
->>>>>>> tc-28.1
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [[f'-maxconnections={MAX_CONNECTIONS}']]

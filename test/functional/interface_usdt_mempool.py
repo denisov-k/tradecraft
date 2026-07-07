@@ -143,7 +143,6 @@ int trace_replaced(struct pt_regs *ctx) {
 """
 
 
-<<<<<<< v29.0
 class MempoolReplaced(ctypes.Structure):
     _fields_ = [
         ("replaced_hash", ctypes.c_ubyte * 32),
@@ -157,10 +156,7 @@ class MempoolReplaced(ctypes.Structure):
     ]
 
 
-class MempoolTracepointTest(BitcoinTestFramework):
-=======
 class MempoolTracepointTest(FreicoinTestFramework):
->>>>>>> tc-28.1
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True

@@ -29,16 +29,11 @@ only succeeds past a given node once its nMinimumChainWork has been exceeded.
 import time
 
 from test_framework.p2p import P2PInterface, msg_getheaders
-<<<<<<< v29.0
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     ensure_for,
 )
-=======
-from test_framework.test_framework import FreicoinTestFramework
-from test_framework.util import assert_equal
->>>>>>> tc-28.1
 
 # 2 hashes required per regtest block (with no difficulty adjustment)
 REGTEST_WORK_PER_BLOCK = 2

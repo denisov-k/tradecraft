@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-<<<<<<< v29.0
-# Copyright (c) 2020-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-=======
 # Copyright (c) 2020-2022 The Bitcoin Core developers
 # Copyright (c) 2010-2024 The Freicoin Developers
 #
@@ -18,7 +13,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
->>>>>>> tc-28.1
 """Test Migrating a wallet from legacy to descriptor."""
 
 import random
@@ -28,13 +22,9 @@ import time
 
 from test_framework.address import (
     key_to_p2pkh,
-<<<<<<< v29.0
-    key_to_p2wpkh,
+    key_to_p2wpk,
     script_to_p2sh,
     script_to_p2wsh,
-=======
-    key_to_p2wpk,
->>>>>>> tc-28.1
 )
 from test_framework.bdb import BTREE_MAGIC
 from test_framework.descriptors import descsum_create

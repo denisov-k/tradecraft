@@ -15,17 +15,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the invalidateblock RPC."""
 
-<<<<<<< v29.0
-from test_framework.test_framework import BitcoinTestFramework
-from test_framework.address import ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR
+from test_framework.test_framework import FreicoinTestFramework
+from test_framework.address import ADDRESS_FCRT1_UNSPENDABLE_DESCRIPTOR
 from test_framework.blocktools import (
     create_block,
     create_coinbase,
 )
-=======
-from test_framework.test_framework import FreicoinTestFramework
-from test_framework.address import ADDRESS_FCRT1_UNSPENDABLE_DESCRIPTOR
->>>>>>> tc-28.1
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,

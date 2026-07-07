@@ -65,15 +65,9 @@ class MempoolAcceptanceTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [[
-<<<<<<< v29.0
-            '-txindex','-permitbaremultisig=0',
-=======
             '-txindex',
             '-permitbaremultisig=0',
-            '-mempoolfullrbf=0',
             '-datacarrier=1',  # We still test OP_RETURN
-            '-mempoolfullrbf=0',
->>>>>>> tc-28.1
         ]] * self.num_nodes
         self.supports_cli = False
 

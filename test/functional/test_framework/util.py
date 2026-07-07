@@ -16,7 +16,7 @@
 """Helpful routines for regression testing."""
 
 from base64 import b64encode
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 from subprocess import CalledProcessError
 import hashlib
 import inspect
@@ -274,14 +274,13 @@ def get_fee(tx_size, feerate_frc_kvb):
     return target_fee_sat / Decimal(1e8) # Return result in  FRC
 
 
-<<<<<<< v29.0
 def satoshi_round(amount: Union[int, float, str], *, rounding: str) -> Decimal:
-    """Rounds a Decimal amount to the nearest satoshi using the specified rounding mode."""
+    """Rounds a Decimal amount to the nearest kria using the specified rounding mode."""
     return Decimal(amount).quantize(SATOSHI_PRECISION, rounding=rounding)
-=======
+
+
 def kria_round(amount):
     return Decimal(amount).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
->>>>>>> tc-28.1
 
 
 def ensure_for(*, duration, f, check_interval=0.2):

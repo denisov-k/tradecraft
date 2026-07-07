@@ -110,12 +110,8 @@ class BIP68_112_113Test(FreicoinTestFramework):
         # whitelist peers to speed up tx relay / mempool sync
         self.noban_tx_relay = True
         self.extra_args = [[
-<<<<<<< v29.0
-            f'-testactivationheight=csv@{CSV_ACTIVATION_HEIGHT}',
-=======
             f'-testactivationheight=locktime@{LOCKTIME_ACTIVATION_HEIGHT}',
             '-par=1',  # Use only one script thread to get the exact reject reason for testing
->>>>>>> tc-28.1
         ]]
         self.supports_cli = False
 

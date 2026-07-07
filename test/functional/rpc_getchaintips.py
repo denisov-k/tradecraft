@@ -21,15 +21,11 @@
 - verify that getchaintips now returns two chain tips.
 """
 
-<<<<<<< v29.0
 from test_framework.blocktools import (
     create_block,
     create_coinbase,
 )
-from test_framework.test_framework import BitcoinTestFramework
-=======
 from test_framework.test_framework import FreicoinTestFramework
->>>>>>> tc-28.1
 from test_framework.util import assert_equal
 
 class GetChainTipsTest (FreicoinTestFramework):

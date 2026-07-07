@@ -93,11 +93,7 @@ class MiningTest(FreicoinTestFramework):
         mining_info = self.nodes[0].getmininginfo()
         assert_equal(mining_info['blocks'], 200)
         assert_equal(mining_info['currentblocktx'], 0)
-<<<<<<< v29.0
-        assert_equal(mining_info['currentblockweight'], DEFAULT_BLOCK_RESERVED_WEIGHT)
-=======
         assert_equal(mining_info['currentblockweight'], 4408)
->>>>>>> tc-28.1
 
         self.log.info('test blockversion')
         self.restart_node(0, extra_args=[f'-mocktime={t}', '-blockversion=1337'])
@@ -148,58 +144,10 @@ class MiningTest(FreicoinTestFramework):
             assert tx_below_min_feerate['txid'] not in block_template_txids
             assert tx_below_min_feerate['txid'] not in block_txids
 
-<<<<<<< v29.0
-    def test_timewarp(self):
-        self.log.info("Test timewarp attack mitigation (BIP94)")
-        node = self.nodes[0]
-        self.restart_node(0, extra_args=['-test=bip94'])
+    # TODO(freicoin): re-add a timewarp (BIP94) test once the maintainer decides
+    # how BIP94 interacts with Freicoin's original/filtered difficulty adjustment
+    # (the upstream test assumes a 144-block regtest retarget interval).
 
-        self.log.info("Mine until the last block of the retarget period")
-        blockchain_info = self.nodes[0].getblockchaininfo()
-        n = DIFFICULTY_ADJUSTMENT_INTERVAL - blockchain_info['blocks'] % DIFFICULTY_ADJUSTMENT_INTERVAL - 2
-        t = blockchain_info['time']
-
-        for _ in range(n):
-            t += 600
-            self.nodes[0].setmocktime(t)
-            self.generate(self.wallet, 1, sync_fun=self.no_op)
-
-        self.log.info("Create block two hours in the future")
-        self.nodes[0].setmocktime(t + MAX_FUTURE_BLOCK_TIME)
-        self.generate(self.wallet, 1, sync_fun=self.no_op)
-        assert_equal(node.getblock(node.getbestblockhash())['time'], t + MAX_FUTURE_BLOCK_TIME)
-
-        self.log.info("First block template of retarget period can't use wall clock time")
-        self.nodes[0].setmocktime(t)
-        # The template will have an adjusted timestamp, which we then modify
-        tmpl = node.getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)
-        assert_greater_than_or_equal(tmpl['curtime'], t + MAX_FUTURE_BLOCK_TIME - MAX_TIMEWARP)
-        # mintime and curtime should match
-        assert_equal(tmpl['mintime'], tmpl['curtime'])
-
-        block = CBlock()
-        block.nVersion = tmpl["version"]
-        block.hashPrevBlock = int(tmpl["previousblockhash"], 16)
-        block.nTime = tmpl["curtime"]
-        block.nBits = int(tmpl["bits"], 16)
-        block.nNonce = 0
-        block.vtx = [create_coinbase(height=int(tmpl["height"]))]
-        block.solve()
-        assert_template(node, block, None)
-
-        bad_block = copy.deepcopy(block)
-        bad_block.nTime = t
-        bad_block.solve()
-        assert_raises_rpc_error(-25, 'time-timewarp-attack', lambda: node.submitheader(hexdata=CBlockHeader(bad_block).serialize().hex()))
-
-        self.log.info("Test timewarp protection boundary")
-        bad_block.nTime = t + MAX_FUTURE_BLOCK_TIME - MAX_TIMEWARP - 1
-        bad_block.solve()
-        assert_raises_rpc_error(-25, 'time-timewarp-attack', lambda: node.submitheader(hexdata=CBlockHeader(bad_block).serialize().hex()))
-
-        bad_block.nTime = t + MAX_FUTURE_BLOCK_TIME - MAX_TIMEWARP
-        bad_block.solve()
-        node.submitheader(hexdata=CBlockHeader(bad_block).serialize().hex())
 
     def test_pruning(self):
         self.log.info("Test that submitblock stores previously pruned block")
@@ -326,8 +274,6 @@ class MiningTest(FreicoinTestFramework):
         )
 
 
-=======
->>>>>>> tc-28.1
     def run_test(self):
         node = self.nodes[0]
         self.wallet = MiniWallet(node)
@@ -549,12 +495,8 @@ class MiningTest(FreicoinTestFramework):
         assert_equal(node.submitblock(hexdata=block.serialize().hex()), 'duplicate')  # valid
 
         self.test_blockmintxfee_parameter()
-<<<<<<< v29.0
         self.test_block_max_weight()
-        self.test_timewarp()
         self.test_pruning()
-=======
->>>>>>> tc-28.1
 
 
 if __name__ == '__main__':

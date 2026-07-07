@@ -181,13 +181,7 @@ class FreicoinTestFramework(metaclass=FreicoinTestMetaClass):
         previous_releases_path = os.getenv("PREVIOUS_RELEASES_DIR") or os.getcwd() + "/releases"
         parser = argparse.ArgumentParser(usage="%(prog)s [options]")
         parser.add_argument("--nocleanup", dest="nocleanup", default=False, action="store_true",
-<<<<<<< v29.0
-                            help="Leave bitcoinds and test.* datadir on exit or error")
-=======
                             help="Leave freicoinds and test.* datadir on exit or error")
-        parser.add_argument("--noshutdown", dest="noshutdown", default=False, action="store_true",
-                            help="Don't stop freicoinds after the test execution")
->>>>>>> tc-28.1
         parser.add_argument("--cachedir", dest="cachedir", default=os.path.abspath(os.path.dirname(test_file) + "/../cache"),
                             help="Directory for caching pregenerated datadirs (default: %(default)s)")
         parser.add_argument("--tmpdir", dest="tmpdir", help="Root directory for datadirs (must not exist)")
@@ -348,13 +342,6 @@ class FreicoinTestFramework(metaclass=FreicoinTestMetaClass):
             self.log.info("Stopping nodes")
             if self.nodes:
                 self.stop_nodes()
-<<<<<<< v29.0
-=======
-        else:
-            for node in self.nodes:
-                node.cleanup_on_exit = False
-            self.log.info("Note: freicoinds were not stopped and may still be running")
->>>>>>> tc-28.1
 
         should_clean_up = (
             not self.options.nocleanup and
@@ -546,8 +533,7 @@ class FreicoinTestFramework(metaclass=FreicoinTestMetaClass):
         if binary is None:
             binary = [get_bin_from_version(v, 'freicoind', self.options.freicoind) for v in versions]
         if binary_cli is None:
-<<<<<<< v29.0
-            binary_cli = [get_bin_from_version(v, 'bitcoin-cli', self.options.bitcoincli) for v in versions]
+            binary_cli = [get_bin_from_version(v, 'freicoin-cli', self.options.freicoincli) for v in versions]
         # Fail test if any of the needed release binaries is missing
         bins_missing = False
         for bin_path in binary + binary_cli:
@@ -557,9 +543,6 @@ class FreicoinTestFramework(metaclass=FreicoinTestMetaClass):
         if bins_missing:
             raise AssertionError("At least one release binary is missing. "
                                  "Previous releases binaries can be downloaded via `test/get_previous_releases.py -b`.")
-=======
-            binary_cli = [get_bin_from_version(v, 'freicoin-cli', self.options.freicoincli) for v in versions]
->>>>>>> tc-28.1
         assert_equal(len(extra_confs), num_nodes)
         assert_equal(len(extra_args), num_nodes)
         assert_equal(len(versions), num_nodes)

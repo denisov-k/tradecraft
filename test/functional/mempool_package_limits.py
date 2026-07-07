@@ -15,14 +15,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test logic for limiting mempool and package ancestors/descendants."""
 from test_framework.blocktools import COINBASE_MATURITY
-<<<<<<< v29.0
-from test_framework.test_framework import BitcoinTestFramework
-=======
 from test_framework.messages import (
     WITNESS_SCALE_FACTOR,
 )
 from test_framework.test_framework import FreicoinTestFramework
->>>>>>> tc-28.1
 from test_framework.util import (
     assert_equal,
 )

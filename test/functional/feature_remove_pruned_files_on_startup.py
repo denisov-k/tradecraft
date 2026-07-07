@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-<<<<<<< v29.0
-# Copyright (c) 2022-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Tests around pruning rev and blk files on startup."""
-
-import platform
-from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import assert_equal
-
-=======
 # Copyright (c) 2022 The Bitcoin Core developers
 # Copyright (c) 2010-2024 The Freicoin Developers
 #
@@ -29,7 +18,6 @@ from test_framework.util import assert_equal
 import platform
 import os
 from test_framework.test_framework import FreicoinTestFramework
->>>>>>> tc-28.1
 
 class FeatureRemovePrunedFilesOnStartupTest(FreicoinTestFramework):
     def set_test_params(self):

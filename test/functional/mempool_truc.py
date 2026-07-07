@@ -15,15 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from decimal import Decimal
 
-<<<<<<< v29.0
-from test_framework.test_framework import BitcoinTestFramework
-=======
-from test_framework.messages import (
-    MAX_BIP125_RBF_SEQUENCE,
-    WITNESS_SCALE_FACTOR,
-)
 from test_framework.test_framework import FreicoinTestFramework
->>>>>>> tc-28.1
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -178,35 +170,7 @@ class MempoolTRUC(FreicoinTestFramework):
         self.check_mempool([tx_v3_bip125_rbf_v2["txid"], tx_v3_parent["txid"], tx_v3_child["txid"]])
 
 
-<<<<<<< v29.0
-    @cleanup(extra_args=["-datacarriersize=40000"])
-=======
-    @cleanup(extra_args=["-acceptnonstdtxn=1", "-mempoolfullrbf=0"])
-    def test_truc_bip125(self):
-        node = self.nodes[0]
-        self.log.info("Test TRUC transactions that don't signal BIP125 are replaceable")
-        assert_equal(node.getmempoolinfo()["fullrbf"], False)
-        utxo_v3_no_bip125 = self.wallet.get_utxo()
-        tx_v3_no_bip125 = self.wallet.send_self_transfer(
-            from_node=node,
-            fee_rate=DEFAULT_FEE,
-            utxo_to_spend=utxo_v3_no_bip125,
-            sequence=MAX_BIP125_RBF_SEQUENCE + 1,
-            version=3
-        )
-
-        self.check_mempool([tx_v3_no_bip125["txid"]])
-        assert not node.getmempoolentry(tx_v3_no_bip125["txid"])["bip125-replaceable"]
-        tx_v3_no_bip125_rbf = self.wallet.send_self_transfer(
-            from_node=node,
-            fee_rate=DEFAULT_FEE * 2,
-            utxo_to_spend=utxo_v3_no_bip125,
-            version=3
-        )
-        self.check_mempool([tx_v3_no_bip125_rbf["txid"]])
-
     @cleanup(extra_args=["-datacarrier=1", "-datacarriersize=40000"])
->>>>>>> tc-28.1
     def test_truc_reorg(self):
         node = self.nodes[0]
         self.log.info("Test that, during a reorg, TRUC rules are not enforced")

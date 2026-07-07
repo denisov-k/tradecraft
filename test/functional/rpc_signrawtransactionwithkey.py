@@ -15,6 +15,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test transaction signing using the signrawtransactionwithkey RPC."""
 
+from test_framework.blocktools import (
+    COINBASE_MATURITY,
+)
 from test_framework.messages import (
     COIN,
 )
@@ -87,17 +90,6 @@ class SignRawTransactionWithKeyTest(FreicoinTestFramework):
         self.log.info("Test signing transaction to P2SH-P2WSH addresses without wallet")
         # Create a new P2SH-P2WSH 1-of-1 multisig address:
         embedded_privkey, embedded_pubkey = generate_keypair(wif=True)
-<<<<<<< v29.0
-        p2sh_p2wsh_address = self.nodes[0].createmultisig(1, [embedded_pubkey.hex()], "p2sh-segwit")
-        # send transaction to P2SH-P2WSH 1-of-1 multisig address
-        self.send_to_address(p2sh_p2wsh_address["address"], 49.999)
-        self.generate(self.nodes[0], 1)
-        # Get the UTXO info from scantxoutset
-        unspent_output = self.nodes[0].scantxoutset('start', [p2sh_p2wsh_address['descriptor']])['unspents'][0]
-        spk = script_to_p2sh_p2wsh_script(p2sh_p2wsh_address['redeemScript']).hex()
-        unspent_output['witnessScript'] = p2sh_p2wsh_address['redeemScript']
-        unspent_output['redeemScript'] = script_to_p2wsh_script(unspent_output['witnessScript']).hex()
-=======
         p2wsh_address = self.nodes[1].createmultisig(1, [embedded_pubkey.hex()], "bech32")
         # send transaction to P2SH-P2WSH 1-of-1 multisig address
         self.block_hash = self.generate(self.nodes[0], COINBASE_MATURITY + 2)
@@ -109,7 +101,6 @@ class SignRawTransactionWithKeyTest(FreicoinTestFramework):
         spk = script_to_p2wsh_script(p2wsh_address['redeemScript']).hex()
         unspent_output['witnessScript'] = '00' + p2wsh_address['redeemScript']
         unspent_output['redeemScript'] = script_to_p2wsh_script(p2wsh_address['redeemScript']).hex()
->>>>>>> tc-28.1
         assert_equal(spk, unspent_output['scriptPubKey'])
         # Now create and sign a transaction spending that output on node[0], which doesn't know the scripts or keys
         spending_tx = self.nodes[0].createrawtransaction([unspent_output], {getnewdestination()[2]: Decimal("49.998")})

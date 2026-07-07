@@ -24,11 +24,7 @@ user inputs. Such environments include the Python3 command line interpreter or
 
 ## 2. Importing `TestShell` from the Freicoin repository
 
-<<<<<<< v29.0
-We can import the `TestShell` by adding the path of the configured Bitcoin Core
-=======
 We can import the `TestShell` by adding the path of the Freicoin
->>>>>>> tc-28.1
 `test_framework` module to the beginning of the PATH variable, and then
 importing the `TestShell` class from the `test_shell` sub-package. Since
 the build system creates a copy of the `test_framework` module into a new `build/`
@@ -37,11 +33,7 @@ must be used.
 
 ```
 >>> import sys
-<<<<<<< v29.0
->>> sys.path.insert(0, "/path/to/bitcoin/build/test/functional")
-=======
 >>> sys.path.insert(0, "/path/to/freicoin/test/functional")
->>>>>>> tc-28.1
 >>> from test_framework.test_shell import TestShell
 ```
 
@@ -166,13 +158,8 @@ To prevent the logs from being removed after a shutdown, simply set the
 The following utility consolidates logs from the freicoind nodes and the
 underlying `FreicoinTestFramework`:
 
-<<<<<<< v29.0
-* `/path/to/bitcoin/build/test/functional/combine_logs.py
-  '/path/to/bitcoin_func_test_XXXXXXX'`
-=======
 * `/path/to/freicoin/test/functional/combine_logs.py
   '/path/to/freicoin_func_test_XXXXXXX'`
->>>>>>> tc-28.1
 
 ## 6. Custom `TestShell` parameters
 
@@ -185,19 +172,11 @@ can be called after the TestShell is shut down.
 
 | Test parameter key | Default Value | Description |
 |---|---|---|
-<<<<<<< v29.0
-| `bind_to_localhost_only` | `True` | Binds bitcoind P2P services to `127.0.0.1` if set to `True`.|
-| `cachedir` | `"/path/to/bitcoin/build/test/cache"` | Sets the bitcoind datadir directory. |
-| `chain`  | `"regtest"` | Sets the chain-type for the underlying test bitcoind processes. |
-| `configfile` | `"/path/to/bitcoin/build/test/config.ini"` | Sets the location of the test framework config file. |
-| `coveragedir` | `None` | Records bitcoind RPC test coverage into this directory if set. |
-=======
 | `bind_to_localhost_only` | `True` | Binds freicoind P2P services to `127.0.0.1` if set to `True`.|
 | `cachedir` | `"/path/to/freicoin/test/cache"` | Sets the freicoind datadir directory. |
 | `chain`  | `"regtest"` | Sets the chain-type for the underlying test freicoind processes. |
 | `configfile` | `"/path/to/freicoin/test/config.ini"` | Sets the location of the test framework config file. |
 | `coveragedir` | `None` | Records freicoind RPC test coverage into this directory if set. |
->>>>>>> tc-28.1
 | `loglevel` | `INFO` | Logs events at this level and higher. Can be set to `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`. |
 | `nocleanup` | `False` | Cleans up temporary test directory if set to `True` during `shutdown`. |
 | `noshutdown` | `False` | Does not stop freicoind instances after `shutdown` if set to `True`. |

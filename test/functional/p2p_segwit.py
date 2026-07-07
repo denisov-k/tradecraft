@@ -231,16 +231,8 @@ class SegWitTest(FreicoinTestFramework):
         self.noban_tx_relay = True
         # This test tests SegWit both pre and post-activation, so use the normal BIP9 activation.
         self.extra_args = [
-<<<<<<< v29.0
-            # -par=1 should not affect validation outcome or logging/reported failures. It is kept
-            # here to exercise the code path still (as it is distinct for multithread script
-            # validation).
-            ["-acceptnonstdtxn=1", f"-testactivationheight=segwit@{SEGWIT_HEIGHT}", "-par=1"],
-            ["-acceptnonstdtxn=0", f"-testactivationheight=segwit@{SEGWIT_HEIGHT}"],
-=======
             ["-acceptnonstdtxn=1", f"-testactivationheight=segwit@{SEGWIT_HEIGHT}", "-vbparams=auxpow:0:0", "-par=1"],
             ["-acceptnonstdtxn=0", f"-testactivationheight=segwit@{SEGWIT_HEIGHT}", "-vbparams=auxpow:0:0"],
->>>>>>> tc-28.1
         ]
         self.supports_cli = False
 
@@ -1068,13 +1060,8 @@ class SegWitTest(FreicoinTestFramework):
         tx2.vin.append(CTxIn(COutPoint(tx.sha256, 1), b""))  # non-witness
         tx2.vout.append(CTxOut(tx.vout[0].nValue, CScript([OP_TRUE])))
         tx2.wit.vtxinwit.extend([CTxInWitness(), CTxInWitness()])
-<<<<<<< v29.0
-        tx2.wit.vtxinwit[0].scriptWitness.stack = [CScript([CScriptNum(1)]), CScript([CScriptNum(1)]), witness_script]
-        tx2.wit.vtxinwit[1].scriptWitness.stack = []
-=======
         tx2.wit.vtxinwit[0].scriptWitness.stack = [CScript([CScriptNum(1)]), CScript([CScriptNum(1)]), script_to_witness(witness_script), b'']
         tx2.wit.vtxinwit[1].scriptWitness.stack = [CScript([OP_TRUE]), b'']
->>>>>>> tc-28.1
 
         block = self.build_next_block()
         self.update_witness_block_with_transactions(block, [tx2])

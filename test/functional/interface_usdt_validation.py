@@ -119,19 +119,12 @@ class ValidationTracepointTest(FreicoinTestFramework):
             handle_blockconnected)
 
         self.log.info(f"mine {BLOCKS_EXPECTED} blocks")
-<<<<<<< v29.0
         generatetoaddress_duration = dict()
         for _ in range(BLOCKS_EXPECTED):
             start = time.time()
-            hash = self.generatetoaddress(self.nodes[0], 1, ADDRESS_BCRT1_UNSPENDABLE)[0]
+            hash = self.generatetoaddress(self.nodes[0], 1, ADDRESS_FCRT1_UNSPENDABLE)[0]
             generatetoaddress_duration[hash] = (time.time() - start) * 1e9  # in nanoseconds
             expected_blocks[hash] = self.nodes[0].getblock(hash, 2)
-=======
-        block_hashes = self.generatetoaddress(
-            self.nodes[0], BLOCKS_EXPECTED, ADDRESS_FCRT1_UNSPENDABLE)
-        for block_hash in block_hashes:
-            expected_blocks[block_hash] = self.nodes[0].getblock(block_hash, 2)
->>>>>>> tc-28.1
 
         bpf.perf_buffer_poll(timeout=200)
 

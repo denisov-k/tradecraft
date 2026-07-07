@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-<<<<<<< v29.0
-# Copyright (c) 2020-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-=======
 # Copyright (c) 2020-2022 The Bitcoin Core developers
 # Copyright (c) 2010-2024 The Freicoin Developers
 #
@@ -18,7 +13,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
->>>>>>> tc-28.1
 """Test indices in conjunction with prune."""
 import concurrent.futures
 import os
@@ -125,11 +119,7 @@ class FeatureIndexPruneTest(FreicoinTestFramework):
             msg = "Querying specific block heights requires coinstatsindex"
             assert_raises_rpc_error(-8, msg, node.gettxoutsetinfo, "muhash", height_hash)
 
-<<<<<<< v29.0
         self.generate(self.nodes[0], 749)
-=======
-        self.mine_batches(1500 - 940)
->>>>>>> tc-28.1
 
         self.log.info("prune exactly up to the indices best blocks while the indices are disabled")
         for i in range(3):

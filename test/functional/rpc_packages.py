@@ -122,13 +122,8 @@ class RPCPackagesTest(FreicoinTestFramework):
         self.assert_testres_equal(package_bad, testres_bad)
 
         self.log.info("Check testmempoolaccept tells us when some transactions completed validation successfully")
-<<<<<<< v29.0
-        tx_bad_sig_hex = node.createrawtransaction([{"txid": coin["txid"], "vout": coin["vout"]}],
-                                           {address : coin["amount"] - Decimal("0.0001")})
-=======
         tx_bad_sig_hex = node.createrawtransaction([{"txid": coin["txid"], "vout": 0}],
                                            {address : coin["value"] - Decimal("0.0001")}, 0, coin["refheight"])
->>>>>>> tc-28.1
         tx_bad_sig = tx_from_hex(tx_bad_sig_hex)
         testres_bad_sig = node.testmempoolaccept(self.independent_txns_hex + [tx_bad_sig_hex])
         # By the time the signature for the last transaction is checked, all the other transactions

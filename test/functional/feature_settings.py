@@ -23,14 +23,10 @@ from test_framework.test_node import ErrorMatch
 from test_framework.util import assert_equal
 
 
-<<<<<<< v29.0
-class SettingsTest(BitcoinTestFramework):
+class SettingsTest(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
-=======
-class SettingsTest(FreicoinTestFramework):
->>>>>>> tc-28.1
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
