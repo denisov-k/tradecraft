@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2015-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2015-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Templates for constructing various sorts of invalid transactions.
 
@@ -69,7 +80,7 @@ class BadTxTemplate:
     """Allows simple construction of a certain kind of invalid tx. Base class to be subclassed."""
     __metaclass__ = abc.ABCMeta
 
-    # The expected error code given by bitcoind upon submission of the tx.
+    # The expected error code given by freicoind upon submission of the tx.
     reject_reason: Optional[str] = ""
 
     # Only specified if it differs from mempool acceptance error.
@@ -96,6 +107,8 @@ class OutputMissing(BadTxTemplate):
     def get_tx(self):
         tx = CTransaction()
         tx.vin.append(self.valid_txin)
+        tx.lock_height = self.spend_tx.lock_height
+        tx.calc_sha256()
         return tx
 
 
@@ -121,7 +134,8 @@ class SizeTooSmall(BadTxTemplate):
     def get_tx(self):
         tx = CTransaction()
         tx.vin.append(self.valid_txin)
-        tx.vout.append(CTxOut(0, CScript([OP_RETURN] + ([OP_0] * (MIN_PADDING - 2)))))
+        tx.vout.append(CTxOut(0, b""))
+        tx.lock_height = self.spend_tx.lock_height
         assert len(tx.serialize_without_witness()) == 64
         assert MIN_STANDARD_TX_NONWITNESS_SIZE - 1 == 64
         return tx
@@ -155,6 +169,8 @@ class BadInputOutpointIndex(BadTxTemplate):
         tx = CTransaction()
         tx.vin.append(CTxIn(COutPoint(self.spend_tx.txid_int, bad_idx), b"", SEQUENCE_FINAL))
         tx.vout.append(CTxOut(0, basic_p2sh))
+        tx.lock_height = self.spend_tx.lock_height
+        tx.calc_sha256()
         return tx
 
 
@@ -166,6 +182,8 @@ class DuplicateInput(BadTxTemplate):
         tx.vin.append(self.valid_txin)
         tx.vin.append(self.valid_txin)
         tx.vout.append(CTxOut(1, basic_p2sh))
+        tx.lock_height = self.spend_tx.lock_height
+        tx.calc_sha256()
         return tx
 
 
@@ -177,6 +195,8 @@ class PrevoutNullInput(BadTxTemplate):
         tx.vin.append(self.valid_txin)
         tx.vin.append(CTxIn(COutPoint(hash=0, n=0xffffffff)))
         tx.vout.append(CTxOut(1, basic_p2sh))
+        tx.lock_height = self.spend_tx.lock_height
+        tx.calc_sha256()
         return tx
 
 
@@ -190,6 +210,8 @@ class NonexistentInput(BadTxTemplate):
         tx.vin.append(CTxIn(COutPoint(self.spend_tx.txid_int + 1, 0), b"", SEQUENCE_FINAL))
         tx.vin.append(self.valid_txin)
         tx.vout.append(CTxOut(1, basic_p2sh))
+        tx.lock_height = self.spend_tx.lock_height
+        tx.calc_sha256()
         return tx
 
 
@@ -265,6 +287,8 @@ def getDisabledOpcodeTemplate(opcode):
         vin.scriptSig = CScript([opcode])
         tx.vin.append(vin)
         tx.vout.append(CTxOut(1, basic_p2sh))
+        tx.lock_height = self.spend_tx.lock_height
+        tx.calc_sha256()
         return tx
 
     return type('DisabledOpcode_' + str(opcode), (BadTxTemplate,), {

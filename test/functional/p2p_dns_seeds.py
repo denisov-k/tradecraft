@@ -1,17 +1,28 @@
 #!/usr/bin/env python3
-# Copyright (c) 2021-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2021 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test ThreadDNSAddressSeed logic for querying DNS seeds."""
 
 import itertools
 
 from test_framework.netutil import UNREACHABLE_PROXY_ARG
 from test_framework.p2p import P2PInterface
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 
 
-class P2PDNSSeeds(BitcoinTestFramework):
+class P2PDNSSeeds(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -51,13 +62,13 @@ class P2PDNSSeeds(BitcoinTestFramework):
             extra_args=["-forcednsseed=1", f"-connect={fakeaddr}"],
         )
 
-        # Restore default bitcoind settings
+        # Restore default freicoind settings
         self.restart_node(0)
 
     def existing_outbound_connections_test(self):
         # Make sure addrman is populated to enter the conditional where we
         # delay and potentially skip DNS seeding.
-        self.nodes[0].addpeeraddress("192.0.0.8", 8333)
+        self.nodes[0].addpeeraddress("192.0.0.8", 8639)
 
         self.log.info("Check that we *do not* query DNS seeds if we have 2 outbound connections")
 
@@ -70,7 +81,7 @@ class P2PDNSSeeds(BitcoinTestFramework):
         # Make sure addrman is populated to enter the conditional where we
         # delay and potentially skip DNS seeding. No-op when run after
         # existing_outbound_connections_test.
-        self.nodes[0].addpeeraddress("192.0.0.8", 8333)
+        self.nodes[0].addpeeraddress("192.0.0.8", 8639)
 
         self.log.info("Check that we *do* query DNS seeds if we only have 2 block-relay-only connections")
 
@@ -87,7 +98,7 @@ class P2PDNSSeeds(BitcoinTestFramework):
         self.log.info("Check that we query DNS seeds if -forcednsseed param is set")
 
         with self.nodes[0].assert_debug_log(expected_msgs=["Loading addresses from DNS seed"], timeout=12):
-            # -dnsseed defaults to 1 in bitcoind, but 0 in the test framework,
+            # -dnsseed defaults to 1 in freicoind, but 0 in the test framework,
             # so pass it explicitly here
             self.restart_node(0, ["-forcednsseed", "-dnsseed=1", UNREACHABLE_PROXY_ARG])
 
@@ -100,7 +111,7 @@ class P2PDNSSeeds(BitcoinTestFramework):
         # Populate addrman with < 1000 addresses
         for i in range(5):
             a = f"192.0.0.{i}"
-            self.nodes[0].addpeeraddress(a, 8333)
+            self.nodes[0].addpeeraddress(a, 8639)
 
         # The delay should be 11 seconds
         with self.nodes[0].assert_debug_log(expected_msgs=["Waiting 11 seconds before querying DNS seeds.\n"], timeout=2):
@@ -112,7 +123,7 @@ class P2PDNSSeeds(BitcoinTestFramework):
             second_octet = i % 256
             third_octet = i % 100
             a = f"{first_octet}.{second_octet}.{third_octet}.1"
-            self.nodes[0].addpeeraddress(a, 8333)
+            self.nodes[0].addpeeraddress(a, 8639)
             if (i > 1000 and i % 100 == 0):
                 # The addrman size is non-deterministic because new addresses
                 # are sorted into buckets, potentially displacing existing

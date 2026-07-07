@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test RPCs related to blockchainstate.
 
 Test the following RPCs:
@@ -47,7 +58,7 @@ from test_framework.messages import (
 )
 from test_framework.p2p import P2PInterface
 from test_framework.script import hash256, OP_TRUE
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_not_equal,
     assert_equal,
@@ -69,7 +80,7 @@ TIME_RANGE_END = TIME_GENESIS_BLOCK + HEIGHT * TIME_RANGE_STEP
 DIFFICULTY_ADJUSTMENT_INTERVAL = 144
 
 
-class BlockchainTest(BitcoinTestFramework):
+class BlockchainTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -217,8 +228,21 @@ class BlockchainTest(BitcoinTestFramework):
           "deployments": {
             'bip34': {'type': 'buried', 'active': True, 'height': 2},
             'bip66': {'type': 'buried', 'active': True, 'height': 3},
-            'bip65': {'type': 'buried', 'active': True, 'height': 4},
-            'csv': {'type': 'buried', 'active': True, 'height': 5},
+            'locktime': {'type': 'buried', 'active': True, 'height': 5},
+            'finaltx': {
+                'type': 'bip9',
+                'height': 0,
+                'active': True,
+                'bip9': {
+                    'start_time': -1,
+                    'timeout': 9223372036854775807,
+                    'min_activation_height': 0,
+                    'status': 'active',
+                    'since': 0,
+                    'status_next':
+                    'active'
+                }
+            },
             'segwit': {'type': 'buried', 'active': True, 'height': 6},
             'testdummy': {
                 'type': 'bip9',
@@ -241,19 +265,6 @@ class BlockchainTest(BitcoinTestFramework):
                 },
                 'active': False
             },
-            'taproot': {
-                'type': 'bip9',
-                'bip9': {
-                    'start_time': -1,
-                    'timeout': 9223372036854775807,
-                    'min_activation_height': 0,
-                    'status': 'active',
-                    'status_next': 'active',
-                    'since': 0,
-                },
-                'height': 0,
-                'active': True
-            }
           }
         })
 
@@ -266,8 +277,7 @@ class BlockchainTest(BitcoinTestFramework):
         self.start_node(0, extra_args=[
             '-testactivationheight=bip34@2',
             '-testactivationheight=dersig@3',
-            '-testactivationheight=cltv@4',
-            '-testactivationheight=csv@5',
+            '-testactivationheight=locktime@5',
             '-testactivationheight=segwit@6',
         ])
 
@@ -327,10 +337,10 @@ class BlockchainTest(BitcoinTestFramework):
 
         chaintxstats = self.nodes[0].getchaintxstats(nblocks=1)
         # 200 txs plus genesis tx
-        assert_equal(chaintxstats['txcount'], HEIGHT + 1)
-        # tx rate should be 1 per 10 minutes, or 1/600
+        assert_equal(chaintxstats['txcount'], 2*HEIGHT - 100 + 1)
+        # tx rate should be 2 per 10 minutes, or 2/600
         # we have to round because of binary math
-        assert_equal(round(chaintxstats['txrate'] * TIME_RANGE_STEP, 10), Decimal(1))
+        assert_equal(round(chaintxstats['txrate'] * TIME_RANGE_STEP, 10), Decimal(2))
 
         b1_hash = self.nodes[0].getblockhash(1)
         b1 = self.nodes[0].getblock(b1_hash)
@@ -340,13 +350,13 @@ class BlockchainTest(BitcoinTestFramework):
 
         chaintxstats = self.nodes[0].getchaintxstats()
         assert_equal(chaintxstats['time'], b200['time'])
-        assert_equal(chaintxstats['txcount'], HEIGHT + 1)
+        assert_equal(chaintxstats['txcount'], 2*HEIGHT - 100 + 1)
         assert_equal(chaintxstats['window_final_block_hash'], b200_hash)
         assert_equal(chaintxstats['window_final_block_height'], HEIGHT )
         assert_equal(chaintxstats['window_block_count'], HEIGHT - 1)
-        assert_equal(chaintxstats['window_tx_count'], HEIGHT - 1)
+        assert_equal(chaintxstats['window_tx_count'], 2*HEIGHT - 100 - 1)
         assert_equal(chaintxstats['window_interval'], time_diff)
-        assert_equal(round(chaintxstats['txrate'] * time_diff, 10), Decimal(HEIGHT - 1))
+        assert_equal(round(chaintxstats['txrate'] * time_diff, 10), Decimal(2*HEIGHT - 100 - 1))
 
         chaintxstats = self.nodes[0].getchaintxstats(blockhash=b1_hash)
         assert_equal(chaintxstats['time'], b1['time'])
@@ -362,11 +372,12 @@ class BlockchainTest(BitcoinTestFramework):
         node = self.nodes[0]
         res = node.gettxoutsetinfo()
 
-        assert_equal(res['total_amount'], Decimal('8725.00000000'))
-        assert_equal(res['transactions'], HEIGHT)
+        assert_equal(res['total_value'], Decimal('8725.00000000'))
+        assert_equal(res['total_amount'], Decimal('8724.07323074'))
+        assert_equal(res['transactions'], HEIGHT + 1)
         assert_equal(res['height'], HEIGHT)
-        assert_equal(res['txouts'], HEIGHT)
-        assert_equal(res['bogosize'], 16800),
+        assert_equal(res['txouts'], HEIGHT + 1)
+        assert_equal(res['bogosize'], 17692),
         assert_equal(res['bestblock'], node.getblockhash(HEIGHT))
         size = res['disk_size']
         assert size > 6400
@@ -380,7 +391,7 @@ class BlockchainTest(BitcoinTestFramework):
 
         res2 = node.gettxoutsetinfo()
         assert_equal(res2['transactions'], 0)
-        assert_equal(res2['total_amount'], Decimal('0'))
+        assert_equal(res2['total_value'], Decimal('0'))
         assert_equal(res2['height'], 0)
         assert_equal(res2['txouts'], 0)
         assert_equal(res2['bogosize'], 0),
@@ -423,11 +434,11 @@ class BlockchainTest(BitcoinTestFramework):
         self.log.info("Validating gettxout RPC response")
         node = self.nodes[0]
 
-        # Get the best block hash and the block, which
-        # should only include the coinbase transaction.
+        # Get the best block hash and the block, which should include the
+        # coinbase transaction and (Freicoin) the block-final transaction.
         best_block_hash = node.getbestblockhash()
         block = node.getblock(best_block_hash)
-        assert_equal(block['nTx'], 1)
+        assert_equal(block['nTx'], 2)
 
         # Get the transaction ID of the coinbase tx and
         # the transaction output.
@@ -463,7 +474,7 @@ class BlockchainTest(BitcoinTestFramework):
         assert_equal(header['confirmations'], 1)
         assert_equal(header['previousblockhash'], secondbesthash)
         assert_is_hex_string(header['chainwork'])
-        assert_equal(header['nTx'], 1)
+        assert_equal(header['nTx'], 2)
         assert_is_hash_string(header['hash'])
         assert_is_hash_string(header['previousblockhash'])
         assert_is_hash_string(header['merkleroot'])
@@ -500,52 +511,29 @@ class BlockchainTest(BitcoinTestFramework):
             textwrap.dedent("""
             Wrong type passed:
             {
-                "Position 1 (nblocks)": "JSON value of type string is not of expected type number",
-                "Position 2 (height)": "JSON value of type array is not of expected type number"
+                "Position 1 (height)": "JSON value of type string is not of expected type number"
             }
             """).strip(),
-            lambda: self.nodes[0].getnetworkhashps("a", []),
+            lambda: self.nodes[0].getnetworkhashps("a"),
         )
         assert_raises_rpc_error(
             -8,
             "Block does not exist at specified height",
-            lambda: self.nodes[0].getnetworkhashps(100, self.nodes[0].getblockcount() + 1),
+            lambda: self.nodes[0].getnetworkhashps(self.nodes[0].getblockcount() + 1),
         )
         assert_raises_rpc_error(
             -8,
             "Block does not exist at specified height",
-            lambda: self.nodes[0].getnetworkhashps(100, -10),
-        )
-        assert_raises_rpc_error(
-            -8,
-            "Invalid nblocks. Must be a positive number or -1.",
-            lambda: self.nodes[0].getnetworkhashps(-100),
-        )
-        assert_raises_rpc_error(
-            -8,
-            "Invalid nblocks. Must be a positive number or -1.",
-            lambda: self.nodes[0].getnetworkhashps(0),
+            lambda: self.nodes[0].getnetworkhashps(-10),
         )
 
         # Genesis block height estimate should return 0
-        hashes_per_second = self.nodes[0].getnetworkhashps(100, 0)
+        hashes_per_second = self.nodes[0].getnetworkhashps(0)
         assert_equal(hashes_per_second, 0)
 
         # This should be 2 hashes every 10 minutes or 1/300
         hashes_per_second = self.nodes[0].getnetworkhashps()
         assert abs(hashes_per_second * 300 - 1) < 0.0001
-
-        # Test setting the first param of getnetworkhashps to -1 returns the average network
-        # hashes per second from the last difficulty change.
-        current_block_height = self.nodes[0].getmininginfo()['blocks']
-        blocks_since_last_diff_change = current_block_height % DIFFICULTY_ADJUSTMENT_INTERVAL + 1
-        expected_hashes_per_second_since_diff_change = self.nodes[0].getnetworkhashps(blocks_since_last_diff_change)
-
-        assert_equal(self.nodes[0].getnetworkhashps(-1), expected_hashes_per_second_since_diff_change)
-
-        # Ensure long lookups get truncated to chain length
-        hashes_per_second = self.nodes[0].getnetworkhashps(self.nodes[0].getblockcount() + 1000)
-        assert hashes_per_second > 0.003
 
     def _test_stopatheight(self):
         self.log.info("Test stopping at height")
@@ -687,7 +675,7 @@ class BlockchainTest(BitcoinTestFramework):
             total_vout = Decimal("0.00000000")
             for vin in tx["vin"]:
                 assert "prevout" in vin
-                assert_equal(set(vin["prevout"].keys()), set(("value", "height", "generated", "scriptPubKey")))
+                assert_equal(set(vin["prevout"].keys()), set(("value", "refheight", "amount", "height", "generated", "scriptPubKey")))
                 assert_equal(vin["prevout"]["generated"], True)
                 total_vin += vin["prevout"]["value"]
             for vout in tx["vout"]:

@@ -1,12 +1,24 @@
 #!/usr/bin/env python3
-# Copyright (c) 2018-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2018-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test createwallet arguments.
 """
 
+from test_framework.address import key_to_p2wpk
 from test_framework.descriptors import descsum_create
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
@@ -18,7 +30,10 @@ from test_framework.wallet_util import generate_keypair, WalletUnlock
 EMPTY_PASSPHRASE_MSG = "Empty string given as passphrase, wallet will not be encrypted."
 
 
-class CreateWalletTest(BitcoinTestFramework):
+class CreateWalletTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -49,7 +64,11 @@ class CreateWalletTest(BitcoinTestFramework):
 
         self.log.info('Test that private keys cannot be imported')
         privkey, pubkey = generate_keypair(wif=True)
-        result = w1.importdescriptors([{'desc': descsum_create('wpkh(' + privkey + ')'), 'timestamp': 'now'}])
+        assert_raises_rpc_error(-4, 'Cannot import private keys to a wallet with private keys disabled', w1.importprivkey, privkey)
+        if self.options.descriptors:
+            result = w1.importdescriptors([{'desc': descsum_create('wpk(' + privkey + ')'), 'timestamp': 'now'}])
+        else:
+            result = w1.importmulti([{'scriptPubKey': {'address': key_to_p2wpk(pubkey)}, 'timestamp': 'now', 'keys': [privkey]}])
         assert not result[0]['success']
         assert 'warnings' not in result[0]
         assert_equal(result[0]['error']['code'], -4)
@@ -75,17 +94,20 @@ class CreateWalletTest(BitcoinTestFramework):
         assert_equal(w3.getwalletinfo()['keypoolsize'], 0)
         assert_raises_rpc_error(-4, "Error: This wallet has no available keys", w3.getnewaddress)
         # Set the seed
-        w3.importdescriptors([{
-            'desc': descsum_create('wpkh(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/0h/*)'),
-            'timestamp': 'now',
-            'active': True
-        },
-        {
-            'desc': descsum_create('wpkh(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/1h/*)'),
-            'timestamp': 'now',
-            'active': True,
-            'internal': True
-        }])
+        if self.options.descriptors:
+            w3.importdescriptors([{
+                'desc': descsum_create('wpk(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/0h/*)'),
+                'timestamp': 'now',
+                'active': True
+            },
+            {
+                'desc': descsum_create('wpk(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/1h/*)'),
+                'timestamp': 'now',
+                'active': True,
+                'internal': True
+            }])
+        else:
+            w3.sethdseed()
         assert_equal(w3.getwalletinfo()['keypoolsize'], 1)
         w3.getnewaddress()
         w3.getrawchangeaddress()
@@ -102,17 +124,20 @@ class CreateWalletTest(BitcoinTestFramework):
         assert_raises_rpc_error(-4, "Error: This wallet has no available keys", w4.getrawchangeaddress)
         with WalletUnlock(w4, "pass"):
             # Now set a seed and it should work. Wallet should also be encrypted
-            w4.importdescriptors([{
-                'desc': descsum_create('wpkh(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/0h/*)'),
-                'timestamp': 'now',
-                'active': True
-            },
-            {
-                'desc': descsum_create('wpkh(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/1h/*)'),
-                'timestamp': 'now',
-                'active': True,
-                'internal': True
-            }])
+            if self.options.descriptors:
+                w4.importdescriptors([{
+                    'desc': descsum_create('wpk(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/0h/*)'),
+                    'timestamp': 'now',
+                    'active': True
+                },
+                {
+                    'desc': descsum_create('wpk(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/1h/*)'),
+                    'timestamp': 'now',
+                    'active': True,
+                    'internal': True
+                }])
+            else:
+                w4.sethdseed()
             w4.getnewaddress()
             w4.getrawchangeaddress()
 
@@ -145,7 +170,7 @@ class CreateWalletTest(BitcoinTestFramework):
             w6.keypoolrefill(1)
             # There should only be 1 key for legacy, 3 for descriptors
             walletinfo = w6.getwalletinfo()
-            keys = 4
+            keys = 2 if self.options.descriptors else 1
             assert_equal(walletinfo['keypoolsize'], keys)
             assert_equal(walletinfo['keypoolsize_hd_internal'], keys)
         # Allow empty passphrase, but there should be a warning

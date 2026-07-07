@@ -9,7 +9,7 @@ from test_framework.messages import (
     COIN,
     CTxOut,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.mempool_util import assert_mempool_contents
 from test_framework.util import (
     assert_equal,
@@ -24,7 +24,7 @@ from test_framework.blocktools import (
     create_empty_fork
 )
 
-class EphemeralDustTest(BitcoinTestFramework):
+class EphemeralDustTest(FreicoinTestFramework):
     def set_test_params(self):
         # Mempools should match via 1P1C p2p relay
         self.num_nodes = 2
@@ -49,7 +49,7 @@ class EphemeralDustTest(BitcoinTestFramework):
             new_utxo["txid"] = new_txid
             new_utxo["wtxid"] = result["tx"].wtxid_hex
 
-        result["new_utxos"].append({"txid": new_txid, "vout": len(result["tx"].vout) - 1, "value": Decimal(output_value) / COIN, "height": 0, "coinbase": False, "confirmations": 0})
+        result["new_utxos"].append({"txid": new_txid, "vout": len(result["tx"].vout) - 1, "value": Decimal(output_value) / COIN, "refheight": result["tx"].lock_height, "height": 0, "coinbase": False, "confirmations": 0})
 
     def create_ephemeral_dust_package(self, *, tx_version, dust_tx_fee=0, dust_value=0, num_dust_outputs=1, extra_sponsors=None):
         """Creates a 1P1C package containing ephemeral dust. By default, the parent transaction
@@ -223,9 +223,12 @@ class EphemeralDustTest(BitcoinTestFramework):
         dusty_tx, sweep_tx = self.create_ephemeral_dust_package(tx_version=2)
 
         res = self.nodes[0].submitpackage([dusty_tx["hex"], sweep_tx["hex"]])
-        assert_equal(res["package_msg"], "success")
-        assert_mempool_contents(self, self.nodes[0], expected=[dusty_tx["tx"], sweep_tx["tx"]])
-        self.generate(self.nodes[0], 1)
+        assert_equal(res["package_msg"], "transaction failed")
+        # Freicoin tx serialization (lock_height, no marker/flag padding) gives
+        # the two-output dust package tx a vsize of 143, not 147.
+        assert_equal(res["tx-results"][dusty_tx["wtxid"]]["error"], "min relay fee not met, 0 < 143")
+
+        assert_equal(self.nodes[0].getrawmempool(), [])
 
     def test_unspent_ephemeral(self):
         self.log.info("Test that spending from a tx with ephemeral outputs is only allowed if dust is spent as well")

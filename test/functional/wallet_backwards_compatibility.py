@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2018-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2018-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Backwards compatibility functional test
 
 Test various backwards compatibility scenarios. Requires previous releases binaries,
@@ -19,7 +30,7 @@ import os
 import shutil
 
 from test_framework.blocktools import COINBASE_MATURITY
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.descriptors import descsum_create
 from test_framework.messages import ser_string
 
@@ -31,7 +42,10 @@ from test_framework.util import (
 
 LAST_KEYPOOL_INDEX = 9 # Index of the last derived address with the keypool size of 10
 
-class BackwardsCompatibilityTest(BitcoinTestFramework):
+class BackwardsCompatibilityTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 8
@@ -39,12 +53,16 @@ class BackwardsCompatibilityTest(BitcoinTestFramework):
         self.extra_args = [
             ["-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # Pre-release: use to mine blocks. noban for immediate tx relay
             ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # Pre-release: use to receive coins, swap wallets, etc
-            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # v25.0
-            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # v24.0.1
-            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # v23.0
-            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1", f"-keypool={LAST_KEYPOOL_INDEX + 1}"], # v22.0
-            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # v0.21.0
-            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # v0.20.1
+            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # v25.1
+            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # v24.2
+            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # v23.2
+            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # v22.1
+            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # v21.2
+            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # v20.2
+            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=noban@127.0.0.1"], # v19.2
+            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=127.0.0.1"], # v18.1
+            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=127.0.0.1"], # v17.2
+            ["-nowallet", "-walletrbf=1", "-addresstype=bech32", "-whitelist=127.0.0.1", "-wallet=wallet.dat"], # v16.3
         ]
         self.wallet_names = [self.default_wallet_name]
 
@@ -95,27 +113,14 @@ class BackwardsCompatibilityTest(BitcoinTestFramework):
         node_v22.createwallet(wallet_name=wallet_name, descriptors=False)
         bad_deriv_wallet = node_v22.get_wallet_rpc(wallet_name)
 
-        # Make a dump of the wallet to get an unused address
-        dump_path = node_v22.wallets_path / f"{wallet_name}.dump"
-        bad_deriv_wallet.dumpwallet(dump_path)
-        addr = None
-        seed = None
-        with open(dump_path) as f:
-            for line in f:
-                if f"hdkeypath=m/0'/0'/{LAST_KEYPOOL_INDEX}'" in line:
-                    addr = line.split(" ")[4].split("=")[1]
-                elif " hdseed=1 " in line:
-                    seed = line.split(" ")[0]
-        assert addr is not None
-        assert seed is not None
-        # Rotate seed and unload
-        bad_deriv_wallet.sethdseed()
-        bad_deriv_wallet.unloadwallet()
-        # Receive at addr to trigger inactive chain topup on next load
-        self.nodes[0].sendtoaddress(addr, 1)
-        self.generate(self.nodes[0], 1, sync_fun=self.no_op)
-        self.sync_all(nodes=[self.nodes[0], node_master, node_v22])
-        node_v22.loadwallet(wallet_name)
+        # Copy the 0.19 wallet to the last Freicoin version and open it:
+        shutil.copytree(
+            os.path.join(node_v19.wallets_path, "w1_v19"),
+            os.path.join(node_master.wallets_path, "w1_v19")
+        )
+        node_master.loadwallet("w1_v19")
+        wallet = node_master.get_wallet_rpc("w1_v19")
+        assert wallet.getaddressinfo(address_18075)["solvable"]
 
         # Dump again to find bad hd keypath
         bad_deriv_path = f"m/0'/0'/{LAST_KEYPOOL_INDEX}'/0'/0'/{LAST_KEYPOOL_INDEX + 1}'"
@@ -310,15 +315,46 @@ class BackwardsCompatibilityTest(BitcoinTestFramework):
                         )
 
         # Check that descriptor wallets don't work on legacy only nodes
-        self.log.info("Test descriptor wallet incompatibility on v0.20")
-        # Descriptor wallets appear to be corrupted wallets to old software
-        assert self.major_version_equals(node_v20, 20)
-        for wallet_name in ["w1", "w2", "w3"]:
-            assert_raises_rpc_error(-4, "Wallet file verification failed: wallet.dat corrupt, salvage failed", node_v20.loadwallet, wallet_name)
+        if self.options.descriptors:
+            self.log.info("Test descriptor wallet incompatibility on:")
+            for node in legacy_only_nodes:
+                # RPC loadwallet failure causes freicoind to exit in <= 0.17, in addition to the RPC
+                # call failure, so the following test won't work:
+                # assert_raises_rpc_error(-4, "Wallet loading failed.", node_v17.loadwallet, 'w3')
+                if self.major_version_less_than(node, 18):
+                    continue
+                self.log.info(f"- {node.version}")
+                # Descriptor wallets appear to be corrupted wallets to old software
+                assert self.major_version_at_least(node, 18) and self.major_version_less_than(node, 21)
+                for wallet_name in ["w1", "w2", "w3"]:
+                    assert_raises_rpc_error(-4, "Wallet file verification failed: wallet.dat corrupt, salvage failed", node.loadwallet, wallet_name)
 
-        # w1 cannot be opened by 0.21 since it contains a taproot descriptor
-        self.log.info("Test that 0.21 cannot open wallet containing tr() descriptors")
-        assert_raises_rpc_error(-1, "map::at", node_v21.loadwallet, "w1")
+        # Instead, we stop node and try to launch it with the wallet:
+        self.stop_node(node_v17.index)
+        if self.options.descriptors:
+            self.log.info("Test descriptor wallet incompatibility with 0.17")
+            # Descriptor wallets appear to be corrupted wallets to old software
+            node_v17.assert_start_raises_init_error(["-wallet=w1"], "Error: wallet.dat corrupt, salvage failed")
+            node_v17.assert_start_raises_init_error(["-wallet=w2"], "Error: wallet.dat corrupt, salvage failed")
+            node_v17.assert_start_raises_init_error(["-wallet=w3"], "Error: wallet.dat corrupt, salvage failed")
+        else:
+            self.log.info("Test blank wallet incompatibility with v17")
+            node_v17.assert_start_raises_init_error(["-wallet=w3"], "Error: Error loading w3: Wallet requires newer version of Freicoin")
+        self.start_node(node_v17.index)
+
+        # No wallet created in master can be opened in 0.16
+        self.log.info("Test that wallets created in master are too new for 0.16")
+        self.stop_node(node_v16.index)
+        for wallet_name in ["w1", "w2", "w3"]:
+            if self.options.descriptors:
+                node_v16.assert_start_raises_init_error([f"-wallet={wallet_name}"], f"Error: {wallet_name} corrupt, salvage failed")
+            else:
+                node_v16.assert_start_raises_init_error([f"-wallet={wallet_name}"], f"Error: Error loading {wallet_name}: Wallet requires newer version of Freicoin")
+
+        # When descriptors are enabled, w1 cannot be opened by 0.21 since it contains a taproot descriptor
+        if self.options.descriptors:
+            self.log.info("Test that 0.21 cannot open wallet containing tr() descriptors")
+            assert_raises_rpc_error(-1, "map::at", node_v21.loadwallet, "w1")
 
         self.log.info("Test that a wallet can upgrade to and downgrade from master, from:")
         for node in descriptors_nodes:
@@ -354,7 +390,7 @@ class BackwardsCompatibilityTest(BitcoinTestFramework):
 
             wallet = node_master.get_wallet_rpc(wallet_name)
             info = wallet.getaddressinfo(address)
-            descriptor = f"wpkh([{info['hdmasterfingerprint']}{hdkeypath[1:]}]{pubkey})"
+            descriptor = f"wpk([{info['hdmasterfingerprint']}{hdkeypath[1:]}]{pubkey})"
             assert_equal(info["desc"], descsum_create(descriptor))
 
             # Make backup so the wallet can be copied back to old node

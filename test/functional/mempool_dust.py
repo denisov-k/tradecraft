@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2022-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test dust limit mempool policy (`-dustrelayfee` parameter)"""
 from decimal import Decimal
 
@@ -17,14 +28,14 @@ from test_framework.script import (
 from test_framework.script_util import (
     key_to_p2pk_script,
     key_to_p2pkh_script,
-    key_to_p2wpkh_script,
+    key_to_p2wpk_script,
     keys_to_multisig_script,
     output_key_to_p2tr_script,
     program_to_witness_script,
     script_to_p2sh_script,
     script_to_p2wsh_script,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.test_node import TestNode
 from test_framework.util import (
     assert_equal,
@@ -37,10 +48,10 @@ from test_framework.wallet_util import generate_keypair
 DUST_RELAY_TX_FEE = 3000  # default setting [sat/kvB]
 
 
-class DustRelayFeeTest(BitcoinTestFramework):
+class DustRelayFeeTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
-        self.extra_args = [['-permitbaremultisig']]
+        self.extra_args = [['-datacarrier=1', '-permitbaremultisig']]
 
     def test_dust_output(self, node: TestNode, dust_relay_fee: Decimal,
                          output_script: CScript, type_desc: str) -> None:
@@ -94,8 +105,9 @@ class DustRelayFeeTest(BitcoinTestFramework):
         assert sweep_txid in mempool_entries
         assert_equal(len(mempool_entries), 2)
 
-        # Wipe extra arg to reset dust relay
-        self.restart_node(0, extra_args=[])
+        # Wipe extra arg to reset dust relay (keep the datacarrier/baremultisig
+        # args from set_test_params; Freicoin defaults -datacarrier off)
+        self.restart_node(0, extra_args=['-datacarrier=1', '-permitbaremultisig'])
 
         assert_equal(self.nodes[0].getrawmempool(), [])
 
@@ -113,7 +125,7 @@ class DustRelayFeeTest(BitcoinTestFramework):
             (key_to_p2pk_script(pubkey),                       "P2PK (compressed)"),
             (key_to_p2pkh_script(pubkey),                      "P2PKH"),
             (script_to_p2sh_script(CScript([OP_TRUE])),        "P2SH"),
-            (key_to_p2wpkh_script(pubkey),                     "P2WPKH"),
+            (key_to_p2wpk_script(pubkey),                      "P2WPK"),
             (script_to_p2wsh_script(CScript([OP_TRUE])),       "P2WSH"),
             (output_key_to_p2tr_script(pubkey[1:]),            "P2TR"),
             # witness programs for segwitv2+ can be between 2 and 40 bytes
@@ -126,16 +138,16 @@ class DustRelayFeeTest(BitcoinTestFramework):
 
         # test default (no parameter), disabled (=0) and a bunch of arbitrary dust fee rates [sat/kvB]
         for dustfee_sat_kvb in (DUST_RELAY_TX_FEE, 0, 1, 66, 500, 1337, 12345, 21212, 333333):
-            dustfee_btc_kvb = dustfee_sat_kvb / Decimal(COIN)
+            dustfee_frc_kvb = dustfee_sat_kvb / Decimal(COIN)
             if dustfee_sat_kvb == DUST_RELAY_TX_FEE:
                 self.log.info(f"Test default dust limit setting ({dustfee_sat_kvb} sat/kvB)...")
             else:
-                dust_parameter = f"-dustrelayfee={dustfee_btc_kvb:.8f}"
+                dust_parameter = f"-dustrelayfee={dustfee_frc_kvb:.8f}"
                 self.log.info(f"Test dust limit setting {dust_parameter} ({dustfee_sat_kvb} sat/kvB)...")
-                self.restart_node(0, extra_args=[dust_parameter, "-permitbaremultisig"])
+                self.restart_node(0, extra_args=[dust_parameter, "-datacarrier=1", "-permitbaremultisig"])
 
             for output_script, description in output_scripts:
-                self.test_dust_output(self.nodes[0], dustfee_btc_kvb, output_script, description)
+                self.test_dust_output(self.nodes[0], dustfee_frc_kvb, output_script, description)
             self.generate(self.nodes[0], 1)
 
 

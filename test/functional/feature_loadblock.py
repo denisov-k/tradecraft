@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2017-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2017-2021 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test loadblock option
 
 Test the option to start a node with the option loadblock which loads
@@ -17,11 +28,11 @@ import tempfile
 import urllib
 
 from test_framework.blocktools import COINBASE_MATURITY
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_equal
 
 
-class LoadblockTest(BitcoinTestFramework):
+class LoadblockTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
@@ -51,11 +62,12 @@ class LoadblockTest(BitcoinTestFramework):
             cfg.write(f"port={node_url.port}\n")
             cfg.write(f"host={node_url.hostname}\n")
             cfg.write(f"output_file={bootstrap_file}\n")
-            cfg.write("max_height=100\n")
-            cfg.write("netmagic=fabfb5da\n")
+            cfg.write(f"max_height=100\n")
+            cfg.write(f"netmagic=ed999cf6\n")
             cfg.write(f"input={blocks_dir}\n")
             cfg.write(f"genesis={genesis_block}\n")
             cfg.write(f"hashlist={hash_list.name}\n")
+            cfg.write(f"auxpow=999999\n")
 
         base_dir = self.config["environment"]["SRCDIR"]
         linearize_dir = Path(base_dir) / "contrib" / "linearize"

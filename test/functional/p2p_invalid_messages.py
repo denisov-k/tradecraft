@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2015-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2015-2021 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test node responses to invalid network messages."""
 
 import random
@@ -26,7 +37,7 @@ from test_framework.p2p import (
     P2PDataStore,
     P2PInterface,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
@@ -54,7 +65,7 @@ class SenderOfAddrV2(P2PInterface):
         self.wait_until(lambda: 'sendaddrv2' in self.last_message)
 
 
-class InvalidMessagesTest(BitcoinTestFramework):
+class InvalidMessagesTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
@@ -182,7 +193,7 @@ class InvalidMessagesTest(BitcoinTestFramework):
         node = self.nodes[0]
         conn = node.add_p2p_connection(SenderOfAddrV2())
 
-        # Make sure bitcoind signals support for ADDRv2, otherwise this test
+        # Make sure freicoind signals support for ADDRv2, otherwise this test
         # will bombard an old node with messages it does not recognize which
         # will produce unexpected results.
         conn.wait_for_sendaddrv2()
@@ -229,14 +240,14 @@ class InvalidMessagesTest(BitcoinTestFramework):
                 '01' +       # network type (IPv4)
                 'fd0102' +   # address length (COMPACTSIZE(513))
                 'ab' * 513 + # address
-                '208d'))     # port
+                '21bf'))     # port
 
     def test_addrv2_unrecognized_network(self):
         now_hex = int(time.time()).to_bytes(4, "little").hex()
         self.test_addrv2('unrecognized network',
             [
                 'received: addrv2 (25 bytes)',
-                '9.9.9.9:8333',
+                '9.9.9.9:8639',
                 'Added 1 addresses',
             ],
             bytes.fromhex(
@@ -247,14 +258,14 @@ class InvalidMessagesTest(BitcoinTestFramework):
                 '99' +     # network type (unrecognized)
                 '02' +     # address length (COMPACTSIZE(2))
                 'ab' * 2 + # address
-                '208d' +   # port
+                '21bf' +   # port
                 # this should be added:
                 now_hex +  # time
                 '01' +     # service flags, COMPACTSIZE(NODE_NETWORK)
                 '01' +     # network type (IPv4)
                 '04' +     # address length (COMPACTSIZE(4))
                 '09' * 4 + # address
-                '208d'))   # port
+                '21bf'))   # port
 
     def test_oversized_msg(self, msg, size):
         msg_type = msg.msgtype.decode('ascii')

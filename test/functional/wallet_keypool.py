@@ -1,20 +1,31 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the wallet keypool and interaction with wallet encryption/locking."""
 
 from decimal import Decimal
 
-from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import (
-    assert_equal,
-    assert_not_equal,
-    assert_raises_rpc_error,
-)
+from test_framework.descriptors import descsum_create
+from test_framework.test_framework import FreicoinTestFramework
+from test_framework.util import assert_equal, assert_raises_rpc_error
 from test_framework.wallet_util import WalletUnlock
 
-class KeyPoolTest(BitcoinTestFramework):
+class KeyPoolTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -28,50 +39,51 @@ class KeyPoolTest(BitcoinTestFramework):
 
         # Encrypt wallet and wait to terminate
         nodes[0].encryptwallet('test')
-        # Import hardened derivation only descriptors
-        nodes[0].walletpassphrase('test', 10)
-        nodes[0].importdescriptors([
-            {
-                "desc": "wpkh(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/0h/*h)#y4dfsj7n",
-                "timestamp": "now",
-                "range": [0,0],
-                "active": True
-            },
-            {
-                "desc": "pkh(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/1h/*h)#a0nyvl0k",
-                "timestamp": "now",
-                "range": [0,0],
-                "active": True
-            },
-            {
-                "desc": "sh(wpkh(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/2h/*h))#lmeu2axg",
-                "timestamp": "now",
-                "range": [0,0],
-                "active": True
-            },
-            {
-                "desc": "wpkh(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/3h/*h)#jkl636gm",
-                "timestamp": "now",
-                "range": [0,0],
-                "active": True,
-                "internal": True
-            },
-            {
-                "desc": "pkh(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/4h/*h)#l3crwaus",
-                "timestamp": "now",
-                "range": [0,0],
-                "active": True,
-                "internal": True
-            },
-            {
-                "desc": "sh(wpkh(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/5h/*h))#qg8wa75f",
-                "timestamp": "now",
-                "range": [0,0],
-                "active": True,
-                "internal": True
-            }
-        ])
-        nodes[0].walletlock()
+        if self.options.descriptors:
+            # Import hardened derivation only descriptors
+            nodes[0].walletpassphrase('test', 10)
+            nodes[0].importdescriptors([
+                {
+                    "desc": descsum_create("wpk(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/0h/*h)"),
+                    "timestamp": "now",
+                    "range": [0,0],
+                    "active": True
+                },
+                {
+                    "desc": descsum_create("pkh(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/1h/*h)"),
+                    "timestamp": "now",
+                    "range": [0,0],
+                    "active": True
+                },
+                {
+                    "desc": descsum_create("sh(wpk(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/2h/*h))"),
+                    "timestamp": "now",
+                    "range": [0,0],
+                    "active": True
+                },
+                {
+                    "desc": descsum_create("wpk(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/3h/*h)"),
+                    "timestamp": "now",
+                    "range": [0,0],
+                    "active": True,
+                    "internal": True
+                },
+                {
+                    "desc": descsum_create("pkh(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/4h/*h)"),
+                    "timestamp": "now",
+                    "range": [0,0],
+                    "active": True,
+                    "internal": True
+                },
+                {
+                    "desc": descsum_create("sh(wpk(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/5h/*h))"),
+                    "timestamp": "now",
+                    "range": [0,0],
+                    "active": True,
+                    "internal": True
+                }
+            ])
+            nodes[0].walletlock()
         # Keep creating keys
         addr = nodes[0].getnewaddress()
         addr_data = nodes[0].getaddressinfo(addr)
@@ -82,8 +94,12 @@ class KeyPoolTest(BitcoinTestFramework):
         with WalletUnlock(nodes[0], 'test'):
             nodes[0].keypoolrefill(6)
         wi = nodes[0].getwalletinfo()
-        assert_equal(wi['keypoolsize_hd_internal'], 24)
-        assert_equal(wi['keypoolsize'], 24)
+        if self.options.descriptors:
+            assert_equal(wi['keypoolsize_hd_internal'], 12)
+            assert_equal(wi['keypoolsize'], 12)
+        else:
+            assert_equal(wi['keypoolsize_hd_internal'], 6)
+            assert_equal(wi['keypoolsize'], 6)
 
         # drain the internal keys
         nodes[0].getrawchangeaddress()
@@ -139,8 +155,26 @@ class KeyPoolTest(BitcoinTestFramework):
         with WalletUnlock(nodes[0], 'test'):
             nodes[0].keypoolrefill(100)
             wi = nodes[0].getwalletinfo()
-            assert_equal(wi['keypoolsize_hd_internal'], 400)
-            assert_equal(wi['keypoolsize'], 400)
+            if self.options.descriptors:
+                assert_equal(wi['keypoolsize_hd_internal'], 200)
+                assert_equal(wi['keypoolsize'], 200)
+            else:
+                assert_equal(wi['keypoolsize_hd_internal'], 100)
+                assert_equal(wi['keypoolsize'], 100)
+
+            if not self.options.descriptors:
+                # Check that newkeypool entirely flushes the keypool
+                start_keypath = nodes[0].getaddressinfo(nodes[0].getnewaddress())['hdkeypath']
+                start_change_keypath = nodes[0].getaddressinfo(nodes[0].getrawchangeaddress())['hdkeypath']
+                # flush keypool and get new addresses
+                nodes[0].newkeypool()
+                end_keypath = nodes[0].getaddressinfo(nodes[0].getnewaddress())['hdkeypath']
+                end_change_keypath = nodes[0].getaddressinfo(nodes[0].getrawchangeaddress())['hdkeypath']
+                # The new keypath index should be 100 more than the old one
+                new_index = int(start_keypath.rsplit('/',  1)[1][:-1]) + 100
+                new_change_index = int(start_change_keypath.rsplit('/',  1)[1][:-1]) + 100
+                assert_equal(end_keypath, "m/0'/0'/" + str(new_index) + "'")
+                assert_equal(end_change_keypath, "m/0'/1'/" + str(new_change_index) + "'")
 
         # create a blank wallet
         nodes[0].createwallet(wallet_name='w2', blank=True, disable_private_keys=True)
@@ -162,31 +196,31 @@ class KeyPoolTest(BitcoinTestFramework):
 
         # Using a fee rate (10 sat / byte) well above the minimum relay rate
         # creating a 5,000 sat transaction with change should not be possible
-        assert_raises_rpc_error(-4, "Transaction needs a change address, but we can't generate it.", w2.walletcreatefundedpsbt, inputs=[], outputs=[{addr.pop(): 0.00005000}], subtractFeeFromOutputs=[0], feeRate=0.00010)
+        assert_raises_rpc_error(-4, "Transaction needs a change address, but we can't generate it.", w2.walletcreatefundedpst, inputs=[], outputs=[{addr.pop(): 0.00005000}], subtractFeeFromOutputs=[0], feeRate=0.00010)
 
         # creating a 10,000 sat transaction without change, with a manual input, should still be possible
-        res = w2.walletcreatefundedpsbt(inputs=w2.listunspent(), outputs=[{destination: 0.00010000}], subtractFeeFromOutputs=[0], feeRate=0.00010)
-        assert_equal("psbt" in res, True)
+        res = w2.walletcreatefundedpst(inputs=w2.listunspent(), outputs=[{destination: 0.00010000}], subtractFeeFromOutputs=[0], feeRate=0.00010)
+        assert_equal("pst" in res, True)
 
         # creating a 10,000 sat transaction without change should still be possible
-        res = w2.walletcreatefundedpsbt(inputs=[], outputs=[{destination: 0.00010000}], subtractFeeFromOutputs=[0], feeRate=0.00010)
-        assert_equal("psbt" in res, True)
+        res = w2.walletcreatefundedpst(inputs=[], outputs=[{destination: 0.00010000}], subtractFeeFromOutputs=[0], feeRate=0.00010)
+        assert_equal("pst" in res, True)
         # should work without subtractFeeFromOutputs if the exact fee is subtracted from the amount
-        res = w2.walletcreatefundedpsbt(inputs=[], outputs=[{destination: 0.00008900}], feeRate=0.00010)
-        assert_equal("psbt" in res, True)
+        res = w2.walletcreatefundedpst(inputs=[], outputs=[{destination: 0.00008850}], feeRate=0.00010)
+        assert_equal("pst" in res, True)
 
         # dust change should be removed
-        res = w2.walletcreatefundedpsbt(inputs=[], outputs=[{destination: 0.00008800}], feeRate=0.00010)
-        assert_equal("psbt" in res, True)
+        res = w2.walletcreatefundedpst(inputs=[], outputs=[{destination: 0.00008750}], feeRate=0.00010)
+        assert_equal("pst" in res, True)
 
         # create a transaction without change at the maximum fee rate, such that the output is still spendable:
-        res = w2.walletcreatefundedpsbt(inputs=[], outputs=[{destination: 0.00010000}], subtractFeeFromOutputs=[0], feeRate=0.0008823)
-        assert_equal("psbt" in res, True)
+        res = w2.walletcreatefundedpst(inputs=[], outputs=[{destination: 0.00010000}], subtractFeeFromOutputs=[0], feeRate=0.0008440)
+        assert_equal("pst" in res, True)
         assert_equal(res["fee"], Decimal("0.00009706"))
 
         # creating a 10,000 sat transaction with a manual change address should be possible
-        res = w2.walletcreatefundedpsbt(inputs=[], outputs=[{destination: 0.00010000}], subtractFeeFromOutputs=[0], feeRate=0.00010, changeAddress=addr.pop())
-        assert_equal("psbt" in res, True)
+        res = w2.walletcreatefundedpst(inputs=[], outputs=[{destination: 0.00010000}], subtractFeeFromOutputs=[0], feeRate=0.00010, changeAddress=addr.pop())
+        assert_equal("pst" in res, True)
 
 if __name__ == '__main__':
     KeyPoolTest(__file__).main()

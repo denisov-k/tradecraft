@@ -27,13 +27,13 @@ from test_framework.script_util import (
     PAY_TO_ANCHOR,
     key_to_p2pk_script,
     key_to_p2pkh_script,
-    key_to_p2wpkh_script,
+    key_to_p2wpk_script,
     keys_to_multisig_script,
     output_key_to_p2tr_script,
     script_to_p2sh_script,
     script_to_p2wsh_script,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
@@ -44,35 +44,18 @@ def calculate_muhash_from_sqlite_utxos(filename, txid_format, spk_format):
     muhash = MuHash3072()
     con = sqlite3.connect(filename)
     cur = con.cursor()
-    for (txid, vout, value, coinbase, height, spk) in cur.execute("SELECT * FROM utxos"):
-        match txid_format:
-            case "hex":
-                assert type(txid) is str
-                txid_bytes = bytes.fromhex(txid)[::-1]
-            case "raw":
-                assert type(txid) is bytes
-                txid_bytes = txid
-            case "rawle":
-                assert type(txid) is bytes
-                txid_bytes = txid[::-1]
-        match spk_format:
-            case "hex":
-                assert type(spk) is str
-                spk_bytes = bytes.fromhex(spk)
-            case "raw":
-                assert type(spk) is bytes
-                spk_bytes = spk
-
+    for (txid_hex, vout, value, coinbase, height, refheight, spk_hex) in cur.execute("SELECT * FROM utxos"):
         # serialize UTXO for MuHash (see function `TxOutSer` in the  coinstats module)
         utxo_ser = COutPoint(uint256_from_str(txid_bytes), vout).serialize()
         utxo_ser += (height * 2 + coinbase).to_bytes(4, 'little')
-        utxo_ser += CTxOut(value, spk_bytes).serialize()
+        utxo_ser += CTxOut(value, bytes.fromhex(spk_hex)).serialize()
+        utxo_ser += refheight.to_bytes(4, 'little')
         muhash.insert(utxo_ser)
     con.close()
     return muhash.digest()[::-1].hex()
 
 
-class UtxoToSqliteTest(BitcoinTestFramework):
+class UtxoToSqliteTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         # we want to create some UTXOs with non-standard output scripts
@@ -104,7 +87,7 @@ class UtxoToSqliteTest(BitcoinTestFramework):
 
                 keys_to_multisig_script([pubkey]*i),
                 keys_to_multisig_script([uncompressed_pubkey]*i),
-                key_to_p2wpkh_script(pubkey),
+                key_to_p2wpk_script(pubkey),
                 script_to_p2wsh_script(key_to_p2pkh_script(pubkey)),
                 output_key_to_p2tr_script(pubkey[1:]),
                 PAY_TO_ANCHOR,

@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the REST API."""
 
 from decimal import Decimal
@@ -18,7 +29,7 @@ from test_framework.messages import (
     COIN,
     deser_block_spent_outputs,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -49,7 +60,7 @@ def filter_output_indices_by_value(vouts, value):
         if vout['value'] == value:
             yield vout['n']
 
-class RESTTest (BitcoinTestFramework):
+class RESTTest (FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
         self.extra_args = [["-rest", "-blockfilterindex=1"], []]
@@ -344,7 +355,7 @@ class RESTTest (BitcoinTestFramework):
         json_obj = self.test_rest_request("/mempool/info")
         assert_equal(json_obj['size'], 3)
         # the size of the memory pool should be greater than 3x ~100 bytes
-        assert_greater_than(json_obj['bytes'], 300)
+        assert_greater_than(json_obj['bytes'], 96 * 3)
 
         mempool_info = self.nodes[0].getmempoolinfo()
         # pop unstable unbroadcastcount before check
@@ -396,7 +407,7 @@ class RESTTest (BitcoinTestFramework):
 
         # Check if the 3 tx show up in the new block
         json_obj = self.test_rest_request(f"/block/{newblockhash[0]}")
-        non_coinbase_txs = {tx['txid'] for tx in json_obj['tx']
+        non_coinbase_txs = {tx['txid'] for tx in json_obj['tx'][:-1] #exclude final tx
                             if 'coinbase' not in tx['vin'][0]}
         assert_equal(non_coinbase_txs, set(txs))
 

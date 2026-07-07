@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2017-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2017-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test HD Wallet keypool restore function.
 
 Two nodes. Node1 is under test. Node0 is providing transactions and generating blocks.
@@ -13,13 +24,16 @@ Two nodes. Node1 is under test. Node0 is providing transactions and generating b
 import shutil
 
 from test_framework.blocktools import COINBASE_MATURITY
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
 
 
-class KeypoolRestoreTest(BitcoinTestFramework):
+class KeypoolRestoreTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 5
@@ -39,10 +53,10 @@ class KeypoolRestoreTest(BitcoinTestFramework):
         self.stop_node(1)
         shutil.copyfile(wallet_path, wallet_backup_path)
         self.start_node(1, self.extra_args[1])
-        for i in [1, 2, 3, 4]:
+        for i in [1, 2, 3]:
             self.connect_nodes(0, i)
 
-        output_types = ["legacy", "p2sh-segwit", "bech32", "bech32m"]
+        output_types = ["legacy", "bech32"]
         for i, output_type in enumerate(output_types):
             self.log.info("Generate keys for wallet with address type: {}".format(output_type))
             idx = i+1
@@ -55,11 +69,7 @@ class KeypoolRestoreTest(BitcoinTestFramework):
             address_details = self.nodes[idx].validateaddress(addr_extpool)
             if i == 0:
                 assert not address_details["isscript"] and not address_details["iswitness"]
-            elif i == 1:
-                assert address_details["isscript"] and not address_details["iswitness"]
-            elif i == 2:
-                assert not address_details["isscript"] and address_details["iswitness"]
-            elif i == 3:
+            else:
                 assert address_details["isscript"] and address_details["iswitness"]
 
             self.log.info("Send funds to wallet")
@@ -79,14 +89,13 @@ class KeypoolRestoreTest(BitcoinTestFramework):
             assert_equal(self.nodes[idx].getbalance(), 15)
             assert_equal(self.nodes[idx].listtransactions()[0]['category'], "receive")
             # Check that we have marked all keys up to the used keypool key as used
-            if output_type == 'legacy':
-                assert_equal(self.nodes[idx].getaddressinfo(self.nodes[idx].getnewaddress(address_type=output_type))['hdkeypath'], "m/44h/1h/0h/0/110")
-            elif output_type == 'p2sh-segwit':
-                assert_equal(self.nodes[idx].getaddressinfo(self.nodes[idx].getnewaddress(address_type=output_type))['hdkeypath'], "m/49h/1h/0h/0/110")
-            elif output_type == 'bech32':
-                assert_equal(self.nodes[idx].getaddressinfo(self.nodes[idx].getnewaddress(address_type=output_type))['hdkeypath'], "m/84h/1h/0h/0/110")
-            elif output_type == 'bech32m':
-                assert_equal(self.nodes[idx].getaddressinfo(self.nodes[idx].getnewaddress(address_type=output_type))['hdkeypath'], "m/86h/1h/0h/0/110")
+            if self.options.descriptors:
+                if output_type == 'legacy':
+                    assert_equal(self.nodes[idx].getaddressinfo(self.nodes[idx].getnewaddress(address_type=output_type))['hdkeypath'], "m/44h/1h/0h/0/110")
+                elif output_type == 'bech32':
+                    assert_equal(self.nodes[idx].getaddressinfo(self.nodes[idx].getnewaddress(address_type=output_type))['hdkeypath'], "m/84h/1h/0h/0/110")
+            else:
+                assert_equal(self.nodes[idx].getaddressinfo(self.nodes[idx].getnewaddress(address_type=output_type))['hdkeypath'], "m/0'/0'/110'")
 
 
 if __name__ == '__main__':

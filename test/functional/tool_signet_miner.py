@@ -13,12 +13,9 @@ import time
 
 from test_framework.blocktools import DIFF_1_N_BITS, SIGNET_HEADER
 from test_framework.key import ECKey
-from test_framework.script_util import CScript, key_to_p2wpkh_script
-from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import (
-    assert_equal,
-    wallet_importprivkey,
-)
+from test_framework.script_util import key_to_p2wpkh_script
+from test_framework.test_framework import FreicoinTestFramework
+from test_framework.util import assert_equal
 from test_framework.wallet_util import bytes_to_wif
 
 
@@ -36,7 +33,10 @@ def get_signet_commitment(segwit_commitment):
             return el[4:].hex()
     return None
 
-class SignetMinerTest(BitcoinTestFramework):
+class SignetMinerTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.chain = "signet"
         self.setup_clean_chain = True

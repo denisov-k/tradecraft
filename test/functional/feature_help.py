@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
-# Copyright (c) 2018-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Verify that starting bitcoin with -h works as expected."""
+# Copyright (c) 2018-2021 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Verify that starting freicoin with -h works as expected."""
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_equal
 
-class HelpTest(BitcoinTestFramework):
+class HelpTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -35,14 +46,14 @@ class HelpTest(BitcoinTestFramework):
         return out, err
 
     def run_test(self):
-        self.log.info("Start bitcoin with -h for help text")
+        self.log.info("Start freicoin with -h for help text")
         self.nodes[0].start(extra_args=['-h'])
         # Node should exit immediately and output help to stdout.
         output, _ = self.get_node_output(ret_code_expected=0)
         assert b'Options' in output
         self.log.info(f"Help text received: {output[0:60]} (...)")
 
-        self.log.info("Start bitcoin with -version for version information")
+        self.log.info("Start freicoin with -version for version information")
         self.nodes[0].start(extra_args=['-version'])
         # Node should exit immediately and output version to stdout.
         output, _ = self.get_node_output(ret_code_expected=0)
@@ -50,7 +61,7 @@ class HelpTest(BitcoinTestFramework):
         self.log.info(f"Version text received: {output[0:60]} (...)")
 
         # Test that arguments not in the help results in an error
-        self.log.info("Start bitcoind with -fakearg to make sure it does not start")
+        self.log.info("Start freicoind with -fakearg to make sure it does not start")
         self.nodes[0].start(extra_args=['-fakearg'])
         # Node should exit immediately and output an error to stderr
         _, output = self.get_node_output(ret_code_expected=1)

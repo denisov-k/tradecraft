@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 # Copyright (c) 2010 ArtForz -- public domain half-a-node
 # Copyright (c) 2012 Jeff Garzik
-# Copyright (c) 2010-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test objects for interacting with a bitcoind node over the p2p protocol.
+# Copyright (c) 2010-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Test objects for interacting with a freicoind node over the p2p protocol.
 
-The P2PInterface objects interact with the bitcoind nodes under test using the
+The P2PInterface objects interact with the freicoind nodes under test using the
 node's p2p interface. They can be used to send messages to the node, and
 callbacks can be registered that execute when messages are received from the
 node. Messages are sent to/received from the node on an asyncio event loop.
@@ -29,6 +40,7 @@ import platform
 import socket
 import struct
 import sys
+import time
 import threading
 
 from test_framework.messages import (
@@ -98,8 +110,8 @@ logger = logging.getLogger("TestFramework.p2p")
 # The minimum P2P version that this test framework supports
 MIN_P2P_VERSION_SUPPORTED = 60001
 # The P2P version that this test framework implements and sends in its `version` message
-# Version 70016 supports wtxid relay
-P2P_VERSION = 70016
+# Version 70017 supports wtxid relay
+P2P_VERSION = 70017
 # The services that this test framework offers in its `version` message
 P2P_SERVICES = NODE_NETWORK | NODE_WITNESS
 # The P2P user agent string that this test framework sends in its `version` message
@@ -202,7 +214,7 @@ class P2PConnection(asyncio.Protocol):
             self.v2_state = EncryptedP2PState(initiating=True, net=net)
 
         loop = NetworkThread.network_event_loop
-        logger.debug('Connecting to Bitcoin Node: %s:%d' % (self.dstaddr, self.dstport))
+        logger.debug('Connecting to Freicoin Node: %s:%d' % (self.dstaddr, self.dstport))
         coroutine = loop.create_connection(lambda: self, host=self.dstaddr, port=self.dstport)
         return lambda: loop.call_soon_threadsafe(loop.create_task, coroutine)
 
@@ -212,7 +224,7 @@ class P2PConnection(asyncio.Protocol):
         if supports_v2_p2p:
             self.v2_state = EncryptedP2PState(initiating=False, net=net)
 
-        logger.debug('Listening for Bitcoin Node with id: {}'.format(connect_id))
+        logger.debug('Listening for Freicoin Node with id: {}'.format(connect_id))
         return lambda: NetworkThread.listen(self, connect_cb, idx=connect_id)
 
     def peer_disconnect(self):
@@ -451,7 +463,7 @@ class P2PConnection(asyncio.Protocol):
 
 
 class P2PInterface(P2PConnection):
-    """A high-level P2P interface class for communicating with a Bitcoin node.
+    """A high-level P2P interface class for communicating with a Freicoin node.
 
     This class provides high-level callbacks for processing P2P message
     payloads, as well as convenience methods for interacting with the
@@ -585,8 +597,8 @@ class P2PInterface(P2PConnection):
         if not self.p2p_connected_to_node:
             self.send_version()
             self.reconnect = False
-        if message.nVersion >= 70016 and self.wtxidrelay:
-            self.send_without_ping(msg_wtxidrelay())
+        if message.nVersion >= 70017 and self.wtxidrelay:
+            self.send_message(msg_wtxidrelay())
         if self.support_addrv2:
             self.send_without_ping(msg_sendaddrv2())
         self.send_without_ping(msg_verack())

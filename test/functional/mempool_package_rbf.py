@@ -1,15 +1,27 @@
 #!/usr/bin/env python3
-# Copyright (c) 2021-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2021 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import re
 from decimal import Decimal
 
 from test_framework.messages import (
     COIN,
     MAX_BIP125_RBF_SEQUENCE,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.mempool_util import fill_mempool
 from test_framework.util import (
     assert_greater_than_or_equal,
@@ -27,14 +39,30 @@ MAX_REPLACEMENT_CANDIDATES = 100
 # for typical cases
 DEFAULT_CHILD_FEE = DEFAULT_FEE * 4
 
-class PackageRBFTest(BitcoinTestFramework):
+class PackageRBFTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
         self.setup_clean_chain = True
         # Required for fill_mempool()
         self.extra_args = [[
+            '-datacarrier=1',           # data outputs are disabled by default
+            "-datacarriersize=100000",
             "-maxmempool=5",
         ]] * self.num_nodes
+
+    def assert_topology_violation(self, package_result):
+        """Check that package RBF failed due to an invalid cluster topology.
+
+        Which member of the invalid cluster is reported first depends on the
+        txid sort order of the conflict set, which differs from upstream
+        because Freicoin txids commit to lock_height. All the diagnostics
+        below describe the same class of failure."""
+        assert re.fullmatch(
+            r"package RBF failed: [0-9a-f]{64} ("
+            r"has \d+ (ancestors|descendants), max 1 allowed"
+            r"|has both ancestor and descendant, exceeding cluster limit of 2"
+            r"|is not the only (parent of child|child of parent) [0-9a-f]{64})",
+            package_result["package_msg"]), package_result["package_msg"]
 
     def assert_mempool_contents(self, expected=None):
         mempool_util.assert_mempool_contents(self, self.nodes[0], expected, sync=False)
@@ -287,6 +315,167 @@ class PackageRBFTest(BitcoinTestFramework):
         pkg_result = node.submitpackage(package_hex2)
         assert_equal(pkg_result["package_msg"], 'package RBF failed: new transaction cannot have mempool ancestors')
         self.assert_mempool_contents(expected=package_txns1 + package_txns2_succeed)
+        self.generate(node, 1)
+
+    def test_wrong_conflict_cluster_size_linear(self):
+        self.log.info("Test that conflicting with a cluster not sized two is rejected: linear chain")
+        node = self.nodes[0]
+
+        # Coins we will conflict with
+        coin1 = self.coins.pop()
+        coin2 = self.coins.pop()
+        coin3 = self.coins.pop()
+
+        # Three transactions chained; package RBF against any of these
+        # should be rejected
+        self.ctr += 1
+        parent_result = self.wallet.create_self_transfer(
+            fee=DEFAULT_FEE,
+            utxo_to_spend=coin1,
+            sequence=MAX_BIP125_RBF_SEQUENCE - self.ctr,
+        )
+
+        self.ctr += 1
+        child_result = self.wallet.create_self_transfer_multi(
+            fee_per_output=int(DEFAULT_FEE * COIN),
+            utxos_to_spend=[parent_result["new_utxo"], coin2],
+            sequence=MAX_BIP125_RBF_SEQUENCE - self.ctr,
+        )
+
+        self.ctr += 1
+        grandchild_result = self.wallet.create_self_transfer_multi(
+            fee_per_output=int(DEFAULT_FEE * COIN),
+            utxos_to_spend=[child_result["new_utxos"][0], coin3],
+            sequence=MAX_BIP125_RBF_SEQUENCE - self.ctr,
+        )
+
+        expected_txns = [parent_result["tx"], child_result["tx"], grandchild_result["tx"]]
+        for tx in expected_txns:
+            node.sendrawtransaction(tx.serialize().hex())
+        self.assert_mempool_contents(expected=expected_txns)
+
+        # Now make conflicting packages for each coin
+        package_hex1, _package_txns1 = self.create_simple_package(coin1, DEFAULT_FEE, DEFAULT_CHILD_FEE)
+
+        package_result = node.submitpackage(package_hex1)
+        self.assert_topology_violation(package_result)
+
+        package_hex2, _package_txns2 = self.create_simple_package(coin2, DEFAULT_FEE, DEFAULT_CHILD_FEE)
+        package_result = node.submitpackage(package_hex2)
+        self.assert_topology_violation(package_result)
+
+        package_hex3, _package_txns3 = self.create_simple_package(coin3, DEFAULT_FEE, DEFAULT_CHILD_FEE)
+        package_result = node.submitpackage(package_hex3)
+        self.assert_topology_violation(package_result)
+
+        # Check that replacements were actually rejected
+        self.assert_mempool_contents(expected=expected_txns)
+        self.generate(node, 1)
+
+    def test_wrong_conflict_cluster_size_parents_child(self):
+        self.log.info("Test that conflicting with a cluster not sized two is rejected: two parents one child")
+        node = self.nodes[0]
+
+        # Coins we will conflict with
+        coin1 = self.coins.pop()
+        coin2 = self.coins.pop()
+        coin3 = self.coins.pop()
+
+        self.ctr += 1
+        parent1_result = self.wallet.create_self_transfer(
+            fee=DEFAULT_FEE,
+            utxo_to_spend=coin1,
+            sequence=MAX_BIP125_RBF_SEQUENCE - self.ctr,
+        )
+
+        self.ctr += 1
+        parent2_result = self.wallet.create_self_transfer_multi(
+            fee_per_output=int(DEFAULT_FEE * COIN),
+            utxos_to_spend=[coin2],
+            sequence=MAX_BIP125_RBF_SEQUENCE - self.ctr,
+        )
+
+        self.ctr += 1
+        child_result = self.wallet.create_self_transfer_multi(
+            fee_per_output=int(DEFAULT_FEE * COIN),
+            utxos_to_spend=[parent1_result["new_utxo"], parent2_result["new_utxos"][0], coin3],
+            sequence=MAX_BIP125_RBF_SEQUENCE - self.ctr,
+        )
+
+        expected_txns = [parent1_result["tx"], parent2_result["tx"], child_result["tx"]]
+        for tx in expected_txns:
+            node.sendrawtransaction(tx.serialize().hex())
+        self.assert_mempool_contents(expected=expected_txns)
+
+        # Now make conflicting packages for each coin
+        package_hex1, _package_txns1 = self.create_simple_package(coin1, DEFAULT_FEE, DEFAULT_CHILD_FEE)
+        package_result = node.submitpackage(package_hex1)
+        self.assert_topology_violation(package_result)
+
+        package_hex2, _package_txns2 = self.create_simple_package(coin2, DEFAULT_FEE, DEFAULT_CHILD_FEE)
+        package_result = node.submitpackage(package_hex2)
+        self.assert_topology_violation(package_result)
+
+        package_hex3, _package_txns3 = self.create_simple_package(coin3, DEFAULT_FEE, DEFAULT_CHILD_FEE)
+        package_result = node.submitpackage(package_hex3)
+        self.assert_topology_violation(package_result)
+
+        # Check that replacements were actually rejected
+        self.assert_mempool_contents(expected=expected_txns)
+        self.generate(node, 1)
+
+    def test_wrong_conflict_cluster_size_parent_children(self):
+        self.log.info("Test that conflicting with a cluster not sized two is rejected: one parent two children")
+        node = self.nodes[0]
+
+        # Coins we will conflict with
+        coin1 = self.coins.pop()
+        coin2 = self.coins.pop()
+        coin3 = self.coins.pop()
+
+        self.ctr += 1
+        parent_result = self.wallet.create_self_transfer_multi(
+            fee_per_output=int(DEFAULT_FEE * COIN),
+            num_outputs=2,
+            utxos_to_spend=[coin1],
+            sequence=MAX_BIP125_RBF_SEQUENCE - self.ctr,
+        )
+
+        self.ctr += 1
+        child1_result = self.wallet.create_self_transfer_multi(
+            fee_per_output=int(DEFAULT_FEE * COIN),
+            utxos_to_spend=[parent_result["new_utxos"][0], coin2],
+            sequence=MAX_BIP125_RBF_SEQUENCE - self.ctr,
+        )
+
+        self.ctr += 1
+        child2_result = self.wallet.create_self_transfer_multi(
+            fee_per_output=int(DEFAULT_FEE * COIN),
+            utxos_to_spend=[parent_result["new_utxos"][1], coin3],
+            sequence=MAX_BIP125_RBF_SEQUENCE - self.ctr,
+        )
+
+        # Submit them to mempool
+        expected_txns = [parent_result["tx"], child1_result["tx"], child2_result["tx"]]
+        for tx in expected_txns:
+            node.sendrawtransaction(tx.serialize().hex())
+        self.assert_mempool_contents(expected=expected_txns)
+
+        # Now make conflicting packages for each coin
+        package_hex1, _package_txns1 = self.create_simple_package(coin1, DEFAULT_FEE, DEFAULT_CHILD_FEE)
+        package_result = node.submitpackage(package_hex1)
+        self.assert_topology_violation(package_result)
+
+        package_hex2, _package_txns2 = self.create_simple_package(coin2, DEFAULT_FEE, DEFAULT_CHILD_FEE)
+        package_result = node.submitpackage(package_hex2)
+        self.assert_topology_violation(package_result)
+
+        package_hex3, _package_txns3 = self.create_simple_package(coin3, DEFAULT_FEE, DEFAULT_CHILD_FEE)
+        package_result = node.submitpackage(package_hex3)
+        self.assert_topology_violation(package_result)
+
+        # Check that replacements were actually rejected
+        self.assert_mempool_contents(expected=expected_txns)
         self.generate(node, 1)
 
     def test_package_rbf_with_wrong_pkg_size(self):

@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
-# Copyright (c) 2017-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2017-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test mempool acceptance of raw transactions."""
 
 from copy import deepcopy
 from decimal import Decimal
 import math
 
-from test_framework.test_framework import BitcoinTestFramework
-from test_framework.blocktools import MAX_STANDARD_TX_WEIGHT
-from test_framework.mempool_util import (
-    DEFAULT_MIN_RELAY_TX_FEE,
-    DEFAULT_INCREMENTAL_RELAY_FEE,
-)
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.messages import (
     MAX_BIP125_RBF_SEQUENCE,
     COIN,
@@ -56,11 +62,13 @@ from test_framework.wallet import MiniWallet
 from test_framework.wallet_util import generate_keypair
 
 
-class MempoolAcceptanceTest(BitcoinTestFramework):
+class MempoolAcceptanceTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [[
-            '-txindex','-permitbaremultisig=0',
+            '-txindex',
+            '-permitbaremultisig=0',
+            '-datacarrier=1',  # We still test OP_RETURN
         ]] * self.num_nodes
         self.supports_cli = False
 
@@ -109,8 +117,8 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
         txid_in_block = self.wallet.sendrawtransaction(from_node=node, tx_hex=raw_tx_in_block)
         self.generate(node, 1)
         self.mempool_size = 0
-        # Also check feerate. 1BTC/kvB fails
-        assert_raises_rpc_error(-8, "Fee rates larger than or equal to 1BTC/kvB are not accepted", lambda: self.check_mempool_result(
+        # Also check feerate. 1FRC/kvB fails
+        assert_raises_rpc_error(-8, "Fee rates larger than or equal to 1FRC/kvB are not accepted", lambda: self.check_mempool_result(
             result_expected=None,
             rawtxs=[raw_tx_in_block],
             maxfeerate=1,
@@ -130,7 +138,7 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
 
         self.log.info('A transaction not in the mempool')
         fee = Decimal('0.000007')
-        utxo_to_spend = self.wallet.get_utxo(txid=txid_in_block)  # use 0.3 BTC UTXO
+        utxo_to_spend = self.wallet.get_utxo(txid=txid_in_block)  # use 0.3 FRC UTXO
         tx = self.wallet.create_self_transfer(utxo_to_spend=utxo_to_spend, sequence=MAX_BIP125_RBF_SEQUENCE)['tx']
         tx.vout[0].nValue = int((Decimal('0.3') - fee) * COIN)
         raw_tx_0 = tx.serialize().hex()
@@ -413,15 +421,15 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
         tx = CTransaction()
         tx.vin.append(CTxIn(COutPoint(int(seed_tx["txid"], 16), seed_tx["sent_vout"]), b"", SEQUENCE_FINAL))
         tx.wit.vtxinwit = [CTxInWitness()]
-        tx.wit.vtxinwit[0].scriptWitness.stack = [CScript([OP_TRUE])]
-        tx.vout.append(CTxOut(0, CScript([OP_RETURN] + ([OP_0] * (MIN_PADDING - 2)))))
+        tx.wit.vtxinwit[0].scriptWitness.stack = [b"\x00" + CScript([OP_TRUE]), b""]
+        tx.vout.append(CTxOut(0, b""))
         # Note it's only non-witness size that matters!
         assert_equal(len(tx.serialize_without_witness()), 64)
         assert_equal(MIN_STANDARD_TX_NONWITNESS_SIZE - 1, 64)
         assert_greater_than(len(tx.serialize()), 64)
 
         self.check_mempool_result(
-            result_expected=[{'txid': tx.txid_hex, 'allowed': False, 'reject-reason': 'tx-size-small'}],
+            result_expected=[{'txid': tx.rehash(), 'allowed': False, 'reject-reason': 'scriptpubkey'}],
             rawtxs=[tx.serialize().hex()],
             maxfeerate=0,
         )
@@ -484,7 +492,7 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
         nested_anchor_spend.vout.append(CTxOut(nested_anchor_tx.vout[0].nValue - int(fee*COIN), script_to_p2wsh_script(CScript([OP_TRUE]))))
 
         self.check_mempool_result(
-            result_expected=[{'txid': nested_anchor_spend.txid_hex, 'allowed': False, 'reject-reason': 'mempool-script-verify-flag-failed (Witness version reserved for soft-fork upgrades)'}],
+            result_expected=[{'txid': nested_anchor_spend.rehash(), 'allowed': False, 'reject-reason': 'non-mandatory-script-verify-flag (Stack size must be exactly one after execution)'}],
             rawtxs=[nested_anchor_spend.serialize().hex()],
             maxfeerate=0,
         )
@@ -501,7 +509,7 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
         tx_spend.vin.append(CTxIn(COutPoint(tx.txid_int, 0), b""))
         tx_spend.vout.append(CTxOut(tx.vout[0].nValue - int(fee*COIN), script_to_p2wsh_script(CScript([OP_TRUE]))))
         sign_input_legacy(tx_spend, 0, tx.vout[0].scriptPubKey, privkey, sighash_type=SIGHASH_ALL)
-        tx_spend.vin[0].scriptSig = bytes(CScript([OP_0])) + tx_spend.vin[0].scriptSig
+        tx_spend.vin[0].scriptSig = bytes(CScript([3])) + tx_spend.vin[0].scriptSig
         self.check_mempool_result(
             result_expected=[{'txid': tx_spend.txid_hex, 'allowed': True, 'vsize': tx_spend.get_vsize(), 'fees': { 'base': Decimal('0.00000700')}}],
             rawtxs=[tx_spend.serialize().hex()],

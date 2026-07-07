@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the pruning code.
 
 WARNING:
@@ -14,13 +25,16 @@ from test_framework.blocktools import (
     MIN_BLOCKS_TO_KEEP,
     create_block,
     create_coinbase,
+    get_final_tx_info,
+    add_final_tx,
 )
+from test_framework.messages import CTxOut
 from test_framework.script import (
     CScript,
     OP_NOP,
     OP_RETURN,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -47,12 +61,15 @@ def mine_large_blocks(node, n):
     # Get the block parameters for the first block
     big_script = CScript([OP_RETURN] + [OP_NOP] * 950000)
     best_block = node.getblock(node.getbestblockhash())
+    final_tx = get_final_tx_info(node)
     height = int(best_block["height"]) + 1
     mine_large_blocks.nTime = max(mine_large_blocks.nTime, int(best_block["time"])) + 1
     previousblockhash = int(best_block["hash"], 16)
 
     for _ in range(n):
         block = create_block(hashprev=previousblockhash, ntime=mine_large_blocks.nTime, coinbase=create_coinbase(height, script_pubkey=big_script))
+        if height > 100:
+            final_tx = add_final_tx(final_tx, block)
         block.solve()
 
         # Submit to the node
@@ -65,7 +82,10 @@ def mine_large_blocks(node, n):
 def calc_usage(blockdir):
     return sum(os.path.getsize(blockdir + f) for f in os.listdir(blockdir) if os.path.isfile(os.path.join(blockdir, f))) / (1024. * 1024.)
 
-class PruneTest(BitcoinTestFramework):
+class PruneTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 6
@@ -241,7 +261,7 @@ class PruneTest(BitcoinTestFramework):
         goalbestheight = self.mainchainheight
         goalbesthash = self.mainchainhash2
 
-        # As of 0.10 the current block download logic is not able to reorg to the original chain created in
+        # As of 10.4 the current block download logic is not able to reorg to the original chain created in
         # create_chain_with_stale_blocks because it doesn't know of any peer that's on that chain from which to
         # redownload its missing blocks.
         # Invalidate the reorg_test chain in node 0 as well, it can successfully switch to the original chain
@@ -494,7 +514,7 @@ class PruneTest(BitcoinTestFramework):
     def test_scanblocks_pruned(self):
         node = self.nodes[5]
         genesis_blockhash = node.getblockhash(0)
-        false_positive_spk = bytes.fromhex("001400000000000000000000000000000000000cadcb")
+        false_positive_spk = bytes.fromhex("4104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac")
 
         assert genesis_blockhash in node.scanblocks(
             "start", [{"desc": f"raw({false_positive_spk.hex()})"}], 0, 0)['relevant_blocks']

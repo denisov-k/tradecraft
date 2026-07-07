@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2020-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2020-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test datacarrier functionality"""
 from test_framework.messages import (
     CTxOut,
@@ -11,7 +22,7 @@ from test_framework.script import (
     CScript,
     OP_RETURN,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.test_node import TestNode
 from test_framework.util import (
     assert_equal,
@@ -24,7 +35,7 @@ from random import randbytes
 # The historical maximum, now used to test coverage
 CUSTOM_DATACARRIER_ARG = 83
 
-class DataCarrierTest(BitcoinTestFramework):
+class DataCarrierTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 4
         self.extra_args = [
@@ -69,9 +80,11 @@ class DataCarrierTest(BitcoinTestFramework):
         one_byte = randbytes(1)
         zero_bytes = randbytes(0)
 
-        self.log.info("Testing a null data transaction succeeds for default arg regardless of size.")
-        self.test_null_data_transaction(node=self.nodes[0], data=too_long_data, success=True)
-        self.test_null_data_transaction(node=self.nodes[0], data=extremely_long_data, success=True)
+        self.log.info("Testing null data transaction with default -datacarrier and -datacarriersize values.")
+        self.test_null_data_transaction(node=self.nodes[0], data=default_size_data, success=False)
+
+        self.log.info("Testing a null data transaction larger than allowed by the default -datacarriersize value.")
+        self.test_null_data_transaction(node=self.nodes[0], data=too_long_data, success=False)
 
         self.log.info("Testing a null data transaction with -datacarrier=false.")
         self.test_null_data_transaction(node=self.nodes[1], data=custom_size_data, success=False)
@@ -84,18 +97,18 @@ class DataCarrierTest(BitcoinTestFramework):
 
         self.log.info("Testing a null data transaction with no data.")
         self.test_null_data_transaction(node=self.nodes[0], data=None, success=True)
-        self.test_null_data_transaction(node=self.nodes[1], data=None, success=False)
+        self.test_null_data_transaction(node=self.nodes[1], data=None, success=True)
         self.test_null_data_transaction(node=self.nodes[2], data=None, success=True)
         self.test_null_data_transaction(node=self.nodes[3], data=None, success=True)
 
         self.log.info("Testing a null data transaction with zero bytes of data.")
-        self.test_null_data_transaction(node=self.nodes[0], data=zero_bytes, success=True)
+        self.test_null_data_transaction(node=self.nodes[0], data=zero_bytes, success=False)
         self.test_null_data_transaction(node=self.nodes[1], data=zero_bytes, success=False)
         self.test_null_data_transaction(node=self.nodes[2], data=zero_bytes, success=True)
         self.test_null_data_transaction(node=self.nodes[3], data=zero_bytes, success=True)
 
         self.log.info("Testing a null data transaction with one byte of data.")
-        self.test_null_data_transaction(node=self.nodes[0], data=one_byte, success=True)
+        self.test_null_data_transaction(node=self.nodes[0], data=one_byte, success=False)
         self.test_null_data_transaction(node=self.nodes[1], data=one_byte, success=False)
         self.test_null_data_transaction(node=self.nodes[2], data=one_byte, success=True)
         self.test_null_data_transaction(node=self.nodes[3], data=one_byte, success=False)

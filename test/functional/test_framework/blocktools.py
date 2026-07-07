@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2015-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2015-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Utilities for manipulating blocks and transactions."""
 
 import struct
@@ -10,9 +21,7 @@ import unittest
 
 from .address import (
     address_to_scriptpubkey,
-    key_to_p2sh_p2wpkh,
-    key_to_p2wpkh,
-    script_to_p2sh_p2wsh,
+    key_to_p2wpk,
     script_to_p2wsh,
 )
 from .messages import (
@@ -24,6 +33,7 @@ from .messages import (
     CTxInWitness,
     CTxOut,
     SEQUENCE_FINAL,
+    fastHash256,
     hash256,
     ser_uint256,
     tx_from_hex,
@@ -36,16 +46,19 @@ from .script import (
     CScriptNum,
     CScriptOp,
     OP_0,
+    OP_1,
     OP_RETURN,
     OP_TRUE,
 )
 from .script_util import (
     key_to_p2pk_script,
-    key_to_p2wpkh_script,
+    key_to_p2wpk_script,
     keys_to_multisig_script,
     script_to_p2wsh_script,
 )
-from .util import assert_equal
+from .util import (
+    assert_equal,
+)
 
 MAX_BLOCK_SIGOPS = 20000
 MAX_BLOCK_SIGOPS_WEIGHT = MAX_BLOCK_SIGOPS * WITNESS_SCALE_FACTOR
@@ -53,7 +66,7 @@ MAX_STANDARD_TX_SIGOPS = 4000
 MAX_STANDARD_TX_WEIGHT = 400000
 
 # Genesis block time (regtest)
-TIME_GENESIS_BLOCK = 1296688602
+TIME_GENESIS_BLOCK = 1356123600
 
 MAX_FUTURE_BLOCK_TIME = 2 * 60 * 60
 
@@ -61,11 +74,9 @@ MAX_FUTURE_BLOCK_TIME = 2 * 60 * 60
 COINBASE_MATURITY = 100
 
 # From BIP141
-WITNESS_COMMITMENT_HEADER = b"\xaa\x21\xa9\xed"
+WITNESS_COMMITMENT_HEADER = b"\x4b\x4a\x49\x48"
 
-NULL_OUTPOINT = COutPoint(0, 0xffffffff)
-
-NORMAL_GBT_REQUEST_PARAMS = {"rules": ["segwit"]}
+NORMAL_GBT_REQUEST_PARAMS = {"rules": ["segwit","finaltx","auxpow"]}
 VERSIONBITS_LAST_OLD_BLOCK_VERSION = 4
 MIN_BLOCKS_TO_KEEP = 288
 
@@ -115,33 +126,45 @@ def create_block(hashprev=None, coinbase=None, ntime=None, *, version=None, tmpl
             if type(tx) is str:
                 tx = tx_from_hex(tx)
             block.vtx.append(tx)
+    finaltx_prevout = tmpl.get('finaltx', {}).get('prevout', [])
+    if finaltx_prevout and tmpl['height'] > 100:
+        add_final_tx(finaltx_prevout, block)
     block.hashMerkleRoot = block.calc_merkle_root()
     return block
 
-def create_empty_fork(node, fork_length=FORK_LENGTH):
-    '''
-        Creates a fork using node's chaintip as the starting point.
-        Returns a list of blocks to submit in order.
-    '''
-    tip = int(node.getbestblockhash(), 16)
-    height = node.getblockcount()
-    block_time = node.getblock(node.getbestblockhash())['time'] + 1
+def get_final_tx_info(node):
+    try:
+        finaltx_prevout = node.getblocktemplate({'rules':['finaltx','segwit','auxpow']})['finaltx']['prevout']
+    except KeyError:
+        finaltx_prevout = []
+    return finaltx_prevout
 
-    blocks = []
-    for _ in range(fork_length):
-        block = create_block(tip, create_coinbase(height + 1), block_time)
-        block.solve()
-        blocks.append(block)
-        tip = block.hash_int
-        block_time += 1
-        height += 1
-
-    return blocks
+def add_final_tx(info, block):
+    finaltx = CTransaction()
+    finaltx.nLockTime = block.vtx[0].nLockTime
+    finaltx.lock_height = block.vtx[0].lock_height
+    finaltx.vout.append(CTxOut(0, CScript([OP_TRUE])))
+    for prevout in info:
+        finaltx.vin.append(CTxIn(COutPoint(uint256_from_str(bytes.fromhex(prevout['txid'])[::-1]), prevout['vout']), CScript([]), 0xffffffff))
+        finaltx.vout[-1].nValue += prevout['amount']
+    finaltx.rehash()
+    block.vtx.append(finaltx)
+    block.hashMerkleRoot = block.calc_merkle_root()
+    block.rehash()
+    return [{
+        'txid': finaltx.hash,
+        'vout': 0,
+        'amount': int(finaltx.vout[-1].nValue),
+    }]
 
 def get_witness_script(witness_root, witness_nonce):
-    witness_commitment = hash256(ser_uint256(witness_root) + ser_uint256(witness_nonce))
-    output_data = WITNESS_COMMITMENT_HEADER + witness_commitment
-    return CScript([OP_RETURN, output_data])
+    witness_path = 0x01
+    if witness_nonce:
+        witness_path = 0x02
+        witness_root = uint256_from_str(fastHash256(ser_uint256(witness_root),
+                                                    ser_uint256(witness_nonce)))
+    output_data = bytes((witness_path,)) + ser_uint256(witness_root) + WITNESS_COMMITMENT_HEADER
+    return CScript([output_data])
 
 def add_witness_commitment(block, nonce=0):
     """Add a witness commitment to the block's coinbase transaction.
@@ -150,15 +173,28 @@ def add_witness_commitment(block, nonce=0):
     hash of all in-block transactions including witness."""
     # First calculate the merkle root of the block's
     # transactions, with witnesses.
-    witness_nonce = nonce
+    witness_branch = b''
+    if nonce:
+        witness_branch = ser_uint256(nonce)
+    output_data = bytes((0,)) + ser_uint256(0) + WITNESS_COMMITMENT_HEADER
+    block.vtx[-1].vout[-1].scriptPubKey = CScript([output_data])
+    block.vtx[-1].rehash()
     witness_root = block.calc_witness_merkle_root()
-    # witness_nonce should go to coinbase witness.
+    # witness_branch should go to coinbase witness.
     block.vtx[0].wit.vtxinwit = [CTxInWitness()]
-    block.vtx[0].wit.vtxinwit[0].scriptWitness.stack = [ser_uint256(witness_nonce)]
+    block.vtx[0].wit.vtxinwit[0].scriptWitness.stack = [witness_branch]
 
-    # witness commitment is the last OP_RETURN output in coinbase
-    block.vtx[0].vout.append(CTxOut(0, get_witness_script(witness_root, witness_nonce)))
+    # witness commitment is the last output in block-final tx
+    block.vtx[-1].vout[-1].scriptPubKey = get_witness_script(witness_root, nonce)
+    block.vtx[-1].rehash()
     block.hashMerkleRoot = block.calc_merkle_root()
+    if block.aux_pow:
+        block.aux_pow.commit_hash_merkle_root = block.calc_commit_merkle_root()
+    block.rehash()
+
+    return [
+        dict(txid=block.vtx[-1].hash, vout=n, amount=int(vout.nValue))
+        for n,vout in enumerate(block.vtx[-1].vout)]
 
 
 def script_BIP34_coinbase_height(height):
@@ -198,6 +234,8 @@ def create_coinbase(height, pubkey=None, *, script_pubkey=None, extra_output_scr
         coinbaseoutput2.nValue = 0
         coinbaseoutput2.scriptPubKey = extra_output_script
         coinbase.vout.append(coinbaseoutput2)
+    coinbase.lock_height = height
+    coinbase.calc_sha256()
     return coinbase
 
 def create_tx_with_script(prevtx, n, script_sig=b"", *, amount, output_script=None):
@@ -209,6 +247,7 @@ def create_tx_with_script(prevtx, n, script_sig=b"", *, amount, output_script=No
     if output_script is None:
         output_script = CScript()
     tx = CTransaction()
+    tx.lock_height = prevtx.lock_height
     assert n < len(prevtx.vout)
     tx.vin.append(CTxIn(COutPoint(prevtx.txid_int, n), script_sig, SEQUENCE_FINAL))
     tx.vout.append(CTxOut(amount, output_script))
@@ -232,39 +271,39 @@ def get_legacy_sigopcount_tx(tx, accurate=True):
 def witness_script(use_p2wsh, pubkey):
     """Create a scriptPubKey for a pay-to-witness TxOut.
 
-    This is either a P2WPKH output for the given pubkey, or a P2WSH output of a
-    1-of-1 multisig for the given pubkey. Returns the hex encoding of the
-    scriptPubKey."""
+    This is either a short P2WSH output for the given pubkey, or a
+    long P2WSH output of a 1-of-1 multisig for the given pubkey.
+    Returns the hex encoding of the scriptPubKey.
+    """
     if not use_p2wsh:
-        # P2WPKH instead
-        pkscript = key_to_p2wpkh_script(pubkey)
+        # P2WPK instead
+        pkscript = key_to_p2wpk_script(pubkey)
     else:
-        # 1-of-1 multisig
+        # long P2WSH w/ 1-of-1 multisig
         witness_script = keys_to_multisig_script([pubkey])
         pkscript = script_to_p2wsh_script(witness_script)
     return pkscript.hex()
 
-def create_witness_tx(node, use_p2wsh, utxo, pubkey, encode_p2sh, amount):
+def create_witness_tx(node, use_p2wsh, utxo, pubkey, amount):
     """Return a transaction (in hex) that spends the given utxo to a segwit output.
 
     Optionally wrap the segwit output using P2SH."""
     if use_p2wsh:
         program = keys_to_multisig_script([pubkey])
-        addr = script_to_p2sh_p2wsh(program) if encode_p2sh else script_to_p2wsh(program)
+        addr = script_to_p2wsh(program)
     else:
-        addr = key_to_p2sh_p2wpkh(pubkey) if encode_p2sh else key_to_p2wpkh(pubkey)
-    if not encode_p2sh:
-        assert_equal(address_to_scriptpubkey(addr).hex(), witness_script(use_p2wsh, pubkey))
+        addr = key_to_p2wpk(pubkey)
+    assert_equal(address_to_scriptpubkey(addr).hex(), witness_script(use_p2wsh, pubkey))
     return node.createrawtransaction([utxo], {addr: amount})
 
-def send_to_witness(use_p2wsh, node, utxo, pubkey, encode_p2sh, amount, sign=True, insert_redeem_script=""):
+def send_to_witness(use_p2wsh, node, utxo, pubkey, amount, sign=True, insert_redeem_script=""):
     """Create a transaction spending a given utxo to a segwit output.
 
     The output corresponds to the given pubkey: use_p2wsh determines whether to
-    use P2WPKH or P2WSH; encode_p2sh determines whether to wrap in P2SH.
+    use P2WPK or P2WSH.
     sign=True will have the given node sign the transaction.
     insert_redeem_script will be added to the scriptSig, if given."""
-    tx_to_witness = create_witness_tx(node, use_p2wsh, utxo, pubkey, encode_p2sh, amount)
+    tx_to_witness = create_witness_tx(node, use_p2wsh, utxo, pubkey, amount)
     if (sign):
         signed = node.signrawtransactionwithwallet(tx_to_witness)
         assert "errors" not in signed or len(["errors"]) == 0

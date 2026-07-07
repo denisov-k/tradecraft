@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test fee estimation code."""
 from copy import deepcopy
 from decimal import Decimal, ROUND_DOWN
@@ -12,14 +23,14 @@ import time
 from test_framework.messages import (
     COIN,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_not_equal,
     assert_equal,
     assert_greater_than,
     assert_greater_than_or_equal,
     assert_raises_rpc_error,
-    satoshi_round,
+    kria_round,
 )
 from test_framework.wallet import MiniWallet
 
@@ -43,7 +54,7 @@ def small_txpuzzle_randfee(
     # Exponentially distributed from 1-128 * fee_increment
     rand_fee = float(fee_increment) * (1.1892 ** random.randint(0, 28))
     # Total fee ranges from min_fee to min_fee + 127*fee_increment
-    fee = min_fee - fee_increment + satoshi_round(rand_fee, rounding=ROUND_DOWN)
+    fee = min_fee - fee_increment + kria_round(rand_fee)
     utxos_to_spend = []
     total_in = Decimal("0.00000000")
     while total_in <= (amount + fee) and len(conflist) > 0:
@@ -67,8 +78,8 @@ def small_txpuzzle_randfee(
     tx_hex = tx.serialize().hex()
 
     batch_reqs.append(from_node.sendrawtransaction.get_request(hexstring=tx_hex, maxfeerate=0))
-    unconflist.append({"txid": txid, "vout": 0, "value": total_in - amount - fee})
-    unconflist.append({"txid": txid, "vout": 1, "value": amount})
+    unconflist.append({"txid": txid, "vout": 0, "value": total_in - amount - fee, "refheight": tx.lock_height})
+    unconflist.append({"txid": txid, "vout": 1, "value": amount, "refheight": tx.lock_height})
 
     return (tx.get_vsize(), fee)
 
@@ -140,7 +151,7 @@ def check_fee_estimates_btw_modes(node, expected_conservative, expected_economic
     assert_equal(fee_est_default, expected_economical)
 
 
-class EstimateFeeTest(BitcoinTestFramework):
+class EstimateFeeTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 3
         # whitelist peers to speed up tx relay / mempool sync

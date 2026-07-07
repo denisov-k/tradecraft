@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
-# Copyright (c) 2016-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2016-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test Wallet encryption"""
 
 import time
 import subprocess
 
 from test_framework.messages import hash256
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_raises_rpc_error,
     assert_equal,
@@ -16,7 +27,10 @@ from test_framework.util import (
 from test_framework.wallet_util import WalletUnlock
 
 
-class WalletEncryptionTest(BitcoinTestFramework):
+class WalletEncryptionTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -113,7 +127,7 @@ class WalletEncryptionTest(BitcoinTestFramework):
 
             def do_wallet_tool(*args):
                 proc = subprocess.Popen(
-                    self.get_binaries().wallet_argv() + [f"-datadir={self.nodes[0].datadir_path}", f"-chain={self.chain}"] + list(args),
+                    [self.options.freicoinwallet, f"-datadir={self.nodes[0].datadir_path}", f"-chain={self.chain}"] + list(args),
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
