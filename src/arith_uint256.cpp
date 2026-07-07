@@ -1,7 +1,18 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <arith_uint256.h>
 
@@ -233,3 +244,37 @@ arith_uint256 UintToArith256(const uint256 &a)
 // Explicit instantiations for base_uint<6144> (used in test/fuzz/muhash.cpp).
 template base_uint<6144>& base_uint<6144>::operator*=(const base_uint<6144>& b);
 template base_uint<6144>& base_uint<6144>::operator/=(const base_uint<6144>& b);
+
+// Explicit instantiations for base_uint<320>
+template base_uint<320>& base_uint<320>::operator<<=(unsigned int);
+template base_uint<320>& base_uint<320>::operator>>=(unsigned int);
+template base_uint<320>& base_uint<320>::operator-=(const base_uint<320>& b);
+template base_uint<320>& base_uint<320>::operator*=(uint32_t b32);
+template base_uint<320>& base_uint<320>::operator*=(const base_uint<320>& b);
+template base_uint<320>& base_uint<320>::operator/=(const base_uint<320>& b);
+template int base_uint<320>::CompareTo(const base_uint<320>&) const;
+template bool base_uint<320>::EqualTo(uint64_t) const;
+template double base_uint<320>::getdouble() const;
+template unsigned int base_uint<320>::bits() const;
+
+arith_uint320::arith_uint320(const arith_uint256 &a)
+{
+    int i = 0;
+    for (; i < arith_uint256::WIDTH; ++i)
+        pn[i] = a.pn[i];
+    for (; i < WIDTH; ++i)
+        pn[i] = 0;
+}
+
+/** Copies the lower 256 bits into the specified uint256. Returns
+ ** success (true) if the upper bits were clear. */
+bool arith_uint320::TruncateTo256(arith_uint256 &ret)
+{
+    int i = 0;
+    for (; i < arith_uint256::WIDTH; ++i)
+        ret.pn[i] = pn[i];
+    uint32_t bits = 0;
+    for (; i < WIDTH; ++i)
+        bits |= pn[i];
+    return !bits;
+}

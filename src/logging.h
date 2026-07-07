@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_LOGGING_H
-#define BITCOIN_LOGGING_H
+#ifndef FREICOIN_LOGGING_H
+#define FREICOIN_LOGGING_H
 
 #include <crypto/siphash.h>
 #include <logging/categories.h> // IWYU pragma: export
@@ -58,6 +69,50 @@ struct LogCategory {
 };
 
 namespace BCLog {
+    using CategoryMask = uint64_t;
+    enum LogFlags : CategoryMask {
+        NONE        = CategoryMask{0},
+        NET         = (CategoryMask{1} <<  0),
+        TOR         = (CategoryMask{1} <<  1),
+        MEMPOOL     = (CategoryMask{1} <<  2),
+        HTTP        = (CategoryMask{1} <<  3),
+        BENCH       = (CategoryMask{1} <<  4),
+        ZMQ         = (CategoryMask{1} <<  5),
+        WALLETDB    = (CategoryMask{1} <<  6),
+        RPC         = (CategoryMask{1} <<  7),
+        ESTIMATEFEE = (CategoryMask{1} <<  8),
+        ADDRMAN     = (CategoryMask{1} <<  9),
+        SELECTCOINS = (CategoryMask{1} << 10),
+        REINDEX     = (CategoryMask{1} << 11),
+        CMPCTBLOCK  = (CategoryMask{1} << 12),
+        RAND        = (CategoryMask{1} << 13),
+        PRUNE       = (CategoryMask{1} << 14),
+        PROXY       = (CategoryMask{1} << 15),
+        MEMPOOLREJ  = (CategoryMask{1} << 16),
+        LIBEVENT    = (CategoryMask{1} << 17),
+        COINDB      = (CategoryMask{1} << 18),
+        QT          = (CategoryMask{1} << 19),
+        LEVELDB     = (CategoryMask{1} << 20),
+        VALIDATION  = (CategoryMask{1} << 21),
+        I2P         = (CategoryMask{1} << 22),
+        IPC         = (CategoryMask{1} << 23),
+#ifdef DEBUG_LOCKCONTENTION
+        LOCK        = (CategoryMask{1} << 24),
+#endif
+        BLOCKSTORAGE = (CategoryMask{1} << 25),
+        TXRECONCILIATION = (CategoryMask{1} << 26),
+        SCAN        = (CategoryMask{1} << 27),
+        TXPACKAGES  = (CategoryMask{1} << 28),
+        STRATUM     = (CategoryMask{1} << 31), // Freicoin: stratum mining server
+        ALL         = ~NONE,
+    };
+    enum class Level {
+        Trace = 0, // High-volume or detailed logging for development/debugging
+        Debug,     // Reasonably noisy logging, but still usable in production
+        Info,      // Default
+        Warning,
+        Error,
+    };
     constexpr auto DEFAULT_LOG_LEVEL{Level::Debug};
     constexpr size_t DEFAULT_MAX_LOG_BUFFER{1'000'000}; // buffer up to 1MB of log data prior to StartLogging
     constexpr uint64_t RATELIMIT_MAX_BYTES{1024 * 1024}; // maximum number of bytes per source location that can be logged within the RATELIMIT_WINDOW
@@ -231,7 +286,7 @@ namespace BCLog {
         /** Disable logging
          * This offers a slight speedup and slightly smaller memory usage
          * compared to leaving the logging system in its default state.
-         * Mostly intended for libbitcoin-kernel apps that don't want any logging.
+         * Mostly intended for libfreicoin-kernel apps that don't want any logging.
          * Should be used instead of StartLogging().
          */
         void DisableLogging() EXCLUSIVE_LOCKS_REQUIRED(!m_cs);
@@ -299,4 +354,4 @@ static inline bool LogAcceptCategory(BCLog::LogFlags category, BCLog::Level leve
 /** Return true if str parses as a log category and set the flag */
 bool GetLogCategory(BCLog::LogFlags& flag, std::string_view str);
 
-#endif // BITCOIN_LOGGING_H
+#endif // FREICOIN_LOGGING_H

@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_OUTPUTTYPE_H
-#define BITCOIN_OUTPUTTYPE_H
+#ifndef FREICOIN_OUTPUTTYPE_H
+#define FREICOIN_OUTPUTTYPE_H
 
 #include <addresstype.h>
 #include <script/signingprovider.h>
@@ -17,17 +28,13 @@
 
 enum class OutputType {
     LEGACY,
-    P2SH_SEGWIT,
     BECH32,
-    BECH32M,
     UNKNOWN,
 };
 
 static constexpr auto OUTPUT_TYPES = std::array{
     OutputType::LEGACY,
-    OutputType::P2SH_SEGWIT,
     OutputType::BECH32,
-    OutputType::BECH32M,
 };
 
 std::optional<OutputType> ParseOutputType(std::string_view str);
@@ -44,4 +51,4 @@ CTxDestination AddAndGetDestinationForScript(FlatSigningProvider& keystore, cons
 /** Get the OutputType for a CTxDestination */
 std::optional<OutputType> OutputTypeFromDestination(const CTxDestination& dest);
 
-#endif // BITCOIN_OUTPUTTYPE_H
+#endif // FREICOIN_OUTPUTTYPE_H

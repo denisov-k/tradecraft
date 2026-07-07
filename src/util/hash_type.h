@@ -1,9 +1,20 @@
-// Copyright (c) 2020-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2020-2021 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_UTIL_HASH_TYPE_H
-#define BITCOIN_UTIL_HASH_TYPE_H
+#ifndef FREICOIN_UTIL_HASH_TYPE_H
+#define FREICOIN_UTIL_HASH_TYPE_H
 
 template <typename HashType>
 class BaseHash
@@ -14,6 +25,15 @@ protected:
 public:
     BaseHash() : m_hash() {}
     explicit BaseHash(const HashType& in) : m_hash(in) {}
+
+    SERIALIZE_METHODS(BaseHash, obj) {
+        READWRITE(obj.m_hash);
+    }
+
+    bool IsNull() const
+    {
+        return m_hash.IsNull();
+    }
 
     unsigned char* begin()
     {
@@ -64,4 +84,4 @@ public:
     const unsigned char* data() const { return m_hash.data(); }
 };
 
-#endif // BITCOIN_UTIL_HASH_TYPE_H
+#endif // FREICOIN_UTIL_HASH_TYPE_H

@@ -1,9 +1,20 @@
-// Copyright (c) 2015-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2015-2021 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_UTIL_READWRITEFILE_H
-#define BITCOIN_UTIL_READWRITEFILE_H
+#ifndef FREICOIN_UTIL_READWRITEFILE_H
+#define FREICOIN_UTIL_READWRITEFILE_H
 
 #include <util/fs.h>
 
@@ -25,4 +36,4 @@ std::pair<bool,std::string> ReadBinaryFile(const fs::path &filename, size_t maxs
  */
 bool WriteBinaryFile(const fs::path &filename, const std::string &data);
 
-#endif // BITCOIN_UTIL_READWRITEFILE_H
+#endif // FREICOIN_UTIL_READWRITEFILE_H

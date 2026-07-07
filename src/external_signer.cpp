@@ -1,13 +1,24 @@
-// Copyright (c) 2018-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2018-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <external_signer.h>
 
 #include <chainparams.h>
 #include <common/run_command.h>
 #include <core_io.h>
-#include <psbt.h>
+#include <pst.h>
 #include <util/strencodings.h>
 #include <util/subprocess.h>
 
@@ -74,31 +85,28 @@ UniValue ExternalSigner::GetDescriptors(const int account)
     return RunCommandParseJSON(Cat(m_command, Cat(Cat({"--fingerprint", m_fingerprint}, NetworkArg()), {"getdescriptors", "--account", strprintf("%d", account)})), "");
 }
 
-bool ExternalSigner::SignTransaction(PartiallySignedTransaction& psbtx, std::string& error)
+bool ExternalSigner::SignTransaction(PartiallySignedTransaction& pstx, std::string& error)
 {
-    // Serialize the PSBT
+    // Serialize the PST
     DataStream ssTx{};
-    ssTx << psbtx;
+    ssTx << pstx;
     // parse ExternalSigner master fingerprint
     std::vector<unsigned char> parsed_m_fingerprint = ParseHex(m_fingerprint);
     // Check if signer fingerprint matches any input master key fingerprint
-    auto matches_signer_fingerprint = [&](const PSBTInput& input) {
+    auto matches_signer_fingerprint = [&](const PSTInput& input) {
         for (const auto& entry : input.hd_keypaths) {
             if (std::ranges::equal(parsed_m_fingerprint, entry.second.fingerprint)) return true;
-        }
-        for (const auto& entry : input.m_tap_bip32_paths) {
-            if (std::ranges::equal(parsed_m_fingerprint, entry.second.second.fingerprint)) return true;
         }
         return false;
     };
 
-    if (!std::any_of(psbtx.inputs.begin(), psbtx.inputs.end(), matches_signer_fingerprint)) {
-        error = "Signer fingerprint " + m_fingerprint + " does not match any of the inputs:\n" + EncodeBase64(ssTx.str());
+    if (!std::any_of(pstx.inputs.begin(), pstx.inputs.end(), matches_signer_fingerprint)) {
+        error = "Signer fingerprint " + m_fingerprint + " does not match any of the inputs:\n" + HexStr(ssTx.str());
         return false;
     }
 
     const std::vector<std::string> command = Cat(m_command, Cat({"--stdin", "--fingerprint", m_fingerprint}, NetworkArg()));
-    const std::string stdinStr = "signtx " + EncodeBase64(ssTx.str());
+    const std::string stdinStr = "signtx " + HexStr(ssTx.str());
 
     const UniValue signer_result = RunCommandParseJSON(command, stdinStr);
 
@@ -107,19 +115,19 @@ bool ExternalSigner::SignTransaction(PartiallySignedTransaction& psbtx, std::str
         return false;
     }
 
-    if (!signer_result.find_value("psbt").isStr()) {
+    if (!signer_result.find_value("pst").isStr()) {
         error = "Unexpected result from signer";
         return false;
     }
 
-    PartiallySignedTransaction signer_psbtx;
-    std::string signer_psbt_error;
-    if (!DecodeBase64PSBT(signer_psbtx, signer_result.find_value("psbt").get_str(), signer_psbt_error)) {
-        error = strprintf("TX decode failed %s", signer_psbt_error);
+    PartiallySignedTransaction signer_pstx;
+    std::string signer_pst_error;
+    if (!DecodeHexPST(signer_pstx, signer_result.find_value("pst").get_str(), signer_pst_error)) {
+        error = strprintf("TX decode failed %s", signer_pst_error);
         return false;
     }
 
-    psbtx = signer_psbtx;
+    pstx = signer_pstx;
 
     return true;
 }
