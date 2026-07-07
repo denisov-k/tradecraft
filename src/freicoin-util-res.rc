@@ -1,7 +1,7 @@
 #include <windows.h>             // needed for VERSIONINFO
 #include "clientversion.h"       // holds the needed client version information
 
-#define VER_PRODUCTVERSION     CLIENT_VERSION_MAJOR,CLIENT_VERSION_MINOR,CLIENT_VERSION_BUILD
+#define VER_PRODUCTVERSION     CLIENT_VERSION_MAJOR,CLIENT_VERSION_MINOR,CLIENT_VERSION_REVISION,CLIENT_VERSION_PATCH
 #define VER_FILEVERSION        VER_PRODUCTVERSION
 
 VS_VERSION_INFO VERSIONINFO
@@ -14,15 +14,15 @@ BEGIN
     BEGIN
         BLOCK "040904E4" // U.S. English - multilingual (hex)
         BEGIN
-            VALUE "CompanyName",        CLIENT_NAME " project"
-            VALUE "FileDescription",    "bitcoind (Bitcoin node with a JSON-RPC server)"
+            VALUE "CompanyName",        "Freicoin"
+            VALUE "FileDescription",    "freicoin-util (CLI Freicoin utility)"
             VALUE "FileVersion",        CLIENT_VERSION_STRING
-            VALUE "InternalName",       "bitcoind"
+            VALUE "InternalName",       "freicoin-util"
             VALUE "LegalCopyright",     COPYRIGHT_STR
-            VALUE "LegalTrademarks1",   "Distributed under the MIT software license, see the accompanying file COPYING or http://www.opensource.org/licenses/mit-license.php."
-            VALUE "OriginalFilename",   "bitcoind.exe"
-            VALUE "ProductName",        "bitcoind"
-            VALUE "ProductVersion",     CLIENT_VERSION_STRING
+            VALUE "LegalTrademarks1",   "Distributed under the terms of the GNU Affero General Public License v3.0, see the accompanying file COPYING for details."
+            VALUE "OriginalFilename",   "freicoin-util.exe"
+            VALUE "ProductName",        "freicoin-util"
+            VALUE "ProductVersion",     PACKAGE_VERSION
         END
     END
 
