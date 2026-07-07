@@ -1,7 +1,18 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <node/miner.h>
 
@@ -49,16 +60,10 @@ int64_t GetMinimumTime(const CBlockIndex* pindexPrev, const int64_t difficulty_a
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
 {
     int64_t nOldTime = pblock->nTime;
-    int64_t nNewTime{std::max<int64_t>(GetMinimumTime(pindexPrev, consensusParams.DifficultyAdjustmentInterval()),
-                                       TicksSinceEpoch<std::chrono::seconds>(NodeClock::now()))};
+    int64_t nNewTime{std::max<int64_t>(pindexPrev->GetMedianTimePast() + 1, TicksSinceEpoch<std::chrono::seconds>(NodeClock::now()))};
 
     if (nOldTime < nNewTime) {
         pblock->nTime = nNewTime;
-    }
-
-    // Updating time can change work required on testnet:
-    if (consensusParams.fPowAllowMinDifficultyBlocks) {
-        pblock->nBits = GetNextWorkRequired(pindexPrev, pblock, consensusParams);
     }
 
     return nNewTime - nOldTime;
@@ -66,10 +71,6 @@ int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParam
 
 void RegenerateCommitments(CBlock& block, ChainstateManager& chainman)
 {
-    CMutableTransaction tx{*block.vtx.at(0)};
-    tx.vout.erase(tx.vout.begin() + GetWitnessCommitmentIndex(block));
-    block.vtx.at(0) = MakeTransactionRef(tx);
-
     const CBlockIndex* prev_block = WITH_LOCK(::cs_main, return chainman.m_blockman.LookupBlockIndex(block.hashPrevBlock));
     chainman.GenerateCoinbaseCommitment(block, prev_block);
 
@@ -88,9 +89,11 @@ static BlockAssembler::Options ClampOptions(BlockAssembler::Options options)
 }
 
 BlockAssembler::BlockAssembler(Chainstate& chainstate, const CTxMemPool* mempool, const Options& options)
-    : chainparams{chainstate.m_chainman.GetParams()},
+    : m_median_time_past{0},
+      chainparams{chainstate.m_chainman.GetParams()},
       m_mempool{options.use_mempool ? mempool : nullptr},
       m_chainstate{chainstate},
+      m_block_final_state{NO_BLOCK_FINAL_TX},
       m_options{ClampOptions(options)}
 {
 }
@@ -117,6 +120,10 @@ void BlockAssembler::resetBlock()
     // These counters do not include coinbase tx
     nBlockTx = 0;
     nFees = 0;
+
+    m_median_time_past = 0;
+    m_block_final_state = NO_BLOCK_FINAL_TX;
+    m_block_final_tx_coin_map.clear();
 }
 
 std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock()
@@ -145,7 +152,57 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock()
     }
 
     pblock->nTime = TicksSinceEpoch<std::chrono::seconds>(NodeClock::now());
-    m_lock_time_cutoff = pindexPrev->GetMedianTimePast();
+    m_median_time_past = pindexPrev->GetMedianTimePast();
+    m_lock_time_cutoff = m_median_time_past;
+
+    // Check if block-final tx rules are enforced. For the moment this
+    // tracks just whether the soft-fork is active, but by the time we get
+    // to transaction selection it will only be true if there is a
+    // block-final transaction in this block template.
+    if (DeploymentActiveAfter(pindexPrev, m_chainstate.m_chainman, Consensus::DEPLOYMENT_FINALTX)) {
+        m_block_final_state = HAS_BLOCK_FINAL_TX;
+    }
+
+    // Check if this is the first block for which the block-final rules are
+    // enforced, in which case all we need to do is add the initial
+    // anyone-can-spend output.
+    if ((m_block_final_state == HAS_BLOCK_FINAL_TX) && (!pindexPrev->pprev || !DeploymentActiveAfter(pindexPrev->pprev, m_chainstate.m_chainman, Consensus::DEPLOYMENT_FINALTX))) {
+        m_block_final_state = INITIAL_BLOCK_FINAL_TXOUT;
+    }
+
+    // Otherwise we will need to check if the prior block-final transaction
+    // was a coinbase and if insufficient blocks have occured for it to mature.
+    BlockFinalTxEntry final_tx;
+    if (m_block_final_state == HAS_BLOCK_FINAL_TX) {
+        final_tx = m_chainstate.CoinsTip().GetFinalTx();
+        if (final_tx.IsNull()) {
+            // Should never happen
+            return nullptr;
+        }
+        // Fetch the unspent outputs of the last block-final tx.  This call
+        // should always return results because the prior block-final
+        // transaction was the last processed transaction (so none of the
+        // outputs could have been spent) or a previously immature coinbase.
+        for (uint32_t n = 0; n < final_tx.size; ++n) {
+            COutPoint prevout(final_tx.hash, n);
+            const auto& coin = m_chainstate.CoinsTip().AccessCoin(prevout);
+            if (coin.IsSpent()) {
+                // Should never happen
+                return nullptr;
+            }
+            // If it was a coinbase, meaning we're in the first 100 blocks after
+            // activation, then we need to make sure it has matured, otherwise
+            // we do nothing at all.
+            if (coin.IsCoinBase() && (nHeight - coin.nHeight < COINBASE_MATURITY)) {
+                // Still maturing. Nothing to do.
+                m_block_final_state = NO_BLOCK_FINAL_TX;
+                break;
+            }
+        }
+    }
+
+    if (m_block_final_state == HAS_BLOCK_FINAL_TX)
+        initFinalTx(final_tx);
 
     if (m_mempool) {
         LOCK(m_mempool->cs);
@@ -174,51 +231,57 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock()
     // Add an output that spends the full coinbase reward.
     coinbaseTx.vout.resize(1);
     coinbaseTx.vout[0].scriptPubKey = m_options.coinbase_output_script;
-    // Block subsidy + fees
-    const CAmount block_reward{nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus())};
-    coinbaseTx.vout[0].nValue = block_reward;
-    coinbase_tx.block_reward_remaining = block_reward;
-
-    // Start the coinbase scriptSig with the block height as required by BIP34.
-    // Mining clients are expected to append extra data to this prefix, so
-    // increasing its length would reduce the space they can use and may break
-    // existing clients.
-    coinbaseTx.vin[0].scriptSig = CScript() << nHeight;
-    if (m_options.include_dummy_extranonce) {
-        // For blocks at heights <= 16, the BIP34-encoded height alone is only
-        // one byte. Consensus requires coinbase scriptSigs to be at least two
-        // bytes long (bad-cb-length), so tests and regtest include a dummy
-        // extraNonce (OP_0)
-        coinbaseTx.vin[0].scriptSig << OP_0;
+    coinbaseTx.vout[0].SetReferenceValue(nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus()));
+    if (m_block_final_state == INITIAL_BLOCK_FINAL_TXOUT) {
+        CTxOut txout(0, CScript() << OP_TRUE);
+        coinbaseTx.vout.insert(coinbaseTx.vout.begin(), txout);
     }
-    coinbase_tx.script_sig_prefix = coinbaseTx.vin[0].scriptSig;
-    Assert(nHeight > 0);
-    coinbaseTx.nLockTime = static_cast<uint32_t>(nHeight - 1);
-    coinbase_tx.lock_time = coinbaseTx.nLockTime;
-
+    coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
+    // Consensus rule: lock-time of coinbase MUST be median-time-past
+    coinbaseTx.nLockTime = static_cast<uint32_t>(m_median_time_past);
+    coinbaseTx.lock_height = nHeight;
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
-    m_chainstate.m_chainman.GenerateCoinbaseCommitment(*pblock, pindexPrev);
-
-    const CTransactionRef& final_coinbase{pblock->vtx[0]};
-    if (final_coinbase->HasWitness()) {
-        const auto& witness_stack{final_coinbase->vin[0].scriptWitness.stack};
-        // Consensus requires the coinbase witness stack to have exactly one
-        // element of 32 bytes.
-        Assert(witness_stack.size() == 1 && witness_stack[0].size() == 32);
-        coinbase_tx.witness = uint256(witness_stack[0]);
+    if (m_block_final_state == HAS_BLOCK_FINAL_TX) {
+        m_chainstate.m_chainman.GenerateCoinbaseCommitment(*pblock, pindexPrev);
     }
-    if (const int witness_index = GetWitnessCommitmentIndex(*pblock); witness_index != NO_WITNESS_COMMITMENT) {
-        Assert(witness_index >= 0 && static_cast<size_t>(witness_index) < final_coinbase->vout.size());
-        coinbase_tx.required_outputs.push_back(final_coinbase->vout[witness_index]);
+    pblocktemplate->vTxFees[0] = -nFees;
+
+    // The miner needs to know whether the last transaction is a special
+    // transaction, or not.
+    pblocktemplate->has_block_final_tx = (m_block_final_state == HAS_BLOCK_FINAL_TX);
+    for (const auto& item : m_block_final_tx_coin_map) {
+        pblocktemplate->block_final_tx_coin_map[item.first] = item.second;
     }
 
-    LogInfo("CreateNewBlock(): block weight: %u txs: %u fees: %ld sigops %d\n", GetBlockWeight(*pblock), nBlockTx, nFees, nBlockSigOpsCost);
+    LogPrintf("CreateNewBlock(): block weight: %u txs: %u fees: %ld sigops %d\n", GetBlockWeight(*pblock), nBlockTx, (m_block_final_state == HAS_BLOCK_FINAL_TX) ? nFees - pblocktemplate->vTxFees.back() : nFees, nBlockSigOpsCost);
 
     // Fill in header
     pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
     UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev);
     pblock->nBits          = GetNextWorkRequired(pindexPrev, pblock, chainparams.GetConsensus());
     pblock->nNonce         = 0;
+
+    // Use of auxiliary proof-of-work is required after merge mining has
+    // activated.  Since interfacing with the auxiliary chain is outside of
+    // scope for this code, we generate a minimal auxiliary header.
+    if (DeploymentActiveAfter(pindexPrev, m_chainstate.m_chainman, Consensus::DEPLOYMENT_AUXPOW)) {
+        // Setup the block header commitment.
+        pblock->m_aux_pow.m_commit_version = pblock->nVersion;
+        pblock->m_aux_pow.m_commit_hash_merkle_root = BlockTemplateMerkleRoot(*pblock, nullptr);
+
+        // Setup a fake auxiliary block with a single "transaction" (not an
+        // actual transaction as no valid data precedes the midstate).
+        CSHA256().Midstate(pblock->m_aux_pow.m_midstate_hash.begin(), nullptr, nullptr);
+        pblock->m_aux_pow.m_aux_num_txns = 1;
+
+        // Set difficulty for the auxiliary proof-of-work.
+        pblock->SetFilteredTime(GetFilteredTimeAux(pindexPrev, chainparams.GetConsensus()));
+        pblock->m_aux_pow.m_commit_bits = GetNextWorkRequiredAux(pindexPrev, *pblock, chainparams.GetConsensus());;
+
+        // Setup the auxiliary header fields to have reasonable values.
+        pblock->m_aux_pow.m_aux_version = VERSIONBITS_TOP_BITS;
+        pblock->m_aux_pow.m_aux_bits = pblock->m_aux_pow.m_commit_bits;
+    }
 
     if (m_options.test_block_validity) {
         // if nHeight <= 16, and include_dummy_extranonce=false this will fail due to bad-cb-length.
@@ -261,13 +324,16 @@ bool BlockAssembler::TestChunkTransactions(const std::vector<CTxMemPoolEntryRef>
 
 void BlockAssembler::AddToBlock(const CTxMemPoolEntry& entry)
 {
-    pblocktemplate->block.vtx.emplace_back(entry.GetSharedTx());
-    pblocktemplate->vTxFees.push_back(entry.GetFee());
-    pblocktemplate->vTxSigOpsCost.push_back(entry.GetSigOpCost());
-    nBlockWeight += entry.GetTxWeight();
+    // If we have a block-final transaction, insert just
+    // before the end, so the block-final tx remains last.
+    pblocktemplate->block.vtx.insert(pblocktemplate->block.vtx.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), iter->GetSharedTx());
+    pblocktemplate->vTxFees.insert(pblocktemplate->vTxFees.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), iter->GetFee());
+    pblocktemplate->vTxSigOpsCost.insert(pblocktemplate->vTxSigOpsCost.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), iter->GetSigOpCost());
+    nBlockWeight += iter->GetTxWeight();
     ++nBlockTx;
-    nBlockSigOpsCost += entry.GetSigOpCost();
-    nFees += entry.GetFee();
+    nBlockSigOpsCost += iter->GetSigOpCost();
+    nFees += GetTimeAdjustedValue(iter->GetFee(), nHeight - iter->GetReferenceHeight());
+    inBlock.insert(iter->GetSharedTx()->GetHash());
 
     if (m_options.print_modified_fee) {
         LogInfo("fee rate %s txid %s\n",
@@ -278,6 +344,127 @@ void BlockAssembler::AddToBlock(const CTxMemPoolEntry& entry)
 
 void BlockAssembler::addChunks()
 {
+    AssertLockHeld(mempool.cs);
+
+    int nDescendantsUpdated = 0;
+    for (CTxMemPool::txiter it : alreadyAdded) {
+        CTxMemPool::setEntries descendants;
+        mempool.CalculateDescendants(it, descendants);
+        // Insert all descendants (not yet in block) into the modified set
+        for (CTxMemPool::txiter desc : descendants) {
+            if (alreadyAdded.count(desc)) {
+                continue;
+            }
+            ++nDescendantsUpdated;
+            modtxiter mit = mapModifiedTx.find(desc);
+            if (mit == mapModifiedTx.end()) {
+                CTxMemPoolModifiedEntry modEntry(desc);
+                mit = mapModifiedTx.insert(modEntry).first;
+            }
+            mapModifiedTx.modify(mit, update_for_parent_inclusion(it));
+        }
+    }
+    return nDescendantsUpdated;
+}
+
+void BlockAssembler::SortForBlock(const CTxMemPool::setEntries& package, std::vector<CTxMemPool::txiter>& sortedEntries)
+{
+    // Sort package by ancestor count
+    // If a transaction A depends on transaction B, then A's ancestor count
+    // must be greater than B's.  So this is sufficient to validly order the
+    // transactions for block inclusion.
+    sortedEntries.clear();
+    sortedEntries.insert(sortedEntries.begin(), package.begin(), package.end());
+    std::sort(sortedEntries.begin(), sortedEntries.end(), CompareTxIterByAncestorCount());
+}
+
+void BlockAssembler::initFinalTx(const BlockFinalTxEntry& final_tx)
+{
+    // Block-final transactions are only created after we have reached the final
+    // state of activation.
+    if (m_block_final_state != HAS_BLOCK_FINAL_TX) {
+        return;
+    }
+
+    LOCK(cs_main); // for m_chainstate.CoinsTip()
+    CCoinsViewCache &coins_view = m_chainstate.CoinsTip();
+
+    // Create block-final tx
+    CMutableTransaction txFinal;
+    txFinal.version = 2;
+    txFinal.vout.resize(1);
+    txFinal.vout[0].SetReferenceValue(0);
+    txFinal.vout[0].scriptPubKey = EMPTY_SEGWIT_COMMITMENT;
+    txFinal.nLockTime = static_cast<uint32_t>(m_median_time_past);
+    txFinal.lock_height = nHeight;
+
+    // Add all outputs from the prior block-final transaction.  We do nothing
+    // here to prevent selected transactions from spending these same outputs
+    // out from underneath us; we depend insted on mempool protections that
+    // prevent such transactions from being considered in the first place.
+    m_block_final_tx_coin_map.clear();
+    for (uint32_t n = 0; n < final_tx.size; ++n) {
+        COutPoint prevout(final_tx.hash, n);
+        const Coin& coin = coins_view.AccessCoin(prevout);
+        if (IsTriviallySpendable(coin, prevout, MANDATORY_SCRIPT_VERIFY_FLAGS|SCRIPT_VERIFY_WITNESS|SCRIPT_VERIFY_CLEANSTACK)) {
+            m_block_final_tx_coin_map[prevout] = coin;
+            txFinal.vin.push_back(CTxIn(prevout, CScript(), CTxIn::SEQUENCE_FINAL));
+        } else {
+            LogPrintf("WARNING: non-trivial output in block-final transaction record; this should never happen (%s:%n)\n", prevout.hash.ToString(), prevout.n);
+        }
+    }
+
+    // We should have input(s) for the block-final transaction from the prior
+    // block-final transaction, so this should never happen...
+    if (txFinal.vin.empty()) {
+        LogPrintf("Unable to create block-final transaction due to lack of inputs.\n");
+        return;
+    }
+
+    // Add block-final transaction to block template.
+    pblocktemplate->block.vtx.emplace_back(MakeTransactionRef(std::move(txFinal)));
+
+    // Record the fees forwarded by the block-final transaction to the coinbase.
+    CAmount nTxFees = coins_view.GetValueIn(*pblocktemplate->block.vtx.back())
+                    - pblocktemplate->block.vtx.back()->GetValueOut();
+    nTxFees = GetTimeAdjustedValue(nTxFees, nHeight - txFinal.lock_height);
+    pblocktemplate->vTxFees.push_back(nTxFees);
+    nFees += nTxFees;
+
+    // The block-final transaction contributes to aggregate limits:
+    // the number of sigops is tracked...
+    int64_t nTxSigOpsCost = GetTransactionSigOpCost(*pblocktemplate->block.vtx.back(), coins_view, STANDARD_SCRIPT_VERIFY_FLAGS);
+    pblocktemplate->vTxSigOpsCost.push_back(nTxSigOpsCost);
+    nBlockSigOpsCost += nTxSigOpsCost;
+
+    // ...the size is not:
+    nBlockWeight += GetTransactionWeight(*pblocktemplate->block.vtx.back());
+}
+
+// This transaction selection algorithm orders the mempool based
+// on feerate of a transaction including all unconfirmed ancestors.
+// Since we don't remove transactions from the mempool as we select them
+// for block inclusion, we need an alternate method of updating the feerate
+// of a transaction with its not-yet-selected ancestors as we go.
+// This is accomplished by walking the in-mempool descendants of selected
+// transactions and storing a temporary modified state in mapModifiedTxs.
+// Each time through the loop, we compare the best transaction in
+// mapModifiedTxs with the next transaction in the mempool to decide what
+// transaction package to work on next.
+void BlockAssembler::addPackageTxs(int& nPackagesSelected, int& nDescendantsUpdated)
+{
+    const auto& mempool{*Assert(m_mempool)};
+    LOCK(mempool.cs);
+
+    // mapModifiedTx will store sorted packages after they are modified
+    // because some of their txs are already in the block
+    indexed_modified_transaction_set mapModifiedTx;
+    // Keep track of entries that failed inclusion, to avoid duplicate work
+    std::set<Txid> failedTx;
+
+    CTxMemPool::indexed_transaction_set::index<ancestor_score>::type::iterator mi = mempool.mapTx.get<ancestor_score>().begin();
+    CTxMemPool::txiter iter;
+
     // Limit the number of attempts to add transactions to the block when it is
     // close to full; this is just a simple heuristic to finish quickly if the
     // mempool has a lot of entries.
@@ -293,10 +480,49 @@ void BlockAssembler::addChunks()
     chunk_feerate = m_mempool->GetBlockBuilderChunk(selected_transactions);
     FeePerVSize chunk_feerate_vsize = ToFeePerVSize(chunk_feerate);
 
-    while (selected_transactions.size() > 0) {
-        // Check to see if min fee rate is still respected.
-        if (chunk_feerate_vsize << m_options.blockMinFeeRate.GetFeePerVSize()) {
-            // Everything else we might consider has a lower feerate
+        modtxscoreiter modit = mapModifiedTx.get<ancestor_score>().begin();
+        if (mi == mempool.mapTx.get<ancestor_score>().end()) {
+            // We're out of entries in mapTx; use the entry from mapModifiedTx
+            iter = modit->iter;
+            fUsingModified = true;
+        } else {
+            // Try to compare the mapTx entry to the mapModifiedTx entry
+            iter = mempool.mapTx.project<0>(mi);
+            if (modit != mapModifiedTx.get<ancestor_score>().end() &&
+                    CompareTxMemPoolEntryByAncestorFee()(*modit, CTxMemPoolModifiedEntry(iter))) {
+                // The best entry in mapModifiedTx has higher score
+                // than the one from mapTx.
+                // Switch which transaction (package) to consider
+                iter = modit->iter;
+                fUsingModified = true;
+            } else {
+                // Either no entry in mapModifiedTx, or it's worse than mapTx.
+                // Increment mi for the next loop iteration.
+                ++mi;
+            }
+        }
+
+        // We skip mapTx entries that are inBlock, and mapModifiedTx shouldn't
+        // contain anything that is inBlock.
+        assert(!inBlock.count(iter->GetSharedTx()->GetHash()));
+
+        uint64_t packageSize = iter->GetSizeWithAncestors();
+        CAmount packageFees = iter->GetModFeesWithAncestors();
+        int64_t packageSigOpsCost = iter->GetSigOpCostWithAncestors();
+        if (fUsingModified) {
+            packageSize = modit->nSizeWithAncestors;
+            packageFees = modit->nModFeesWithAncestors;
+            packageSigOpsCost = modit->nSigOpCostWithAncestors;
+        }
+        // Ignore demurrage calculations if the refheight age is less than
+        // 1008 blocks (1.5 weeks), to speed up block template construction.
+        // This heuristic has an error of less than 0.1%.
+        if ((iter->GetReferenceHeight() + 1008) < nHeight) {
+            packageFees = GetTimeAdjustedValue(packageFees, nHeight - iter->GetReferenceHeight());
+        }
+
+        if (packageFees < m_options.blockMinFeeRate.GetFee(packageSize)) {
+            // Everything else we might consider has a lower fee rate
             return;
         }
 

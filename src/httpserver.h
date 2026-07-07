@@ -1,14 +1,27 @@
-// Copyright (c) 2015-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2015-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_HTTPSERVER_H
-#define BITCOIN_HTTPSERVER_H
+#ifndef FREICOIN_HTTPSERVER_H
+#define FREICOIN_HTTPSERVER_H
 
 #include <functional>
 #include <optional>
 #include <span>
 #include <string>
+
+#include <netbase.h>
 
 namespace util {
 class SignalInterrupt;
@@ -31,6 +44,15 @@ struct evhttp_request;
 struct event_base;
 class CService;
 class HTTPRequest;
+
+/** Check if a network address is allowed to access the server */
+bool ClientAllowed(const std::vector<CSubNet>& allowed_subnets, const CNetAddr& netaddr);
+
+/** Initialize ACL list for HTTP server */
+bool InitSubnetAllowList(const std::string which, std::vector<CSubNet>& allowed_subnets);
+
+/** Determine what addresses to bind to. */
+bool InitEndpointList(const std::string& which, uint16_t default_port, std::vector<std::pair<std::string, uint16_t> >& endpoints);
 
 /** Initialize HTTP server.
  * Call this before RegisterHTTPHandler or EventBase().
@@ -159,6 +181,15 @@ public:
  */
 std::optional<std::string> GetQueryParameterFromUri(const char* uri, const std::string& key);
 
+/** Event handler closure.
+ */
+class NetEventClosure
+{
+public:
+    virtual void operator()() = 0;
+    virtual ~NetEventClosure() = default;
+};
+
 /** Event class. This can be used either as a cross-thread trigger or as a timer.
  */
 class HTTPEvent
@@ -182,4 +213,4 @@ private:
     struct event* ev;
 };
 
-#endif // BITCOIN_HTTPSERVER_H
+#endif // FREICOIN_HTTPSERVER_H
