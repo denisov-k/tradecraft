@@ -1628,12 +1628,17 @@ static bool StratumBindAddresses(event_base* base, node::NodeContext& node) EXCL
 static std::atomic<bool> g_shutdown = false;
 void BlockWatcher()
 {
+    // Core 29 moved tip-change signalling from the g_best_block_* globals
+    // into node::KernelNotifications, which is not created until the
+    // chainstate loads (init step 7) — after the stratum server starts
+    // (step 4a).  Wait for it to appear before entering the watch loop.
+    while (!g_shutdown && !(g_context && g_context->notifications)) {
+        UninterruptibleSleep(std::chrono::milliseconds{250});
+    }
     std::chrono::steady_clock::time_point checktxtime = std::chrono::steady_clock::now();
     unsigned int txns_updated_last = 0;
-    while (true) {
+    while (!g_shutdown) {
         {
-            // Core 29 moved tip-change signalling from the g_best_block_*
-            // globals into node::KernelNotifications.
             node::KernelNotifications& notifications = *Assert(g_context->notifications);
             WAIT_LOCK(notifications.m_tip_block_mutex, lock);
             checktxtime += std::chrono::seconds(15);
