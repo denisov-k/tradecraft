@@ -108,16 +108,10 @@ void RandomTransaction(CMutableTransaction& tx, bool fSingle)
     tx.version = m_rng.rand32();
     tx.vin.clear();
     tx.vout.clear();
-<<<<<<< v29.0
     tx.nLockTime = (m_rng.randbool()) ? m_rng.rand32() : 0;
+    tx.lock_height = (m_rng.randbool()) ? m_rng.rand32() : 0;
     int ins = (m_rng.randbits(2)) + 1;
     int outs = fSingle ? ins : (m_rng.randbits(2)) + 1;
-=======
-    tx.nLockTime = (InsecureRandBool()) ? InsecureRand32() : 0;
-    tx.lock_height = (InsecureRandBool()) ? InsecureRand32() : 0;
-    int ins = (InsecureRandBits(2)) + 1;
-    int outs = fSingle ? ins : (InsecureRandBits(2)) + 1;
->>>>>>> tc-28.1
     for (int in = 0; in < ins; in++) {
         tx.vin.emplace_back();
         CTxIn &txin = tx.vin.back();
@@ -147,11 +141,7 @@ BOOST_AUTO_TEST_CASE(sighash_test)
     int nRandomTests = 50000;
     #endif
     for (int i=0; i<nRandomTests; i++) {
-<<<<<<< v29.0
-        int nHashType{int(m_rng.rand32())};
-=======
-        int nHashType{int(InsecureRand32()) & ~SIGHASH_NO_LOCK_HEIGHT};
->>>>>>> tc-28.1
+        int nHashType{int(m_rng.rand32()) & ~SIGHASH_NO_LOCK_HEIGHT};
         CMutableTransaction txTo;
         RandomTransaction(txTo, (nHashType & 0x1f) == SIGHASH_SINGLE);
         CScript scriptCode;

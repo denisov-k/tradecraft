@@ -200,14 +200,7 @@ FUZZ_TARGET(scriptpubkeyman, .init = initialize_spkm)
                 auto pst{*opt_pst};
                 const PrecomputedTransactionData txdata{PrecomputePSTData(pst)};
                 const int sighash_type{fuzzed_data_provider.ConsumeIntegralInRange<int>(0, 150)};
-<<<<<<< v29.0
-                auto sign  = fuzzed_data_provider.ConsumeBool();
-                auto bip32derivs = fuzzed_data_provider.ConsumeBool();
-                auto finalize = fuzzed_data_provider.ConsumeBool();
-                (void)spk_manager->FillPSBT(psbt, txdata, sighash_type, sign, bip32derivs, nullptr, finalize);
-=======
                 (void)spk_manager->FillPST(pst, txdata, sighash_type, fuzzed_data_provider.ConsumeBool(), fuzzed_data_provider.ConsumeBool(), nullptr, fuzzed_data_provider.ConsumeBool());
->>>>>>> tc-28.1
             }
         );
     }

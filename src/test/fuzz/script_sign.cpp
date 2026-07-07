@@ -124,16 +124,8 @@ FUZZ_TARGET(script_sign, .init = initialize_script_sign)
             }
             if (n_in < script_tx_to.vin.size() && refheight < mutable_transaction->lock_height) {
                 SignatureData empty;
-<<<<<<< v29.0
-                auto from_pub_key = ConsumeScript(fuzzed_data_provider);
-                auto amount = ConsumeMoney(fuzzed_data_provider);
-                auto n_hash_type = fuzzed_data_provider.ConsumeIntegral<int>();
-                (void)SignSignature(provider, from_pub_key, script_tx_to, n_in, amount, n_hash_type, empty);
-                MutableTransactionSignatureCreator signature_creator{tx_to, n_in, ConsumeMoney(fuzzed_data_provider), fuzzed_data_provider.ConsumeIntegral<int>()};
-=======
                 (void)SignSignature(provider, ConsumeScript(fuzzed_data_provider), script_tx_to, n_in, ConsumeMoney(fuzzed_data_provider), fuzzed_data_provider.ConsumeIntegral<uint32_t>(), fuzzed_data_provider.ConsumeIntegral<int>(), empty);
                 MutableTransactionSignatureCreator signature_creator{tx_to, n_in, ConsumeMoney(fuzzed_data_provider), fuzzed_data_provider.ConsumeIntegral<uint32_t>(), fuzzed_data_provider.ConsumeIntegral<int>()};
->>>>>>> tc-28.1
                 std::vector<unsigned char> vch_sig;
                 CKeyID address;
                 if (fuzzed_data_provider.ConsumeBool()) {

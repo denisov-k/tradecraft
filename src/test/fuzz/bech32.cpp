@@ -56,7 +56,6 @@ std::string GenerateRandomHRP(FuzzedDataProvider& fdp)
     return hrp;
 }
 
-<<<<<<< v29.0
 FUZZ_TARGET(bech32_roundtrip)
 {
     FuzzedDataProvider fdp(buffer.data(), buffer.size());
@@ -76,18 +75,6 @@ FUZZ_TARGET(bech32_roundtrip)
             assert(decoded.encoding == encoding);
             assert(decoded.hrp == hrp);
             assert(decoded.data == converted_input);
-=======
-    // Input data part + 3 characters for the HRP and separator (bc1) + the checksum characters
-    if (input.size() + 3 + bech32::CHECKSUM_SIZE <= bech32::CharLimit::BECH32) {
-        // If it's possible to encode input in Bech32(m) without exceeding the bech32-character limit:
-        for (auto encoding : {bech32::Encoding::BECH32, bech32::Encoding::BECH32M}) {
-            const std::string encoded = bech32::Encode(encoding, "fc", input);
-            assert(!encoded.empty());
-            const auto r2 = bech32::Decode(encoded);
-            assert(r2.encoding == encoding);
-            assert(r2.hrp == "fc");
-            assert(r2.data == input);
->>>>>>> tc-28.1
         }
     }
 }

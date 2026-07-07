@@ -14,12 +14,9 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bench/bench.h>
-<<<<<<< v29.0
-#include <consensus/amount.h>
-=======
 #include <chainparams.h>
+#include <consensus/amount.h>
 #include <kernel/mempool_entry.h>
->>>>>>> tc-28.1
 #include <policy/policy.h>
 #include <primitives/transaction.h>
 #include <random.h>

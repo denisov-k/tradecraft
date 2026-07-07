@@ -23,11 +23,8 @@
 #include <script/script_error.h>
 #include <script/sign.h>
 #include <script/signingprovider.h>
-<<<<<<< v29.0
 #include <test/util/setup_common.h>
 #include <test/util/transaction_utils.h>
-=======
->>>>>>> tc-28.1
 #include <validation.h>
 
 #include <vector>
@@ -137,11 +134,7 @@ BOOST_AUTO_TEST_CASE(sign)
         {
             CScript sigSave = txTo[i].vin[0].scriptSig;
             txTo[i].vin[0].scriptSig = txTo[j].vin[0].scriptSig;
-<<<<<<< v29.0
-            bool sigOK = !CScriptCheck(txFrom.vout[txTo[i].vin[0].prevout.n], CTransaction(txTo[i]), signature_cache, 0, SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC, false, &txdata)().has_value();
-=======
-            bool sigOK = CScriptCheck(txFrom.vout[txTo[i].vin[0].prevout.n], txFrom.lock_height, CTransaction(txTo[i]), signature_cache, 0, SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC, false, &txdata)();
->>>>>>> tc-28.1
+            bool sigOK = !CScriptCheck(txFrom.vout[txTo[i].vin[0].prevout.n], txFrom.lock_height, CTransaction(txTo[i]), signature_cache, 0, SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC, false, &txdata)().has_value();
             if (i == j)
                 BOOST_CHECK_MESSAGE(sigOK, strprintf("VerifySignature %d %d", i, j));
             else

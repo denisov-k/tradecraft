@@ -36,26 +36,12 @@ FUZZ_TARGET(script_interpreter)
             const CTransaction tx_to{*mtx};
             const unsigned int in = fuzzed_data_provider.ConsumeIntegral<unsigned int>();
             if (in < tx_to.vin.size()) {
-<<<<<<< v29.0
-                auto n_hash_type = fuzzed_data_provider.ConsumeIntegral<int>();
-                auto amount = ConsumeMoney(fuzzed_data_provider);
-                auto sigversion = fuzzed_data_provider.PickValueInArray({SigVersion::BASE, SigVersion::WITNESS_V0});
-                (void)SignatureHash(script_code, tx_to, in, n_hash_type, amount, sigversion, nullptr);
-=======
                 (void)SignatureHash(script_code, tx_to, in, fuzzed_data_provider.ConsumeIntegral<int>(), ConsumeMoney(fuzzed_data_provider), fuzzed_data_provider.ConsumeIntegral<uint32_t>(), fuzzed_data_provider.PickValueInArray({SigVersion::BASE, SigVersion::WITNESS_V0}), nullptr);
->>>>>>> tc-28.1
                 const std::optional<CMutableTransaction> mtx_precomputed = ConsumeDeserializable<CMutableTransaction>(fuzzed_data_provider, TX_WITH_WITNESS);
                 if (mtx_precomputed) {
                     const CTransaction tx_precomputed{*mtx_precomputed};
                     const PrecomputedTransactionData precomputed_transaction_data{tx_precomputed};
-<<<<<<< v29.0
-                    n_hash_type = fuzzed_data_provider.ConsumeIntegral<int>();
-                    amount = ConsumeMoney(fuzzed_data_provider);
-                    sigversion = fuzzed_data_provider.PickValueInArray({SigVersion::BASE, SigVersion::WITNESS_V0});
-                    (void)SignatureHash(script_code, tx_to, in, n_hash_type, amount, sigversion, &precomputed_transaction_data);
-=======
                     (void)SignatureHash(script_code, tx_to, in, fuzzed_data_provider.ConsumeIntegral<int>(), ConsumeMoney(fuzzed_data_provider), fuzzed_data_provider.ConsumeIntegral<uint32_t>(), fuzzed_data_provider.PickValueInArray({SigVersion::BASE, SigVersion::WITNESS_V0}), &precomputed_transaction_data);
->>>>>>> tc-28.1
                 }
             }
         }

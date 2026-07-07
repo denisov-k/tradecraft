@@ -17,13 +17,9 @@
 #include <bench/bench.h>
 #include <hash.h>
 #include <key.h>
-<<<<<<< v29.0
 #include <primitives/transaction.h>
 #include <pubkey.h>
-=======
-#include <script/script.h>
 #include <script/solver.h>
->>>>>>> tc-28.1
 #include <script/interpreter.h>
 #include <script/script.h>
 #include <span.h>

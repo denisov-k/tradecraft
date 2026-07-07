@@ -13,11 +13,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-<<<<<<< v29.0
-=======
-#include <bitcoin-build-config.h> // IWYU pragma: keep
-
->>>>>>> tc-28.1
 #include <bench/bench.h>
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 #include <random.h>

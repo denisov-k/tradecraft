@@ -74,12 +74,8 @@ void CheckMempoolEphemeralInvariants(const CTxMemPool& tx_pool);
  *   */
 void CheckMempoolTRUCInvariants(const CTxMemPool& tx_pool);
 
-<<<<<<< v29.0
 /** One-line wrapper for creating a mempool changeset with a single transaction
  *  and applying it. */
 void AddToMempool(CTxMemPool& tx_pool, const CTxMemPoolEntry& entry);
 
-#endif // BITCOIN_TEST_UTIL_TXMEMPOOL_H
-=======
 #endif // FREICOIN_TEST_UTIL_TXMEMPOOL_H
->>>>>>> tc-28.1

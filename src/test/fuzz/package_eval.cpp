@@ -58,11 +58,7 @@ void initialize_tx_pool()
     options.coinbase_output_script = P2WSH_EMPTY;
 
     for (int i = 0; i < 2 * COINBASE_MATURITY; ++i) {
-<<<<<<< v29.0
-        COutPoint prevout{MineBlock(g_setup->m_node, options)};
-=======
-        COutPoint prevout{MineBlock(g_setup->m_node, P2WSH_EMPTY).first};
->>>>>>> tc-28.1
+        COutPoint prevout{MineBlock(g_setup->m_node, options).first};
         if (i < COINBASE_MATURITY) {
             // Remember the txids to avoid expensive disk access later on
             g_outpoints_coinbase_init_mature.push_back(prevout);

@@ -16,13 +16,9 @@
 #include <test/fuzz/fuzz.h>
 
 #include <base58.h>
-<<<<<<< v29.0
-#include <psbt.h>
+#include <pst.h>
 #include <span.h>
 #include <test/fuzz/FuzzedDataProvider.h>
-=======
-#include <pst.h>
->>>>>>> tc-28.1
 #include <util/strencodings.h>
 #include <util/string.h>
 
@@ -107,10 +103,5 @@ FUZZ_TARGET(psbt_base64_decode)
 
     PartiallySignedTransaction pst;
     std::string error;
-<<<<<<< v29.0
-    const bool ok{DecodeBase64PSBT(psbt, random_string, error)};
-    assert(ok == error.empty());
-=======
-    (void)DecodeHexPST(pst, random_encoded_string, error);
->>>>>>> tc-28.1
+    (void)DecodeHexPST(pst, random_string, error);
 }

@@ -199,13 +199,8 @@ void sanity_check_chainparams(const ArgsManager& args, ChainType chain_type)
 
     // check max target * 4*nPowTargetTimespan doesn't overflow -- see pow.cpp:CalculateNextWorkRequired()
     if (!consensus.fPowNoRetargeting) {
-<<<<<<< v29.0
         arith_uint256 targ_max{UintToArith256(uint256{"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"})};
-        targ_max /= consensus.nPowTargetTimespan*4;
-=======
-        arith_uint256 targ_max{UintToArith256(uint256{"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"})};
         targ_max /= consensus.OriginalTargetTimespan()*4;
->>>>>>> tc-28.1
         BOOST_CHECK(UintToArith256(consensus.powLimit) < targ_max);
     }
 }

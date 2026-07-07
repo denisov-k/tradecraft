@@ -60,11 +60,7 @@ void initialize_tx_pool()
     options.coinbase_output_script = P2WSH_OP_TRUE;
 
     for (int i = 0; i < 2 * COINBASE_MATURITY; ++i) {
-<<<<<<< v29.0
-        COutPoint prevout{MineBlock(g_setup->m_node, options)};
-=======
-        COutPoint prevout{MineBlock(g_setup->m_node, P2WSH_OP_TRUE).first};
->>>>>>> tc-28.1
+        COutPoint prevout{MineBlock(g_setup->m_node, options).first};
         // Remember the txids to avoid expensive disk access later on
         auto& outpoints = i < COINBASE_MATURITY ?
                               g_outpoints_coinbase_init_mature :
@@ -234,14 +230,8 @@ FUZZ_TARGET(tx_pool_standard, .init = initialize_tx_pool)
     // Helper to query an amount
     const CCoinsViewMemPool amount_view{WITH_LOCK(::cs_main, return &chainstate.CoinsTip()), tx_pool};
     const auto GetAmount = [&](const COutPoint& outpoint) {
-<<<<<<< v29.0
         auto coin{amount_view.GetCoin(outpoint).value()};
-        return coin.out.nValue;
-=======
-        Coin c;
-        Assert(amount_view.GetCoin(outpoint, c));
-        return c.out.GetReferenceValue();
->>>>>>> tc-28.1
+        return coin.out.GetReferenceValue();
     };
 
     LIMITED_WHILE(fuzzed_data_provider.ConsumeBool(), 300)

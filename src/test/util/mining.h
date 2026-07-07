@@ -34,12 +34,8 @@ struct NodeContext;
 std::vector<std::shared_ptr<CBlock>> CreateBlockChain(size_t total_height, const CChainParams& params);
 
 /** Returns the generated coin */
-<<<<<<< v29.0
-COutPoint MineBlock(const node::NodeContext&,
-                    const node::BlockAssembler::Options& assembler_options);
-=======
-std::pair<COutPoint, uint32_t> MineBlock(const node::NodeContext&, const CScript& coinbase_scriptPubKey);
->>>>>>> tc-28.1
+std::pair<COutPoint, uint32_t> MineBlock(const node::NodeContext&,
+                                         const node::BlockAssembler::Options& assembler_options);
 
 /**
  * Returns the generated coin (or Null if the block was invalid).
@@ -48,7 +44,7 @@ std::pair<COutPoint, uint32_t> MineBlock(const node::NodeContext&, const CScript
 std::pair<COutPoint, uint32_t> MineBlock(const node::NodeContext&, std::shared_ptr<CBlock>& block);
 
 /** Prepare a block to be mined */
-std::shared_ptr<CBlock> PrepareBlock(const node::NodeContext&);
+std::shared_ptr<CBlock> PrepareBlock(const node::NodeContext&, const CScript& coinbase_scriptPubKey);
 std::shared_ptr<CBlock> PrepareBlock(const node::NodeContext& node,
                                      const node::BlockAssembler::Options& assembler_options);
 

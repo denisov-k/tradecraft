@@ -39,24 +39,18 @@ static void AssembleBlock(benchmark::Bench& bench)
 
     CScriptWitness witness;
     witness.stack.push_back(WITNESS_STACK_ELEM_OP_TRUE);
-<<<<<<< v29.0
+    witness.stack.emplace_back();
+
     BlockAssembler::Options options;
     options.coinbase_output_script = P2WSH_OP_TRUE;
-=======
-    witness.stack.emplace_back();
->>>>>>> tc-28.1
 
     // Collect some loose transactions that spend the coinbases of our mined blocks
     constexpr size_t NUM_BLOCKS{200};
     std::array<CTransactionRef, NUM_BLOCKS - COINBASE_MATURITY + 1> txs;
     for (size_t b{0}; b < NUM_BLOCKS; ++b) {
         CMutableTransaction tx;
-<<<<<<< v29.0
-        tx.vin.emplace_back(MineBlock(test_setup->m_node, options));
-=======
-        const auto cbdata = MineBlock(test_setup->m_node, P2WSH_OP_TRUE);
+        const auto cbdata = MineBlock(test_setup->m_node, options);
         tx.vin.emplace_back(cbdata.first);
->>>>>>> tc-28.1
         tx.vin.back().scriptWitness = witness;
         tx.vout.emplace_back(1337, P2WSH_OP_TRUE);
         tx.lock_height = cbdata.second;

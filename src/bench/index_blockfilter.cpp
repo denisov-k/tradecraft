@@ -45,13 +45,8 @@ static void BlockFilterIndexSync(benchmark::Bench& bench)
 
     // Create more blocks
     int CHAIN_SIZE = 600;
-<<<<<<< v29.0
     CPubKey pubkey{"02ed26169896db86ced4cbb7b3ecef9859b5952825adbeab998fb5b307e54949c9"_hex_u8};
-    CScript script = GetScriptForDestination(WitnessV0KeyHash(pubkey));
-=======
-    CPubKey pubkey{ParseHex("02ed26169896db86ced4cbb7b3ecef9859b5952825adbeab998fb5b307e54949c9")};
     CScript script = GetScriptForDestination(WitnessV0ShortHash(/*version=*/0, pubkey));
->>>>>>> tc-28.1
     std::vector<CMutableTransaction> noTxns;
     for (int i = 1; i < CHAIN_SIZE - 100; i++) {
         test_setup->CreateAndProcessBlock(noTxns, script);

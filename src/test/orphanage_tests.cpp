@@ -23,11 +23,8 @@
 #include <script/sign.h>
 #include <script/signingprovider.h>
 #include <test/util/random.h>
-<<<<<<< v29.0
 #include <test/util/setup_common.h>
 #include <test/util/transaction_utils.h>
-=======
->>>>>>> tc-28.1
 #include <txorphanage.h>
 
 #include <array>

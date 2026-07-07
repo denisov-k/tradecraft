@@ -66,8 +66,6 @@ void initialize_setup()
     g_setup = testing_setup.get();
 }
 
-<<<<<<< v29.0
-=======
 void ImportDescriptors(CWallet& wallet, const std::string& seed_insecure)
 {
     const std::vector<std::string> DESCS{
@@ -183,7 +181,6 @@ struct FuzzedWallet {
     }
 };
 
->>>>>>> tc-28.1
 FUZZ_TARGET(wallet_notifications, .init = initialize_setup)
 {
     SeedRandomStateForTest(SeedRand::ZEROS);

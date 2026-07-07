@@ -148,13 +148,9 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
     tx.lock_height = txFirst[0]->lock_height;
     // This tx has a low fee: 1000 kria
     Txid hashParentTx = tx.GetHash(); // save this txid for later use
-<<<<<<< v29.0
+    uint32_t refheightParentTx = tx.lock_height;
     const auto parent_tx{entry.Fee(1000).Time(Now<NodeSeconds>()).SpendsCoinbase(true).FromTx(tx)};
     AddToMempool(tx_mempool, parent_tx);
-=======
-    uint32_t refheightParentTx = tx.lock_height;
-    tx_mempool.addUnchecked(entry.Fee(1000).Time(Now<NodeSeconds>()).SpendsCoinbase(true).FromTx(tx));
->>>>>>> tc-28.1
 
     // This tx has a medium fee: 10000 kria
     tx.vin[0].prevout.hash = txFirst[1]->GetHash();
@@ -169,13 +165,9 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
     tx.vout[0].nValue = 5000000000LL - 1000 - 50000; // 50k kria fee
     tx.lock_height = refheightParentTx;
     Txid hashHighFeeTx = tx.GetHash();
-<<<<<<< v29.0
+    uint32_t refheightHighFeeTx = tx.lock_height;
     const auto high_fee_tx{entry.Fee(50000).Time(Now<NodeSeconds>()).SpendsCoinbase(false).FromTx(tx)};
     AddToMempool(tx_mempool, high_fee_tx);
-=======
-    uint32_t refheightHighFeeTx = tx.lock_height;
-    tx_mempool.addUnchecked(entry.Fee(50000).Time(Now<NodeSeconds>()).SpendsCoinbase(false).FromTx(tx));
->>>>>>> tc-28.1
 
     std::unique_ptr<BlockTemplate> block_template = mining->createNewBlock(options);
     BOOST_REQUIRE(block_template);
@@ -205,12 +197,8 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
     tx.vout[0].nValue = 5000000000LL - 1000 - 50000; // 0 fee
     tx.lock_height = refheightHighFeeTx;
     Txid hashFreeTx = tx.GetHash();
-<<<<<<< v29.0
-    AddToMempool(tx_mempool, entry.Fee(0).FromTx(tx));
-=======
     uint32_t refheightFreeTx = tx.lock_height;
-    tx_mempool.addUnchecked(entry.Fee(0).FromTx(tx));
->>>>>>> tc-28.1
+    AddToMempool(tx_mempool, entry.Fee(0).FromTx(tx));
     size_t freeTxSize = ::GetSerializeSize(TX_WITH_WITNESS(tx));
 
     // Calculate a fee on child transaction that will put the package just
@@ -254,12 +242,8 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
     tx.vout[1].nValue = 100000000; // 1FRC output
     tx.lock_height = txFirst[2]->lock_height;
     Txid hashFreeTx2 = tx.GetHash();
-<<<<<<< v29.0
-    AddToMempool(tx_mempool, entry.Fee(0).SpendsCoinbase(true).FromTx(tx));
-=======
     uint32_t refheightFreeTx2 = tx.lock_height;
-    tx_mempool.addUnchecked(entry.Fee(0).SpendsCoinbase(true).FromTx(tx));
->>>>>>> tc-28.1
+    AddToMempool(tx_mempool, entry.Fee(0).SpendsCoinbase(true).FromTx(tx));
 
     // This tx can't be mined by itself
     tx.vin[0].prevout.hash = hashFreeTx2;
@@ -282,21 +266,13 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
     // This tx will be mineable, and should cause hashLowFeeTx2 to be selected
     // as well.
     tx.vin[0].prevout.n = 1;
-<<<<<<< v29.0
-    tx.vout[0].nValue = 100000000 - 10000; // 10k satoshi fee
+    tx.vout[0].nValue = 100000000 - 10000; // 10k kria fee
     AddToMempool(tx_mempool, entry.Fee(10000).FromTx(tx));
     block_template = mining->createNewBlock(options);
     BOOST_REQUIRE(block_template);
     block = block_template->getBlock();
     BOOST_REQUIRE_EQUAL(block.vtx.size(), 9U);
     BOOST_CHECK(block.vtx[8]->GetHash() == hashLowFeeTx2);
-=======
-    tx.vout[0].nValue = 100000000 - 10000; // 10k kria fee
-    tx_mempool.addUnchecked(entry.Fee(10000).FromTx(tx));
-    pblocktemplate = AssemblerForTest(tx_mempool).CreateNewBlock(scriptPubKey);
-    BOOST_REQUIRE_EQUAL(pblocktemplate->block.vtx.size(), 9U);
-    BOOST_CHECK(pblocktemplate->block.vtx[8]->GetHash() == hashLowFeeTx2);
->>>>>>> tc-28.1
 }
 
 void MinerTestingSetup::TestBasicMining(const CScript& scriptPubKey, const std::vector<CTransactionRef>& txFirst, int baseheight)
@@ -751,28 +727,16 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
         CMutableTransaction txCoinbase(*block.vtx[0]);
         {
             LOCK(cs_main);
-<<<<<<< v29.0
             block.nVersion = VERSIONBITS_TOP_BITS;
             block.nTime = Assert(m_node.chainman)->ActiveChain().Tip()->GetMedianTimePast()+1;
-            txCoinbase.version = 1;
-            txCoinbase.vin[0].scriptSig = CScript{} << (current_height + 1) << bi.extranonce;
-=======
-            pblock->nVersion = VERSIONBITS_TOP_BITS;
-            pblock->nTime = m_node.chainman->ActiveChain().Tip()->GetMedianTimePast()+1;
-            CMutableTransaction txCoinbase(*pblock->vtx[0]);
             txCoinbase.version = 2;
-            txCoinbase.vin[0].scriptSig = CScript{} << static_cast<int64_t>(m_node.chainman->ActiveChain().Height() + 1) << CScriptNum(bi.extranonce);
->>>>>>> tc-28.1
+            txCoinbase.vin[0].scriptSig = CScript{} << static_cast<int64_t>(current_height + 1) << CScriptNum(bi.extranonce);
             txCoinbase.vout.resize(1); // Ignore the (optional) segwit commitment added by CreateNewBlock (as the hardcoded nonces don't account for this)
             txCoinbase.vout[0].nValue = 50 * COIN;
             txCoinbase.vout[0].scriptPubKey = CScript();
-<<<<<<< v29.0
-            block.vtx[0] = MakeTransactionRef(txCoinbase);
-=======
             txCoinbase.nLockTime = 0;
-            txCoinbase.lock_height = m_node.chainman->ActiveChain().Height() + 1;
-            pblock->vtx[0] = MakeTransactionRef(std::move(txCoinbase));
->>>>>>> tc-28.1
+            txCoinbase.lock_height = current_height + 1;
+            block.vtx[0] = MakeTransactionRef(txCoinbase);
             if (txFirst.size() == 0)
                 baseheight = current_height;
             if (txFirst.size() < 4)

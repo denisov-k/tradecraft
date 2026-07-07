@@ -38,31 +38,11 @@ CMutableTransaction BuildSpendingTransaction(const CScript& scriptSig, const CSc
 // the second nValues[2] and nValues[3] outputs paid to a TxoutType::PUBKEYHASH.
 std::vector<CMutableTransaction> SetupDummyInputs(FillableSigningProvider& keystoreRet, CCoinsViewCache& coinsRet, const std::array<CAmount,4>& nValues);
 
-<<<<<<< v29.0
 // bulk transaction to reach a certain target weight,
 // by appending a single output with padded output script
 void BulkTransaction(CMutableTransaction& tx, int32_t target_weight);
 
-/**
- * Produce a satisfying script (scriptSig or witness).
- *
- * @param provider   Utility containing the information necessary to solve a script.
- * @param fromPubKey The script to produce a satisfaction for.
- * @param txTo       The spending transaction.
- * @param nIn        The index of the input in `txTo` referring the output being spent.
- * @param amount     The value of the output being spent.
- * @param nHashType  Signature hash type.
- * @param sig_data   Additional data provided to solve a script. Filled with the resulting satisfying
- *                   script and whether the satisfaction is complete.
- *
- * @return           True if the produced script is entirely satisfying `fromPubKey`.
- **/
-bool SignSignature(const SigningProvider &provider, const CScript& fromPubKey, CMutableTransaction& txTo,
-                   unsigned int nIn, const CAmount& amount, int nHashType, SignatureData& sig_data);
-bool SignSignature(const SigningProvider &provider, const CTransaction& txFrom, CMutableTransaction& txTo,
-                   unsigned int nIn, int nHashType, SignatureData& sig_data);
+// NOTE: upstream v29 moved SignSignature here from script/sign; Freicoin keeps
+// the canonical refheight-aware SignSignature in script/sign.{h,cpp}.
 
-#endif // BITCOIN_TEST_UTIL_TRANSACTION_UTILS_H
-=======
 #endif // FREICOIN_TEST_UTIL_TRANSACTION_UTILS_H
->>>>>>> tc-28.1

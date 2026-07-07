@@ -32,11 +32,7 @@
 
 namespace {
 
-<<<<<<< v29.0
-struct BIP324Test : BasicTestingSetup {
-=======
 #if 0 // Unused, since we removed the bip324 test vectors (see below).
->>>>>>> tc-28.1
 void TestBIP324PacketVector(
     uint32_t in_idx,
     const std::string& in_priv_ours_hex,
@@ -172,11 +168,7 @@ void TestBIP324PacketVector(
         }
     }
 }
-<<<<<<< v29.0
-}; // struct BIP324Test
-=======
 #endif // 0
->>>>>>> tc-28.1
 
 }  // namespace
 

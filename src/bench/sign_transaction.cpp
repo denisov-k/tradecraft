@@ -22,13 +22,9 @@
 #include <script/interpreter.h>
 #include <script/script.h>
 #include <script/sign.h>
-<<<<<<< v29.0
 #include <script/signingprovider.h>
-#include <span.h>
-=======
 #include <script/solver.h>
-#include <uint256.h>
->>>>>>> tc-28.1
+#include <span.h>
 #include <test/util/random.h>
 #include <uint256.h>
 #include <util/translation.h>
@@ -79,13 +75,8 @@ static void SignTransactionSingleInput(benchmark::Bench& bench, InputType input_
     bench.minEpochIterations(100).run([&] {
         CMutableTransaction tx{unsigned_tx};
         std::map<COutPoint, Coin> coins;
-<<<<<<< v29.0
         const CScript& prev_spk = prev_spks[(iter++) % prev_spks.size()];
-        coins[prevout] = Coin(CTxOut(10000, prev_spk), /*nHeightIn=*/100, /*fCoinBaseIn=*/false);
-=======
-        CScript prev_spk = prev_spks[(iter++) % prev_spks.size()];
         coins[prevout] = Coin(CTxOut(10000, prev_spk), /*refheight=*/1, /*nHeightIn=*/100, /*fCoinBaseIn=*/false);
->>>>>>> tc-28.1
         std::map<int, bilingual_str> input_errors;
         bool complete = SignTransaction(tx, &keystore, coins, SIGHASH_ALL, input_errors);
         assert(complete);

@@ -402,8 +402,7 @@ BOOST_FIXTURE_TEST_CASE(improves_feerate, TestChain100Setup)
     BOOST_CHECK(res1.value().first == DiagramCheckError::FAILURE);
     BOOST_CHECK(res1.value().second == "insufficient feerate: does not improve feerate diagram");
 
-<<<<<<< v29.0
-    // With one more satoshi it does
+    // With one more kria it does
     changeset.reset();
     changeset = pool.GetChangeSet();
     changeset->StageRemoval(entry1);
@@ -411,10 +410,6 @@ BOOST_FIXTURE_TEST_CASE(improves_feerate, TestChain100Setup)
     changeset->StageAddition(tx1_conflict, tx1_fee+1, 0, 1, 0, false, 4, LockPoints());
     changeset->StageAddition(tx3, tx2_fee, 0, 1, 0, false, 4, LockPoints());
     BOOST_CHECK(ImprovesFeerateDiagram(*changeset) == std::nullopt);
-=======
-    // With one more kria it does
-    BOOST_CHECK(ImprovesFeerateDiagram(pool, {entry1}, {entry1, entry2}, tx1_fee + tx2_fee + 1, tx1_size + tx2_size) == std::nullopt);
->>>>>>> tc-28.1
 
     changeset.reset();
     // With prioritisation of in-mempool conflicts, it affects the results of the comparison using the same args as just above
