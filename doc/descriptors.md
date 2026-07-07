@@ -1,6 +1,6 @@
-# Support for Output Descriptors in Bitcoin Core
+# Support for Output Descriptors in Freicoin
 
-Since Bitcoin Core v0.17, there is support for Output Descriptors. This is a
+Since Freicoin v17, there is support for Output Descriptors. This is a
 simple language which can be used to describe collections of output scripts.
 Supporting RPCs are:
 - `scantxoutset` takes as input descriptors to scan for, and also reports
@@ -10,14 +10,16 @@ Supporting RPCs are:
 - `deriveaddresses` takes as input a descriptor and computes the corresponding
   addresses.
 - `listunspent` outputs a specialized descriptor for the reported unspent outputs.
-- `getaddressinfo` outputs a descriptor for solvable addresses (since v0.18).
+- `getaddressinfo` outputs a descriptor for solvable addresses (since v18).
+- `importmulti` takes as input descriptors to import into a legacy wallet
+  (since v18).
 - `generatetodescriptor` takes as input a descriptor and generates coins to it
-  (`regtest` only, since v0.19).
-- `utxoupdatepsbt` takes as input descriptors to add information to the psbt
-  (since v0.19).
-- `createmultisig` and `addmultisigaddress` return descriptors as well (since v0.20).
+  (`regtest` only, since v19).
+- `utxoupdatepst` takes as input descriptors to add information to the pst
+  (since v19).
+- `createmultisig` and `addmultisigaddress` return descriptors as well (since v20).
 - `importdescriptors` takes as input descriptors to import into a descriptor wallet
-  (since v0.21).
+  (since v21).
 - `listdescriptors` outputs descriptors imported into a descriptor wallet (since v22).
 - `scanblocks` takes as input descriptors to scan for in blocks and returns the
    relevant blockhashes (since v25).
@@ -35,7 +37,7 @@ documentation for the functions mentioned above.
 Output descriptors currently support:
 - Pay-to-pubkey scripts (P2PK), through the `pk` function.
 - Pay-to-pubkey-hash scripts (P2PKH), through the `pkh` function.
-- Pay-to-witness-pubkey-hash scripts (P2WPKH), through the `wpkh` function.
+- Pay-to-witness-pubkey scripts (P2WPK), through the `wpk` function.
 - Pay-to-script-hash scripts (P2SH), through the `sh` function.
 - Pay-to-witness-script-hash scripts (P2WSH), through the `wsh` function.
 - Pay-to-taproot outputs (P2TR), through the `tr` function.
@@ -51,15 +53,12 @@ Output descriptors currently support:
 
 - `pk(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)` describes a P2PK output with the specified public key.
 - `pkh(02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5)` describes a P2PKH output with the specified public key.
-- `wpkh(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)` describes a P2WPKH output with the specified public key.
-- `sh(wpkh(03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556))` describes a P2SH-P2WPKH output with the specified public key.
-- `combo(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)` describes any P2PK, P2PKH, P2WPKH, or P2SH-P2WPKH output with the specified public key.
-- `sh(wsh(pkh(02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13)))` describes an (overly complicated) P2SH-P2WSH-P2PKH output with the specified public key.
+- `wpk(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)` describes a P2WPK output with the specified public key.
+- `combo(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)` describes any P2PK, P2PKH, or P2WPK output with the specified public key.
 - `multi(1,022f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4,025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc)` describes a bare *1-of-2* multisig output with keys in the specified order.
 - `sh(multi(2,022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01,03acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbe))` describes a P2SH *2-of-2* multisig output with keys in the specified order.
 - `sh(sortedmulti(2,03acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbe,022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01))` describes a P2SH *2-of-2* multisig output with keys sorted lexicographically in the resulting redeemScript.
 - `wsh(multi(2,03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7,03774ae7f858a9411e5ef4246b70c65aac5649980be5c17891bbec17895da008cb,03d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a))` describes a P2WSH *2-of-3* multisig output with keys in the specified order.
-- `sh(wsh(multi(1,03f28773c2d975288bc7d1d205c3748651b075fbc6610e58cddeeddf8f19405aa8,03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4,02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e)))` describes a P2SH-P2WSH *1-of-3* multisig output with keys in the specified order.
 - `pk(xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8)` describes a P2PK output with the public key of the specified xpub.
 - `pkh(xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw/1/2)` describes a P2PKH output with child key *1/2* of the specified xpub.
 - `pkh([d34db33f/44'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*)` describes a set of P2PKH outputs, but additionally specifies that the specified xpub is a child of a master with fingerprint `d34db33f`, and derived using path `44'/0'/0'`.
@@ -80,8 +79,8 @@ Descriptors consist of several types of expressions. The top level expression is
 - `wsh(SCRIPT)` (top level or inside `sh` only): P2WSH embed the argument.
 - `pk(KEY)` (anywhere): P2PK output for the given public key.
 - `pkh(KEY)` (not inside `tr`): P2PKH output for the given public key (use `addr` if you only know the pubkey hash).
-- `wpkh(KEY)` (top level or inside `sh` only): P2WPKH output for the given compressed pubkey.
-- `combo(KEY)` (top level only): an alias for the collection of `pk(KEY)` and `pkh(KEY)`. If the key is compressed, it also includes `wpkh(KEY)` and `sh(wpkh(KEY))`.
+- `wpk(KEY)` (top level or inside `sh` only): P2WPK output for the given compressed pubkey.
+- `combo(KEY)` (top level only): an alias for the collection of `pk(KEY)` and `pkh(KEY)`. If the key is compressed, it also includes `wpk(KEY)` and `sh(wpk(KEY))`.
 - `multi(k,KEY_1,KEY_2,...,KEY_n)` (not inside `tr`): k-of-n multisig script using OP_CHECKMULTISIG.
 - `sortedmulti(k,KEY_1,KEY_2,...,KEY_n)` (not inside `tr`): k-of-n multisig script with keys sorted lexicographically in the resulting script.
 - `multi_a(k,KEY_1,KEY_2,...,KEY_N)` (only inside `tr`): k-of-n multisig script using OP_CHECKSIG, OP_CHECKSIGADD, and OP_NUMEQUAL.
@@ -99,7 +98,7 @@ Descriptors consist of several types of expressions. The top level expression is
   - A closing bracket `]`
 - Followed by the actual key, which is either:
   - Hex encoded public keys (either 66 characters starting with `02` or `03` for a compressed pubkey, or 130 characters starting with `04` for an uncompressed pubkey).
-    - Inside `wpkh` and `wsh`, only compressed public keys are permitted.
+    - Inside `wpk` and `wsh`, only compressed public keys are permitted.
     - Inside `tr` and `rawtr`, x-only pubkeys are also permitted (64 hex characters).
   - [WIF](https://en.bitcoin.it/wiki/Wallet_import_format) encoded private keys may be specified instead of the corresponding public key, with the same meaning.
   - `xpub` encoded extended public key or `xprv` encoded extended private key (as defined in [BIP 32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki)).
@@ -117,19 +116,19 @@ Descriptors consist of several types of expressions. The top level expression is
 `ADDR` expressions are any type of supported address:
 - P2PKH addresses (base58, of the form `1...` for mainnet or `[nm]...` for testnet). Note that P2PKH addresses in descriptors cannot be used for P2PK outputs (use the `pk` function instead).
 - P2SH addresses (base58, of the form `3...` for mainnet or `2...` for testnet, defined in [BIP 13](https://github.com/bitcoin/bips/blob/master/bip-0013.mediawiki)).
-- Segwit addresses (bech32 and bech32m, of the form `bc1...` for mainnet or `tb1...` for testnet, defined in [BIP 173](https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki) and [BIP 350](https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki)).
+- Segwit addresses (bech32m, of the form `fc1...` for mainnet or `tf1...` for testnet, defined in [BIP 173](https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki) and [BIP 350](https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki)).
 
 ## Explanation
 
 ### Single-key scripts
 
 Many single-key constructions are used in practice, generally including
-P2PK, P2PKH, P2WPKH, and P2SH-P2WPKH. Many more combinations are
+P2PK, P2PKH, and P2WPK. Many more combinations are
 imaginable, though they may not be optimal: P2SH-P2PK, P2SH-P2PKH,
-P2WSH-P2PK, P2WSH-P2PKH, P2SH-P2WSH-P2PK, P2SH-P2WSH-P2PKH.
+P2WSH-P2PK, P2WSH-P2PKH.
 
 To describe these, we model these as functions. The functions `pk`
-(P2PK), `pkh` (P2PKH) and `wpkh` (P2WPKH) take as input a `KEY` expression, and return the
+(P2PK), `pkh` (P2PKH) and `wpk` (P2WPK) take as input a `KEY` expression, and return the
 corresponding *scriptPubKey*. The functions `sh` (P2SH) and `wsh` (P2WSH)
 take as input a `SCRIPT` expression, and return the script describing P2SH and P2WSH
 outputs with the input as embedded script. The names of the functions do
@@ -138,7 +137,7 @@ not contain "p2" for brevity.
 ### Multisig
 
 Several pieces of software use multi-signature (multisig) scripts based
-on Bitcoin's OP_CHECKMULTISIG opcode. To support these, we introduce the
+on Freicoin's OP_CHECKMULTISIG opcode. To support these, we introduce the
 `multi(k,key_1,key_2,...,key_n)` and `sortedmulti(k,key_1,key_2,...,key_n)`
 functions. They represent a *k-of-n*
 multisig policy, where any *k* out of the *n* provided `KEY` expressions must
@@ -160,12 +159,12 @@ are lexicographically ordered as described in BIP67.
 #### Basic multisig example
 
 For a good example of a basic M-of-N multisig between multiple participants using descriptor
-wallets and PSBTs, as well as a signing flow, see [this functional test](/test/functional/wallet_multisig_descriptor_psbt.py).
+wallets and PSTs, as well as a signing flow, see [this functional test](/test/functional/wallet_multisig_descriptor_pst.py).
 
 Disclaimers: It is important to note that this example serves as a quick-start and is kept basic for readability. A downside of the approach
 outlined here is that each participant must maintain (and backup) two separate wallets: a signer and the corresponding multisig.
 It should also be noted that privacy best-practices are not "by default" here - participants should take care to only use the signer to sign
-transactions related to the multisig. Lastly, it is not recommended to use anything other than a Bitcoin Core descriptor wallet to serve as your
+transactions related to the multisig. Lastly, it is not recommended to use anything other than a Freicoin descriptor wallet to serve as your
 signer(s). Other wallets, whether hardware or software, likely impose additional checks and safeguards to prevent users from signing transactions that
 could lead to loss of funds, or are deemed security hazards. Conforming to various 3rd-party checks and verifications is not in the scope of this example.
 
@@ -181,21 +180,21 @@ The basic steps are:
   3. A receiving address is generated for the multisig. As a check to ensure step 2 was done correctly, every participant
      should verify they get the same addresses
   4. Funds are sent to the resulting address
-  5. A sending transaction from the multisig is created using `walletcreatefundedpsbt` (anyone can initiate this). It is simple to do
-     this in the GUI by going to the `Send` tab in the multisig wallet and creating an unsigned transaction (PSBT)
-  6. At least `M` participants check the PSBT with their multisig using `decodepsbt` to verify the transaction is OK before signing it.
-  7. (If OK) the participant signs the PSBT with their signer wallet using `walletprocesspsbt`. It is simple to do this in the GUI by
-     loading the PSBT from file and signing it
-  8. The signed PSBTs are collected with `combinepsbt`, finalized w/ `finalizepsbt`, and then the resulting transaction is broadcasted
+  5. A sending transaction from the multisig is created using `walletcreatefundedpst` (anyone can initiate this). It is simple to do
+     this in the GUI by going to the `Send` tab in the multisig wallet and creating an unsigned transaction (PST)
+  6. At least `M` participants check the PST with their multisig using `decodepst` to verify the transaction is OK before signing it.
+  7. (If OK) the participant signs the PST with their signer wallet using `walletprocesspst`. It is simple to do this in the GUI by
+     loading the PST from file and signing it
+  8. The signed PSTs are collected with `combinepst`, finalized w/ `finalizepst`, and then the resulting transaction is broadcasted
      to the network. Note that any wallet (eg one of the signers or multisig) is capable of doing this.
   9. Checks that balances are correct after the transaction has been included in a block
 
-You may prefer a daisy chained signing flow where each participant signs the PSBT one after another until
-the PSBT has been signed `M` times and is "complete." For the most part, the steps above remain the same, except (6, 7)
-change slightly from signing the original PSBT in parallel to signing it in series. `combinepsbt` is not necessary with
-this signing flow and the last (`m`th) signer can just broadcast the PSBT after signing. Note that a parallel signing flow may be
+You may prefer a daisy chained signing flow where each participant signs the PST one after another until
+the PST has been signed `M` times and is "complete." For the most part, the steps above remain the same, except (6, 7)
+change slightly from signing the original PST in parallel to signing it in series. `combinepst` is not necessary with
+this signing flow and the last (`m`th) signer can just broadcast the PST after signing. Note that a parallel signing flow may be
 preferable in cases where there are more signers. This signing flow is also included in the test / Python example.
-[The test](/test/functional/wallet_multisig_descriptor_psbt.py) is meant to be documentation as much as it is a functional test, so
+[The test](/test/functional/wallet_multisig_descriptor_pst.py) is meant to be documentation as much as it is a functional test, so
 it is kept as simple and readable as possible.
 
 #### Basic Miniscript-enabled "decaying" multisig example
@@ -299,9 +298,9 @@ first descriptor for receiving addresses and the second descriptor for change ad
 ### Compatibility with old wallets
 
 In order to easily represent the sets of scripts currently supported by
-existing Bitcoin Core wallets, a convenience function `combo` is
+existing Freicoin wallets, a convenience function `combo` is
 provided, which takes as input a public key, and describes a set of P2PK,
-P2PKH, P2WPKH, and P2SH-P2WPKH scripts for that key. In case the key is
+P2PKH, and P2WPK scripts for that key. In case the key is
 uncompressed, the set only includes P2PK and P2PKH scripts.
 
 ### Checksums
@@ -316,7 +315,7 @@ be detected in descriptors up to 501 characters, and up to 3 errors in longer
 ones. For larger numbers of errors, or other types of errors, there is a
 roughly 1 in a trillion chance of not detecting the errors.
 
-All RPCs in Bitcoin Core will include the checksum in their output. Only
+All RPCs in Freicoin will include the checksum in their output. Only
 certain RPCs require checksums on input, including `deriveaddresses` and
 `importdescriptors`. The checksum for a descriptor without one can be computed
 using the `getdescriptorinfo` RPC.

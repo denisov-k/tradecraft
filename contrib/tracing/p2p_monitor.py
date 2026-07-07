@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 # Copyright (c) 2021 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-""" Interactive bitcoind P2P network traffic monitor utilizing USDT and the
+""" Interactive freicoind P2P network traffic monitor utilizing USDT and the
     net:inbound_message and net:outbound_message tracepoints. """
 
-# This script demonstrates what USDT for Bitcoin Core can enable. It uses BCC
+# This script demonstrates what USDT for Freicoin can enable. It uses BCC
 # (https://github.com/iovisor/bcc) to load a sandboxed eBPF program into the
 # Linux kernel (root privileges are required). The eBPF program attaches to two
 # statically defined tracepoints. The tracepoint 'net:inbound_message' is called
@@ -126,15 +137,15 @@ class Peer:
 
 def main(pid):
     peers = dict()
-    print(f"Hooking into bitcoind with pid {pid}")
-    bitcoind_with_usdts = USDT(pid=int(pid))
+    print(f"Hooking into freicoind with pid {pid}")
+    freicoind_with_usdts = USDT(pid=int(pid))
 
     # attaching the trace functions defined in the BPF program to the tracepoints
-    bitcoind_with_usdts.enable_probe(
+    freicoind_with_usdts.enable_probe(
         probe="inbound_message", fn_name="trace_inbound_message")
-    bitcoind_with_usdts.enable_probe(
+    freicoind_with_usdts.enable_probe(
         probe="outbound_message", fn_name="trace_outbound_message")
-    bpf = BPF(text=program, usdt_contexts=[bitcoind_with_usdts])
+    bpf = BPF(text=program, usdt_contexts=[freicoind_with_usdts])
 
     # BCC: perf buffer handle function for inbound_messages
     def handle_inbound(_, data, size):
@@ -259,7 +270,7 @@ def running_as_root():
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("USAGE:", sys.argv[0], "<pid of bitcoind>")
+        print("USAGE:", sys.argv[0], "<pid of freicoind>")
         exit()
     if not running_as_root():
         print("You might not have the privileges required to hook into the tracepoints!")
