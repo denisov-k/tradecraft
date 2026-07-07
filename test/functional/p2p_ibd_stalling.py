@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022- The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Test stalling logic during IBD
 """
@@ -10,9 +21,11 @@ import time
 
 from test_framework.blocktools import (
         create_block,
-        create_coinbase
+        create_coinbase,
+        add_final_tx,
 )
 from test_framework.messages import (
+        CTxOut,
         MSG_BLOCK,
         MSG_TYPE_MASK,
 )
@@ -22,7 +35,11 @@ from test_framework.p2p import (
         msg_headers,
         P2PDataStore,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.script import (
+        CScript,
+        OP_TRUE,
+)
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
         assert_equal,
 )
@@ -44,7 +61,7 @@ class P2PStaller(P2PDataStore):
         pass
 
 
-class P2PIBDStallingTest(BitcoinTestFramework):
+class P2PIBDStallingTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -60,13 +77,26 @@ class P2PIBDStallingTest(BitcoinTestFramework):
         self.log.info("Prepare blocks without sending them to the node")
         block_dict = {}
         for _ in range(NUM_BLOCKS):
-            blocks.append(create_block(tip, create_coinbase(height), block_time))
-            blocks[-1].solve()
-            tip = blocks[-1].hash_int
+            block = create_block(tip, create_coinbase(height), block_time)
+            if height == 1:
+                block.vtx[0].vout.insert(0, CTxOut(0, CScript([OP_TRUE])))
+                block.vtx[0].rehash()
+                final_tx = [{
+                    'txid': block.vtx[0].hash,
+                    'vout': 0,
+                    'amount': 0,
+                }]
+                block.hashMerkleRoot = block.calc_merkle_root()
+                block.rehash()
+            if height > 100:
+                final_tx = add_final_tx(final_tx, block)
+            block.solve()
+            blocks.append(block)
+            tip = block.sha256
             block_time += 1
             height += 1
-            block_dict[blocks[-1].hash_int] = blocks[-1]
-        stall_block = blocks[0].hash_int
+            block_dict[tip] = block
+        stall_block = blocks[0].sha256
 
         headers_message = msg_headers()
         headers_message.headers = [CBlockHeader(b) for b in blocks[:NUM_BLOCKS-1]]
@@ -82,7 +112,7 @@ class P2PIBDStallingTest(BitcoinTestFramework):
 
         # Need to wait until 1023 blocks are received - the magic total bytes number is a workaround in lack of an rpc
         # returning the number of downloaded (but not connected) blocks.
-        bytes_recv = 172761 if not self.options.v2transport else 169692
+        bytes_recv = 236913 if not self.options.v2transport else 233844
         self.wait_until(lambda: self.total_bytes_recv_for_blocks() == bytes_recv)
 
         self.all_sync_send_with_ping(peers)

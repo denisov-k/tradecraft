@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
 # Copyright (c) 2021-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Tests related to node initialization."""
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Stress tests related to node initialization."""
 from pathlib import Path
 import os
 import platform
@@ -10,7 +21,7 @@ import shutil
 import signal
 import subprocess
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.test_node import (
     BITCOIN_PID_FILENAME_DEFAULT,
     ErrorMatch,
@@ -18,7 +29,7 @@ from test_framework.test_node import (
 from test_framework.util import assert_equal
 
 
-class InitTest(BitcoinTestFramework):
+class InitTest(FreicoinTestFramework):
     """
     Ensure that initialization can be interrupted at a number of points and not impair
     subsequent starts.
@@ -210,7 +221,7 @@ class InitTest(BitcoinTestFramework):
                     # Since the genesis block is not checked by -checkblocks, the
                     # perturbation window must be chosen such that a higher block
                     # in blk*.dat is affected.
-                    tf.seek(150)
+                    tf.seek(1350)
                     tf.write(b"1" * 200)
 
             start_expecting_error(err_fragment, startup_args)

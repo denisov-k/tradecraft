@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2018-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import sys
@@ -26,15 +37,11 @@ def getdescriptors(args):
     sys.stdout.write(json.dumps({
         "receive": [
             "pkh([00000001/44h/1h/" + args.account + "']" + xpub + "/0/*)#aqllu46s",
-            "sh(wpkh([00000001/49h/1h/" + args.account + "']" + xpub + "/0/*))#5dh56mgg",
-            "wpkh([00000001/84h/1h/" + args.account + "']" + xpub + "/0/*)#h62dxaej",
-            "tr([00000001/86h/1h/" + args.account + "']" + xpub + "/0/*)#pcd5w87f"
+            "wpk([00000001/84h/1h/" + args.account + "']" + xpub + "/0/*)#9ft9w5dj",
         ],
         "internal": [
             "pkh([00000001/44h/1h/" + args.account + "']" + xpub + "/1/*)#v567pq2g",
-            "sh(wpkh([00000001/49h/1h/" + args.account + "']" + xpub + "/1/*))#pvezzyah",
-            "wpkh([00000001/84h/1h/" + args.account + "']" + xpub + "/1/*)#xw0vmgf2",
-            "tr([00000001/86h/1h/" + args.account + "']" + xpub + "/1/*)#svg4njw3"
+            "wpk([00000001/84h/1h/" + args.account + "']" + xpub + "/1/*)#5awynpa2",
 
         ]
     }))
@@ -45,11 +52,9 @@ def displayaddress(args):
         return sys.stdout.write(json.dumps({"error": "Unexpected fingerprint", "fingerprint": args.fingerprint}))
 
     expected_desc = {
-        "wpkh([00000001/84h/1h/0h/0/0]02c97dc3f4420402e01a113984311bf4a1b8de376cac0bdcfaf1b3ac81f13433c7)#3te6hhy7": "bcrt1qm90ugl4d48jv8n6e5t9ln6t9zlpm5th68x4f8g",
-        "sh(wpkh([00000001/49h/1h/0h/0/0]02c97dc3f4420402e01a113984311bf4a1b8de376cac0bdcfaf1b3ac81f13433c7))#kz9y5w82": "2N2gQKzjUe47gM8p1JZxaAkTcoHPXV6YyVp",
+        "wpk([00000001/84h/1h/0h/0/0]02c97dc3f4420402e01a113984311bf4a1b8de376cac0bdcfaf1b3ac81f13433c7)#50z3vw49": "fcrt1q55f34cyg0hy9w4ka6pnlf6h5za68jccj2jre2w",
         "pkh([00000001/44h/1h/0h/0/0]02c97dc3f4420402e01a113984311bf4a1b8de376cac0bdcfaf1b3ac81f13433c7)#q3pqd8wh": "n1LKejAadN6hg2FrBXoU1KrwX4uK16mco9",
-        "tr([00000001/86h/1h/0h/0/0]c97dc3f4420402e01a113984311bf4a1b8de376cac0bdcfaf1b3ac81f13433c7)#puqqa90m": "tb1phw4cgpt6cd30kz9k4wkpwm872cdvhss29jga2xpmftelhqll62mscq0k4g",
-        "wpkh([00000001/84h/1h/0h/0/1]03a20a46308be0b8ded6dff0a22b10b4245c587ccf23f3b4a303885be3a524f172)#aqpjv5xr": "wrong_address",
+        "wpk([00000001/84h/1h/0h/0/1]03a20a46308be0b8ded6dff0a22b10b4245c587ccf23f3b4a303885be3a524f172)#jth7cp4k": "wrong_address",
     }
     if args.desc not in expected_desc:
         return sys.stdout.write(json.dumps({"error": "Unexpected descriptor", "desc": args.desc}))
@@ -60,16 +65,16 @@ def signtx(args):
     if args.fingerprint != "00000001":
         return sys.stdout.write(json.dumps({"error": "Unexpected fingerprint", "fingerprint": args.fingerprint}))
 
-    with open(os.path.join(os.getcwd(), "mock_psbt"), "r", encoding="utf8") as f:
-        mock_psbt = f.read()
+    with open(os.path.join(os.getcwd(), "mock_pst"), "r", encoding="utf8") as f:
+        mock_pst = f.read()
 
     if args.fingerprint == "00000001" :
         sys.stdout.write(json.dumps({
-            "psbt": mock_psbt,
+            "pst": mock_pst,
             "complete": True
         }))
     else:
-        sys.stdout.write(json.dumps({"psbt": args.psbt}))
+        sys.stdout.write(json.dumps({"pst": args.pst}))
 
 parser = argparse.ArgumentParser(prog='./signer.py', description='External signer mock')
 parser.add_argument('--fingerprint')
@@ -91,7 +96,7 @@ parser_displayaddress.add_argument('--desc', metavar='desc')
 parser_displayaddress.set_defaults(func=displayaddress)
 
 parser_signtx = subparsers.add_parser('signtx')
-parser_signtx.add_argument('psbt', metavar='psbt')
+parser_signtx.add_argument('pst', metavar='pst')
 
 parser_signtx.set_defaults(func=signtx)
 

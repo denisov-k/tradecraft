@@ -2,13 +2,24 @@
 # Copyright (c) 2010 ArtForz -- public domain half-a-node
 # Copyright (c) 2012 Jeff Garzik
 # Copyright (c) 2010-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Bitcoin test framework primitive and message structures
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Freicoin test framework primitive and message structures
 
 CBlock, CTransaction, CBlockHeader, CTxIn, CTxOut, etc....:
     data structures that should map to corresponding structures in
-    bitcoin/primitives
+    freicoin/primitives
 
 msg_block, msg_tx, msg_headers, etc.:
     data structures that represent network messages
@@ -38,8 +49,8 @@ MINIMUM_BLOCK_RESERVED_WEIGHT = 2000
 MAX_BLOOM_FILTER_SIZE = 36000
 MAX_BLOOM_HASH_FUNCS = 50
 
-COIN = 100000000  # 1 btc in satoshis
-MAX_MONEY = 21000000 * COIN
+COIN = 100000000  # 1 frc in kria
+MAX_MONEY = 9007199254740991
 
 MAX_BIP125_RBF_SEQUENCE = 0xfffffffd  # Sequence number that is rbf-opt-in (BIP 125) and csv-opt-out (BIP 68)
 MAX_SEQUENCE_NONFINAL = 0xfffffffe  # Sequence number that is csv-opt-out (BIP 68)
@@ -84,10 +95,10 @@ TX_MIN_STANDARD_VERSION = 1
 TX_MAX_STANDARD_VERSION = 3
 
 MAGIC_BYTES = {
-    "mainnet": b"\xf9\xbe\xb4\xd9",
-    "testnet4": b"\x1c\x16\x3f\x28",
-    "regtest": b"\xfa\xbf\xb5\xda",
-    "signet": b"\x0a\x03\xcf\x40",
+    "mainnet": b"\x2c\xfe\x7e\x6d",   # mainnet
+    "testnet": b"\x5e\xd6\x7c\xf3",   # testnet
+    "regtest": b"\xed\x99\x9c\xf6",   # regtest
+    "signet": b"\x0a\x03\xcf\x40",    # signet
 }
 
 def sha256(s):
@@ -101,6 +112,15 @@ def sha3(s):
 def hash256(s):
     return sha256(sha256(s))
 
+from .sha256 import SHA256
+_FastHash256Tag = sha256(b'')
+def fastHash256(l,r):
+    return (SHA256()
+         .update(_FastHash256Tag)
+         .update(_FastHash256Tag)
+         .update(l)
+         .update(r)
+        ).midstate()[0]
 
 def ser_compact_size(l):
     r = b""
@@ -125,6 +145,24 @@ def deser_compact_size(f):
         nit = int.from_bytes(f.read(8), "little")
     return nit
 
+def ser_varint(n):
+    r = b""
+    while True:
+        r += struct.pack("B", (n & 0x7F) | (0x80 if len(r) > 0 else 0x00))
+        if n <= 0x7f:
+            break
+        n = (n >> 7) - 1
+    return r[::-1]
+
+def deser_varint(f):
+    n = 0
+    while True:
+        c = struct.unpack("B", f.read(1))[0]
+        n = (n << 7) | (c & 0x7F)
+        if c & 0x80:
+            n += 1
+        else:
+            return n
 
 def ser_varint(l):
     r = b""
@@ -267,7 +305,7 @@ def from_binary(cls, stream):
     return obj
 
 
-# Objects that map to bitcoind objects, which can be serialized/deserialized
+# Objects that map to freicoind objects, which can be serialized/deserialized
 
 
 class CAddress:
@@ -444,7 +482,7 @@ class CBlockLocator:
 
     def serialize(self):
         r = b""
-        r += (0).to_bytes(4, "little", signed=True)  # Bitcoin Core ignores the version field. Set it to 0.
+        r += (0).to_bytes(4, "little", signed=True)  # Freicoin ignores the version field. Set it to 0.
         r += ser_uint256_vector(self.vHave)
         return r
 
@@ -593,7 +631,8 @@ class CTxWitness:
 
 
 class CTransaction:
-    __slots__ = ("nLockTime", "version", "vin", "vout", "wit")
+    __slots__ = ("hash", "lock_height", "nLockTime", "version", "sha256", "vin", "vout",
+                 "wit")
 
     def __init__(self, tx=None):
         if tx is None:
@@ -602,32 +641,49 @@ class CTransaction:
             self.vout = []
             self.wit = CTxWitness()
             self.nLockTime = 0
+            self.lock_height = 0
+            self.sha256 = None
+            self.hash = None
         else:
             self.version = tx.version
             self.vin = copy.deepcopy(tx.vin)
             self.vout = copy.deepcopy(tx.vout)
             self.nLockTime = tx.nLockTime
+            self.lock_height = tx.lock_height
+            self.sha256 = tx.sha256
+            self.hash = tx.hash
             self.wit = copy.deepcopy(tx.wit)
 
     def deserialize(self, f):
         self.version = int.from_bytes(f.read(4), "little")
-        self.vin = deser_vector(f, CTxIn)
         flags = 0
-        if len(self.vin) == 0:
+        dummy = int.from_bytes(f.read(1), "little")
+        if dummy == 255:
             flags = int.from_bytes(f.read(1), "little")
-            # Not sure why flags can't be zero, but this
-            # matches the implementation in bitcoind
-            if (flags != 0):
-                self.vin = deser_vector(f, CTxIn)
-                self.vout = deser_vector(f, CTxOut)
+            self.vin = deser_vector(f, CTxIn)
         else:
-            self.vout = deser_vector(f, CTxOut)
+            if dummy <= 252:
+                size = dummy
+            if dummy == 253:
+                size = int.from_bytes(f.read(2), "little")
+            if dummy == 254:
+                size = int.from_bytes(f.read(4), "little")
+            self.vin = []
+            for _ in range(size):
+                txin = CTxIn()
+                txin.deserialize(f)
+                self.vin.append(txin)
+        self.vout = deser_vector(f, CTxOut)
         if flags != 0:
             self.wit.vtxinwit = [CTxInWitness() for _ in range(len(self.vin))]
             self.wit.deserialize(f)
         else:
             self.wit = CTxWitness()
         self.nLockTime = int.from_bytes(f.read(4), "little")
+        if self.version!=1 or len(self.vin)!=1 or self.vin[0].prevout.hash!=0 or self.vin[0].prevout.n not in (-1,0xffffffff):
+            self.lock_height = int.from_bytes(f.read(4), "little")
+        self.sha256 = None
+        self.hash = None
 
     def serialize_without_witness(self):
         r = b""
@@ -635,6 +691,8 @@ class CTransaction:
         r += ser_vector(self.vin)
         r += ser_vector(self.vout)
         r += self.nLockTime.to_bytes(4, "little")
+        if self.version!=1 or len(self.vin)!=1 or self.vin[0].prevout.hash!=0 or self.vin[0].prevout.n not in (-1,0xffffffff):
+            r += self.lock_height.to_bytes(4, "little")
         return r
 
     # Only serialize with witness when explicitly called for
@@ -645,8 +703,8 @@ class CTransaction:
         r = b""
         r += self.version.to_bytes(4, "little")
         if flags:
-            dummy = []
-            r += ser_vector(dummy)
+            dummy = 255
+            r += dummy.to_bytes(1, "little")
             r += flags.to_bytes(1, "little")
         r += ser_vector(self.vin)
         r += ser_vector(self.vout)
@@ -658,6 +716,8 @@ class CTransaction:
                     self.wit.vtxinwit.append(CTxInWitness())
             r += self.wit.serialize()
         r += self.nLockTime.to_bytes(4, "little")
+        if self.version!=1 or len(self.vin)!=1 or self.vin[0].prevout.hash!=0 or self.vin[0].prevout.n not in (-1,0xffffffff):
+            r += self.lock_height.to_bytes(4, "little")
         return r
 
     # Regular serialization is with witness -- must explicitly
@@ -687,7 +747,7 @@ class CTransaction:
 
     def is_valid(self):
         for tout in self.vout:
-            if tout.nValue < 0 or tout.nValue > 21000000 * COIN:
+            if tout.nValue < 0 or tout.nValue > MAX_MONEY:
                 return False
         return True
 
@@ -702,13 +762,117 @@ class CTransaction:
         return math.ceil(self.get_weight() / WITNESS_SCALE_FACTOR)
 
     def __repr__(self):
-        return "CTransaction(version=%i vin=%s vout=%s wit=%s nLockTime=%i)" \
-            % (self.version, repr(self.vin), repr(self.vout), repr(self.wit), self.nLockTime)
+        return "CTransaction(version=%i vin=%s vout=%s wit=%s nLockTime=%i lock_height=%i)" \
+            % (self.version, repr(self.vin), repr(self.vout), repr(self.wit), self.nLockTime, self.lock_height)
 
+
+class AuxProofOfWork(object):
+    __slots__ = ("commit_version", "commit_hash_merkle_root", "commit_time", "commit_bits",
+                 "commit_nonce", "secret_lo", "secret_hi", "midstate_hash", "midstate_buffer",
+                 "midstate_length", "aux_lock_time", "aux_branch", "aux_num_txns", "aux_version",
+                 "aux_hash_prev_block", "aux_bits", "aux_nonce")
+
+    def __init__(self, aux_pow=None):
+        if aux_pow is None:
+            self.set_null()
+        else:
+            self.commit_version = aux_pow.commit_version
+            self.commit_hash_merkle_root = aux_pow.commit_hash_merkle_root
+            self.commit_time = aux_pow.commit_time
+            self.commit_bits = aux_pow.commit_bits
+            self.commit_nonce = aux_pow.commit_nonce
+            self.secret_lo = aux_pow.secret_lo
+            self.secret_hi = aux_pow.secret_hi
+            self.midstate_hash = aux_pow.midstate_hash
+            self.midstate_buffer = aux_pow.midstate_buffer
+            self.midstate_length = aux_pow.midstate_length
+            self.aux_lock_time = aux_pow.aux_lock_time
+            self.aux_branch = aux_pow.aux_branch
+            self.aux_num_txns = aux_pow.aux_num_txns
+            self.aux_version = aux_pow.aux_version
+            self.aux_hash_prev_block = aux_pow.aux_hash_prev_block
+            self.aux_bits = aux_pow.aux_bits
+            self.aux_nonce = aux_pow.aux_nonce
+
+    def set_null(self):
+        self.commit_version = 0
+        self.commit_hash_merkle_root = 0
+        self.commit_time = 0
+        self.commit_bits = 0
+        self.commit_nonce = 0
+        self.secret_lo = 0
+        self.secret_hi = 0
+        self.midstate_hash = 0
+        self.midstate_buffer = b''
+        self.midstate_length = 0
+        self.aux_lock_time = 0
+        self.aux_branch = []
+        self.aux_num_txns = 0
+        self.aux_version = 0
+        self.aux_hash_prev_block = 0
+        self.aux_bits = 0
+        self.aux_nonce = 0
+
+    def __bool__(self):
+        return bool(self.aux_num_txns)
+    __nonzero__ = __bool__
+
+    def deserialize(self, f):
+        self.commit_version = struct.unpack("<I", f.read(4))[0]
+        self.commit_hash_merkle_root = deser_uint256(f)
+        self.commit_time = struct.unpack("<I", f.read(4))[0]
+        self.commit_bits = struct.unpack("<I", f.read(4))[0]
+        self.commit_nonce = struct.unpack("<I", f.read(4))[0]
+        self.secret_lo = struct.unpack("<Q", f.read(8))[0]
+        self.secret_hi = struct.unpack("<Q", f.read(8))[0]
+        self.midstate_hash = deser_uint256(f)
+        self.midstate_buffer = deser_string(f)
+        self.midstate_length = deser_varint(f)
+        self.aux_lock_time = struct.unpack("<I", f.read(4))[0]
+        self.aux_branch = deser_uint256_vector(f)
+        self.aux_num_txns = deser_varint(f) + 1
+        self.aux_version = struct.unpack("<I", f.read(4))[0]
+        self.aux_hash_prev_block = deser_uint256(f)
+        self.aux_bits = struct.unpack("<I", f.read(4))[0]
+        self.aux_nonce = struct.unpack("<I", f.read(4))[0]
+
+    def serialize(self):
+        r = b""
+        r += struct.pack("<I", self.commit_version)
+        r += ser_uint256(self.commit_hash_merkle_root)
+        r += struct.pack("<I", self.commit_time)
+        r += struct.pack("<I", self.commit_bits)
+        r += struct.pack("<I", self.commit_nonce)
+        r += struct.pack("<Q", self.secret_lo)
+        r += struct.pack("<Q", self.secret_hi)
+        r += ser_uint256(self.midstate_hash)
+        r += ser_string(self.midstate_buffer)
+        r += ser_varint(self.midstate_length)
+        r += struct.pack("<I", self.aux_lock_time)
+        r += ser_uint256_vector(self.aux_branch)
+        assert(self.aux_num_txns > 0)
+        r += ser_varint(self.aux_num_txns - 1)
+        r += struct.pack("<I", self.aux_version)
+        r += ser_uint256(self.aux_hash_prev_block)
+        r += struct.pack("<I", self.aux_bits)
+        r += struct.pack("<I", self.aux_nonce)
+        return r
+
+    def __repr__(self):
+        return "AuxProofOfWork(commit_version=%d commit_hash_merkle_root=%064x commit_time=%s commit_bits=%08x commit_nonce=%08x secret=%08x%08x midstate_hash=%064x midstate_buffer=%s midstate_length=%d aux_lock_time=%08x aux_branch=%s aux_num_txns=%d aux_version=%d aux_hash_prev_block=%064x aux_bits=%08x aux_nonce=%08x)" \
+            % (self.commit_version, self.commit_hash_merkle_root,
+               time.ctime(self.commit_time), self.commit_bits,
+               self.commit_nonce, self.secret_hi, self.secret_lo,
+               self.midstate_hash,
+               "".join(["%02x"%c for c in self.midstate_buffer]),
+               self.midstate_length, self.aux_lock_time,
+               repr(self.aux_branch), self.aux_num_txns,
+               self.aux_version, self.aux_hash_prev_block,
+               self.aux_bits, self.aux_nonce)
 
 class CBlockHeader:
-    __slots__ = ("hashMerkleRoot", "hashPrevBlock", "nBits", "nNonce",
-                 "nTime", "nVersion")
+    __slots__ = ("hash", "hashMerkleRoot", "hashPrevBlock", "nBits", "nNonce",
+                 "nTime", "nVersion", "sha256", "aux_pow", "aux_hash1", "aux_hash2")
 
     def __init__(self, header=None):
         if header is None:
@@ -720,6 +884,13 @@ class CBlockHeader:
             self.nTime = header.nTime
             self.nBits = header.nBits
             self.nNonce = header.nNonce
+            self.aux_pow = header.aux_pow
+            self.aux_hash1 = header.aux_hash1
+            self.aux_hash2 = header.aux_hash2
+            self.calc_auxiliary_hash()
+            self.sha256 = header.sha256
+            self.hash = header.hash
+            self.calc_sha256()
 
     def set_null(self):
         self.nVersion = 4
@@ -728,6 +899,11 @@ class CBlockHeader:
         self.nTime = 0
         self.nBits = 0
         self.nNonce = 0
+        self.aux_pow = False
+        self.aux_hash1 = None
+        self.aux_hash2 = None
+        self.sha256 = None
+        self.hash = None
 
     def deserialize(self, f):
         self.nVersion = int.from_bytes(f.read(4), "little", signed=True)
@@ -735,7 +911,23 @@ class CBlockHeader:
         self.hashMerkleRoot = deser_uint256(f)
         self.nTime = int.from_bytes(f.read(4), "little")
         self.nBits = int.from_bytes(f.read(4), "little")
+        extended = False
+        if self.nBits & 0x00800000:
+            self.nBits = self.nBits ^ 0x00800000
+            extended = True
         self.nNonce = int.from_bytes(f.read(4), "little")
+        self.aux_pow = False
+        if extended:
+            dummy = int.from_bytes(f.read(1), "little")
+            assert(dummy == 0xff)
+            flags = int.from_bytes(f.read(1), "little")
+            if flags & 1:
+                flags = flags ^ 1
+                self.aux_pow = AuxProofOfWork()
+                self.aux_pow.deserialize(f)
+            assert(flags == 0x00)
+        self.sha256 = None
+        self.hash = None
 
     def serialize(self):
         return self._serialize_header()
@@ -746,24 +938,117 @@ class CBlockHeader:
         r += ser_uint256(self.hashPrevBlock)
         r += ser_uint256(self.hashMerkleRoot)
         r += self.nTime.to_bytes(4, "little")
-        r += self.nBits.to_bytes(4, "little")
+        bits = self.nBits
+        if self.aux_pow:
+            bits = bits | 0x00800000
+        r += bits.to_bytes(4, "little")
+        if self.aux_pow:
+            r += (0xff).to_bytes(1, "little")
+            r += (0x01).to_bytes(1, "little")
+            r += self.aux_pow.serialize()
         r += self.nNonce.to_bytes(4, "little")
         return r
 
-    @property
-    def hash_hex(self):
-        """Return block header hash as hex string."""
-        return hash256(self._serialize_header())[::-1].hex()
+    def calc_auxiliary_hash(self):
+        if not self.aux_pow:
+            # Nothing to do
+            self.aux_hash1 = None
+            self.aux_hash2 = None
+            return
 
-    @property
-    def hash_int(self):
-        """Return block header hash as integer."""
-        return uint256_from_str(hash256(self._serialize_header()))
+        blkhdr = CBlockHeader()
+        blkhdr.nVersion       = self.aux_pow.commit_version;
+        blkhdr.hashPrevBlock  = self.hashPrevBlock;
+        blkhdr.hashMerkleRoot = self.aux_pow.commit_hash_merkle_root;
+        blkhdr.nTime          = self.aux_pow.commit_time;
+        blkhdr.nBits          = self.aux_pow.commit_bits;
+        blkhdr.nNonce         = self.aux_pow.commit_nonce;
+
+        if self.aux_hash1 is None:
+            # Calculate the hash of the block template.
+            blkhdr.sha256 = None
+            blkhdr.calc_sha256()
+            h = ser_uint256(blkhdr.sha256)
+
+            # Combine with the hash of the block-witholding secret.
+            secret = b""
+            secret += struct.pack("<Q", self.aux_pow.secret_lo)
+            secret += struct.pack("<Q", self.aux_pow.secret_hi)
+            h = fastHash256(h, hash256(secret))
+
+            # Resume the hash writer state for the coinbase.
+            midstate = SHA256()
+            midstate.state = SHA256.State(*struct.unpack(">LLLLLLLL", ser_uint256(self.aux_pow.midstate_hash)))
+            midstate.length = self.aux_pow.midstate_length * 8
+            midstate.buffer = self.aux_pow.midstate_buffer
+            midstate.round_offset = (midstate.length // 512) * 64
+
+            # Add the block template commitment and tx.nLockTime
+            midstate.update(h)
+            midstate.update(bytes([0x4b, 0x4a, 0x49, 0x48]))
+            midstate.update(struct.pack("<I", self.aux_pow.aux_lock_time))
+            h = sha256(midstate.digest())
+
+            # Calculate the auxiliary hashMerkleRoot
+            n = self.aux_pow.aux_num_txns - 1
+            for h2 in self.aux_pow.aux_branch:
+                while n and not (n & 1):
+                    h = fastHash256(h, h)
+                    n = n >> 1
+                h = fastHash256(h2, h)
+
+            # Complete the auxiliary block header
+            blkhdraux = CBlockHeader()
+            blkhdraux.nVersion       = self.aux_pow.aux_version
+            blkhdraux.hashPrevBlock  = self.aux_pow.aux_hash_prev_block
+            blkhdraux.hashMerkleRoot = uint256_from_str(h)
+            blkhdraux.nTime          = self.nTime
+            blkhdraux.nBits          = self.aux_pow.aux_bits
+            blkhdraux.nNonce         = self.aux_pow.aux_nonce
+
+            blkhdraux.sha256 = None
+            blkhdraux.calc_sha256()
+            self.aux_hash1 = blkhdraux.sha256
+
+        if self.aux_hash2 is None:
+            # The 2nd stage hash is H(secret || blkhdr || aux_hash1)
+            r = b""
+            r += struct.pack("<Q", self.aux_pow.secret_lo)
+            r += struct.pack("<Q", self.aux_pow.secret_hi)
+            r += blkhdr.serialize()
+            r += ser_uint256(self.aux_hash1)
+            assert(len(r) == 128)
+
+            # The 2nd stage hash is raw sha256--no padding!
+            self.aux_hash2 = uint256_from_str(SHA256(r).midstate()[0])
+
+    def calc_sha256(self):
+        if self.sha256 is None:
+            r = b""
+            r += self.nVersion.to_bytes(4, "little", signed=True)
+            r += ser_uint256(self.hashPrevBlock)
+            r += ser_uint256(self.hashMerkleRoot)
+            r += self.nTime.to_bytes(4, "little")
+            r += self.nBits.to_bytes(4, "little")
+            r += self.nNonce.to_bytes(4, "little")
+            self.sha256 = uint256_from_str(hash256(r))
+            self.hash = hash256(r)[::-1].hex()
+
+    def rehash(self):
+        self.aux_hash1 = None
+        self.aux_hash2 = None
+        self.calc_auxiliary_hash()
+        self.sha256 = None
+        self.calc_sha256()
+        return self.sha256
 
     def __repr__(self):
-        return "CBlockHeader(nVersion=%i hashPrevBlock=%064x hashMerkleRoot=%064x nTime=%s nBits=%08x nNonce=%08x)" \
+        aux_pow = ""
+        if self.aux_pow:
+            aux_pow = " aux_pow=%s" % repr(self.aux_pow)
+        return "CBlockHeader(nVersion=%i hashPrevBlock=%064x hashMerkleRoot=%064x nTime=%s nBits=%08x nNonce=%08x%s)" \
             % (self.nVersion, self.hashPrevBlock, self.hashMerkleRoot,
-               time.ctime(self.nTime), self.nBits, self.nNonce)
+               time.ctime(self.nTime), self.nBits, self.nNonce, aux_pow)
 
 BLOCK_HEADER_SIZE = len(CBlockHeader().serialize())
 assert_equal(BLOCK_HEADER_SIZE, 80)
@@ -788,6 +1073,13 @@ class CBlock(CBlockHeader):
             r += ser_vector(self.vtx, "serialize_without_witness")
         return r
 
+    def get_bias(self):
+        return 0 if not self.aux_pow else (self.aux_pow.commit_nonce & 0xff)
+
+    def set_bias(self, bias):
+        if self.aux_pow:
+            self.aux_pow.commit_nonce = (self.aux_pow.commit_nonce & 0xffffff00) | (bias & 0xff)
+
     # Calculate the merkle root given a vector of transaction hashes
     @classmethod
     def get_merkle_root(cls, hashes):
@@ -799,22 +1091,67 @@ class CBlock(CBlockHeader):
             hashes = newhashes
         return uint256_from_str(hashes[0])
 
+    # Calculate the Merkle root using fast Merkle trees, given a
+    # vector of transaction hashes.
+    @classmethod
+    def get_fast_merkle_root(cls, hashes):
+        while len(hashes) > 1:
+            newhashes = []
+            for i in range(0, len(hashes), 2):
+                if i < len(hashes)-1:
+                    newhashes.append(fastHash256(hashes[i], hashes[i+1]))
+                else:
+                    newhashes.append(hashes[i])
+            hashes = newhashes
+        return uint256_from_str(hashes[0])
+
     def calc_merkle_root(self):
         hashes = []
         for tx in self.vtx:
             hashes.append(ser_uint256(tx.txid_int))
         return self.get_merkle_root(hashes)
 
-    def calc_witness_merkle_root(self):
-        # For witness root purposes, the hash of the
-        # coinbase, with witness, is defined to be 0...0
-        hashes = [ser_uint256(0)]
+    def calc_commit_merkle_root(self):
+        hashes = []
+        for tx in self.vtx:
+            tx.calc_sha256()
+            hashes.append(ser_uint256(tx.sha256))
+        cb = CTransaction(self.vtx[0])
+        cb.vin[0].scriptSig = b""
+        cb.vin[0].nSequence = 0
+        cb.rehash()
+        hashes[0] = ser_uint256(cb.sha256)
+        return self.get_merkle_root(hashes)
 
-        for tx in self.vtx[1:]:
+    def calc_witness_merkle_root(self):
+        # For witness root purposes, the hash of the coinbase does not
+        # include the coinbase witness, which is the witness nonce,
+        # and it has both the coinbase string (scriptSig) and
+        # nSequence fields of the coinbase input zero'd out.
+        cb = self.vtx[0].serialize_without_witness()
+        pos = (4  # nVersion
+            +  1  # len(vin)
+            + 32  # vin[0].prevout.hash
+            +  4) # vin[0].prevout.n
+        if len(cb) >= (pos + 1):
+            pos2 = pos + 1 + cb[pos]
+            if len(cb) >= (pos2 + 4):
+                cb = cb[:pos] + b'\x00' + (4 * b'\x00') + cb[pos2+4:]
+        hashes = [hash256(cb)]
+
+        for tx in self.vtx[1:-1]:
             # Calculate the hashes with witness data
             hashes.append(ser_uint256(tx.wtxid_int))
 
-        return self.get_merkle_root(hashes)
+        # Strip the witness commitment from the block-final transaction. The
+        # witness is not serialized, but the block-final transaction never has a
+        # witness anyway.
+        tx = self.vtx[-1].serialize_without_witness()
+        if len(tx) >= (1 + 32 + 4 + 8) and tx[-8-4]==0x4b and tx[-8-3]==0x4a and tx[-8-2]==0x49 and tx[-8-1]==0x48:
+            tx = tx[:-8-4-32-1] + (33 * b'\x00') + tx[-8-4:]
+        hashes.append(hash256(tx))
+
+        return self.get_fast_merkle_root(hashes)
 
     def is_valid(self):
         target = uint256_from_compact(self.nBits)
@@ -827,7 +1164,38 @@ class CBlock(CBlockHeader):
             return False
         return True
 
+    def setup_default_aux_pow(self):
+        self.aux_pow = AuxProofOfWork()
+        self.aux_pow.commit_version = self.nVersion
+        self.aux_pow.commit_hash_merkle_root = self.calc_commit_merkle_root()
+        self.aux_pow.commit_bits = 0x207fffff # No difficulty adjustment on regtest
+        self.aux_pow.midstate_hash = uint256_from_str(SHA256().midstate()[0])
+        self.aux_pow.aux_num_txns = 1
+        self.aux_pow.aux_version = 0x20000000
+        self.aux_pow.aux_bits = self.aux_pow.commit_bits
+
     def solve(self):
+        if self.aux_pow:
+            self.rehash()
+            aux_target1 = uint256_from_compact(self.aux_pow.commit_bits)
+            aux_target2 = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            bias = self.get_bias()
+            aux_target1 = aux_target1 << bias
+            assert (aux_target1 <= aux_target2)
+            aux_target2 = aux_target2 >> bias
+            while (self.aux_hash1 > aux_target1) or (self.aux_hash2 > aux_target2):
+                self.aux_pow.aux_nonce += 1
+                self.rehash()
+            # First remove the existing commitment, if there is one.  There
+            # isn't a way to identify the commitment, so we presume that one is
+            # present if the coinbase miner string is large enough to contain
+            # it.
+            if len(self.vtx[0].vin[0].scriptSig) >= 32:
+                self.vtx[0].vin[0].scriptSig = self.vtx[0].vin[0].scriptSig[:-32]
+            self.vtx[0].vin[0].scriptSig = bytes.fromhex(self.vtx[0].vin[0].scriptSig.hex()) + ser_uint256(self.aux_hash2)
+            self.vtx[0].rehash()
+            self.hashMerkleRoot = self.calc_merkle_root()
+        self.rehash()
         target = uint256_from_compact(self.nBits)
         while self.hash_int > target:
             self.nNonce += 1
@@ -835,14 +1203,28 @@ class CBlock(CBlockHeader):
     # Calculate the block weight using witness and non-witness
     # serialization size (does NOT use sigops).
     def get_weight(self):
-        with_witness_size = len(self.serialize(with_witness=True))
-        without_witness_size = len(self.serialize(with_witness=False))
+        offset = len(CBlockHeader(self).serialize()) - len(CBlockHeader().serialize())
+        with_witness_size = len(self.serialize(with_witness=True)) - offset
+        without_witness_size = len(self.serialize(with_witness=False)) - offset
         return (WITNESS_SCALE_FACTOR - 1) * without_witness_size + with_witness_size
 
+    def get_virtual_size(witness_block):
+        """Calculate the virtual size of a witness block.
+
+        Virtual size is base + witness/4."""
+        base_size = len(witness_block.serialize(with_witness=False))
+        total_size = len(witness_block.serialize())
+        # the "+3" is so we round up
+        vsize = int((3 * base_size + total_size + 3) / 4)
+        return vsize
+
     def __repr__(self):
-        return "CBlock(nVersion=%i hashPrevBlock=%064x hashMerkleRoot=%064x nTime=%s nBits=%08x nNonce=%08x vtx=%s)" \
+        aux_pow_str = ""
+        if self.aux_pow:
+            aux_pow_str = " aux_pow=%s" % repr(self.aux_pow)
+        return "CBlock(nVersion=%i hashPrevBlock=%064x hashMerkleRoot=%064x nTime=%s nBits=%08x nNonce=%08x%s vtx=%s)" \
             % (self.nVersion, self.hashPrevBlock, self.hashMerkleRoot,
-               time.ctime(self.nTime), self.nBits, self.nNonce, repr(self.vtx))
+               time.ctime(self.nTime), self.nBits, self.nNonce, aux_pow_str, repr(self.vtx))
 
 
 class PrefilledTransaction:
@@ -982,7 +1364,7 @@ class HeaderAndShortIDs:
     # Version 2 compact blocks use wtxid in shortids (rather than txid)
     def initialize_from_block(self, block, nonce=0, prefill_list=None, use_witness=False):
         if prefill_list is None:
-            prefill_list = [0]
+            prefill_list = [0, len(block.vtx)-1]
         self.header = CBlockHeader(block)
         self.nonce = nonce
         self.prefilled_txn = [ PrefilledTransaction(i, block.vtx[i]) for i in prefill_list ]
@@ -1148,7 +1530,7 @@ class msg_version:
         self.nStartingHeight = int.from_bytes(f.read(4), "little", signed=True)
 
         # Relay field is optional for version 70001 onwards
-        # But, unconditionally check it to match behaviour in bitcoind
+        # But, unconditionally check it to match behaviour in freicoind
         self.relay = int.from_bytes(f.read(1), "little")  # f.read(1) may return an empty b''
 
     def serialize(self):
@@ -1529,7 +1911,7 @@ class msg_headers:
         self.headers = headers if headers is not None else []
 
     def deserialize(self, f):
-        # comment in bitcoind indicates these should be deserialized as blocks
+        # comment in freicoind indicates these should be deserialized as blocks
         blocks = deser_vector(f, CBlock)
         for x in blocks:
             self.headers.append(CBlockHeader(x))

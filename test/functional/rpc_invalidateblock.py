@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the invalidateblock RPC."""
 
-from test_framework.test_framework import BitcoinTestFramework
-from test_framework.address import ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR
+from test_framework.test_framework import FreicoinTestFramework
+from test_framework.address import ADDRESS_FCRT1_UNSPENDABLE_DESCRIPTOR
 from test_framework.blocktools import (
     create_block,
     create_coinbase,
@@ -16,7 +27,7 @@ from test_framework.util import (
 )
 
 
-class InvalidateTest(BitcoinTestFramework):
+class InvalidateTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 3
@@ -111,7 +122,7 @@ class InvalidateTest(BitcoinTestFramework):
         assert_equal(self.nodes[0].getblockchaininfo()['headers'], 7)
 
         self.log.info("Verify that we reconsider all ancestors as well")
-        blocks = self.generatetodescriptor(self.nodes[1], 10, ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR, sync_fun=self.no_op)
+        blocks = self.generatetodescriptor(self.nodes[1], 10, ADDRESS_FCRT1_UNSPENDABLE_DESCRIPTOR, sync_fun=self.no_op)
         assert_equal(self.nodes[1].getbestblockhash(), blocks[-1])
         # Invalidate the two blocks at the tip
         self.nodes[1].invalidateblock(blocks[-1])
@@ -123,7 +134,7 @@ class InvalidateTest(BitcoinTestFramework):
         assert_equal(self.nodes[1].getbestblockhash(), blocks[-1])
 
         self.log.info("Verify that we reconsider all descendants")
-        blocks = self.generatetodescriptor(self.nodes[1], 10, ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR, sync_fun=self.no_op)
+        blocks = self.generatetodescriptor(self.nodes[1], 10, ADDRESS_FCRT1_UNSPENDABLE_DESCRIPTOR, sync_fun=self.no_op)
         assert_equal(self.nodes[1].getbestblockhash(), blocks[-1])
         # Invalidate the two blocks at the tip
         self.nodes[1].invalidateblock(blocks[-2])

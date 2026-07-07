@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test UTXO set hash value calculation in gettxoutsetinfo."""
 
 from test_framework.messages import (
@@ -10,11 +21,12 @@ from test_framework.messages import (
     from_hex,
 )
 from test_framework.crypto.muhash import MuHash3072
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.script import OP_RETURN
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_equal
 from test_framework.wallet import MiniWallet
 
-class UTXOSetHashTest(BitcoinTestFramework):
+class UTXOSetHashTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
@@ -27,11 +39,9 @@ class UTXOSetHashTest(BitcoinTestFramework):
         mocktime = node.getblockheader(node.getblockhash(0))['time'] + 1
         node.setmocktime(mocktime)
 
-        # Generate 100 blocks and remove the first since we plan to spend its
-        # coinbase
+        # Generate 100 blocks
         block_hashes = self.generate(wallet, 1) + self.generate(node, 99)
         blocks = list(map(lambda block: from_hex(CBlock(), node.getblock(block, False)), block_hashes))
-        blocks.pop(0)
 
         # Create a spending transaction and mine a block which includes it
         txid = wallet.send_self_transfer(from_node=node)['txid']
@@ -43,21 +53,27 @@ class UTXOSetHashTest(BitcoinTestFramework):
         muhash = MuHash3072()
 
         for height, block in enumerate(blocks):
-            # The Genesis block coinbase is not part of the UTXO set and we
-            # spent the first mined block
-            height += 2
+            # The Genesis block coinbase is not part of the UTXO set
+            height += 1
 
             for tx in block.vtx:
                 for n, tx_out in enumerate(tx.vout):
                     coinbase = 1 if not tx.vin[0].prevout.hash else 0
 
-                    # Skip witness commitment
-                    if (coinbase and n > 0):
+                    # Skip first two outputs of coinbase in first block,
+                    # which were spent by us and by the first block-final
+                    # transaction
+                    if (height == 1 and coinbase and n <= 1):
+                        continue
+
+                    # Skip unspendable outputs
+                    if (tx.vout[n].scriptPubKey[0] == OP_RETURN):
                         continue
 
                     data = COutPoint(tx.txid_int, n).serialize()
                     data += (height * 2 + coinbase).to_bytes(4, "little")
                     data += tx_out.serialize()
+                    data += tx.lock_height.to_bytes(4, "little")
 
                     muhash.insert(data)
 
@@ -67,8 +83,8 @@ class UTXOSetHashTest(BitcoinTestFramework):
         assert_equal(finalized[::-1].hex(), node_muhash)
 
         self.log.info("Test deterministic UTXO set hash results")
-        assert_equal(node.gettxoutsetinfo()['hash_serialized_3'], "e0b4c80f2880985fdf1adc331ed0735ac207588f986c91c7c05e8cf5fe6780f0")
-        assert_equal(node.gettxoutsetinfo("muhash")['muhash'], "8739b878f23030ef39a5547edc7b57f88d50fdaaf47314ff0524608deb13067e")
+        assert_equal(node.gettxoutsetinfo()['hash_serialized_3'], "f4dd87a8573f41403e40a80b39c015424666b1f84c97fac4df3fd784c11015a6")
+        assert_equal(node.gettxoutsetinfo("muhash")['muhash'], "bb4e9369d664391f2eb19c42b6be57611a150ed4cc0a65f99ca0b7dee29cd4f1")
 
     def run_test(self):
         self.test_muhash_implementation()

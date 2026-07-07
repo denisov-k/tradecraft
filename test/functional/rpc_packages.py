@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2021-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """RPCs that handle raw transaction packages."""
 
 from decimal import Decimal
@@ -16,7 +27,7 @@ from test_framework.messages import (
     tx_from_hex,
 )
 from test_framework.p2p import P2PTxInvStore
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_fee_amount,
@@ -32,7 +43,7 @@ from test_framework.wallet import (
 MAX_PACKAGE_COUNT = 25
 
 
-class RPCPackagesTest(BitcoinTestFramework):
+class RPCPackagesTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
@@ -55,11 +66,12 @@ class RPCPackagesTest(BitcoinTestFramework):
 
         # get an UTXO that requires signature to be spent
         deterministic_address = node.get_deterministic_priv_key().address
-        blockhash = self.generatetoaddress(node, 1, deterministic_address)[0]
+        blockhash = self.generatetoaddress(node, 2, deterministic_address)[1]
         coinbase = node.getblock(blockhash=blockhash, verbosity=2)["tx"][0]
         coin = {
                 "txid": coinbase["txid"],
-                "amount": coinbase["vout"][0]["value"],
+                "value": coinbase["vout"][0]["value"],
+                "refheight": coinbase["lockheight"],
                 "scriptPubKey": coinbase["vout"][0]["scriptPubKey"],
                 "vout": 0,
                 "height": 0
@@ -111,8 +123,8 @@ class RPCPackagesTest(BitcoinTestFramework):
         self.assert_testres_equal(package_bad, testres_bad)
 
         self.log.info("Check testmempoolaccept tells us when some transactions completed validation successfully")
-        tx_bad_sig_hex = node.createrawtransaction([{"txid": coin["txid"], "vout": coin["vout"]}],
-                                           {address : coin["amount"] - Decimal("0.0001")})
+        tx_bad_sig_hex = node.createrawtransaction([{"txid": coin["txid"], "vout": 0}],
+                                           {address : coin["value"] - Decimal("0.0001")}, 0, coin["refheight"])
         tx_bad_sig = tx_from_hex(tx_bad_sig_hex)
         testres_bad_sig = node.testmempoolaccept(self.independent_txns_hex + [tx_bad_sig_hex])
         # By the time the signature for the last transaction is checked, all the other transactions
@@ -427,9 +439,9 @@ class RPCPackagesTest(BitcoinTestFramework):
 
         self.log.info("Submitpackage maxfeerate arg testing")
         chained_txns = self.wallet.create_self_transfer_chain(chain_length=2)
-        minrate_btc_kvb = min([chained_txn["fee"] / chained_txn["tx"].get_vsize() * 1000 for chained_txn in chained_txns])
+        minrate_frc_kvb = min([chained_txn["fee"] / chained_txn["tx"].get_vsize() * 1000 for chained_txn in chained_txns])
         chain_hex = [t["hex"] for t in chained_txns]
-        pkg_result = node.submitpackage(chain_hex, maxfeerate=minrate_btc_kvb - Decimal("0.00000001"))
+        pkg_result = node.submitpackage(chain_hex, maxfeerate=minrate_frc_kvb - Decimal("0.00000001"))
 
         # First tx failed in single transaction evaluation, so package message is generic
         assert_equal(pkg_result["package_msg"], "transaction failed")
@@ -441,6 +453,8 @@ class RPCPackagesTest(BitcoinTestFramework):
         # but child is too high fee
         # Lower mempool limit to make it easier to fill_mempool
         self.restart_node(0, extra_args=[
+            "-datacarrier=1",
+            "-datacarriersize=100000",
             "-maxmempool=5",
             "-persistmempool=0",
         ])
@@ -494,10 +508,10 @@ class RPCPackagesTest(BitcoinTestFramework):
         assert_raises_rpc_error(-25, "Unspendable output exceeds maximum configured by user", node.submitpackage, chained_burn_hex, 0, chained_txns_burn[1]["new_utxo"]["value"] - Decimal("0.00000001"))
         assert_equal(node.getrawmempool(), [])
 
-        minrate_btc_kvb_burn = min([chained_txn_burn["fee"] / chained_txn_burn["tx"].get_vsize() * 1000 for chained_txn_burn in chained_txns_burn])
+        minrate_frc_kvb_burn = min([chained_txn_burn["fee"] / chained_txn_burn["tx"].get_vsize() * 1000 for chained_txn_burn in chained_txns_burn])
 
         # Relax the restrictions for both and send it; parent gets through as own subpackage
-        pkg_result = node.submitpackage(chained_burn_hex, maxfeerate=minrate_btc_kvb_burn, maxburnamount=chained_txns_burn[1]["new_utxo"]["value"])
+        pkg_result = node.submitpackage(chained_burn_hex, maxfeerate=minrate_frc_kvb_burn, maxburnamount=chained_txns_burn[1]["new_utxo"]["value"])
         assert "error" not in pkg_result["tx-results"][chained_txns_burn[0]["wtxid"]]
         assert_equal(pkg_result["tx-results"][tx.wtxid_hex]["error"], "scriptpubkey")
         assert_equal(node.getrawmempool(), [chained_txns_burn[0]["txid"]])

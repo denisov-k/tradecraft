@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test SENDTXRCNCL message
 """
 
@@ -18,11 +29,8 @@ from test_framework.p2p import (
     P2P_SUBVERSION,
     P2P_VERSION,
 )
-from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import (
-    assert_equal,
-    assert_not_equal,
-)
+from test_framework.test_framework import FreicoinTestFramework
+from test_framework.util import assert_equal
 
 class PeerNoVerack(P2PInterface):
     def __init__(self, wtxidrelay=True):
@@ -33,8 +41,8 @@ class PeerNoVerack(P2PInterface):
         # When calling add_p2p_connection, wait_for_verack=False must be set (see
         # comment in add_p2p_connection).
         self.send_version()
-        if message.nVersion >= 70016 and self.wtxidrelay:
-            self.send_without_ping(msg_wtxidrelay())
+        if message.nVersion >= 70017 and self.wtxidrelay:
+            self.send_message(msg_wtxidrelay())
 
 class SendTxrcnclReceiver(P2PInterface):
     def __init__(self):
@@ -66,7 +74,7 @@ def create_sendtxrcncl_msg():
     sendtxrcncl_msg.salt = 2
     return sendtxrcncl_msg
 
-class SendTxRcnclTest(BitcoinTestFramework):
+class SendTxRcnclTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [['-txreconciliation']]
@@ -91,7 +99,7 @@ class SendTxRcnclTest(BitcoinTestFramework):
         self.log.info('SENDTXRCNCL on pre-WTXID version should not be sent')
         peer = self.nodes[0].add_p2p_connection(SendTxrcnclReceiver(), send_version=False, wait_for_verack=False)
         pre_wtxid_version_msg = msg_version()
-        pre_wtxid_version_msg.nVersion = 70015
+        pre_wtxid_version_msg.nVersion = 70016
         pre_wtxid_version_msg.strSubVer = P2P_SUBVERSION
         pre_wtxid_version_msg.nServices = P2P_SERVICES
         pre_wtxid_version_msg.relay = 1
@@ -203,7 +211,7 @@ class SendTxRcnclTest(BitcoinTestFramework):
         self.log.info('unexpected SENDTXRCNCL is ignored')
         peer = self.nodes[0].add_p2p_connection(PeerNoVerack(), send_version=False, wait_for_verack=False)
         old_version_msg = msg_version()
-        old_version_msg.nVersion = 70015
+        old_version_msg.nVersion = 70016
         old_version_msg.strSubVer = P2P_SUBVERSION
         old_version_msg.nServices = P2P_SERVICES
         old_version_msg.relay = 1

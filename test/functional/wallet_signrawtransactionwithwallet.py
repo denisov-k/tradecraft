@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test transaction signing using the signrawtransactionwithwallet RPC."""
 
 from test_framework.blocktools import (
@@ -10,7 +21,7 @@ from test_framework.blocktools import (
 from test_framework.address import (
     script_to_p2wsh,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
@@ -23,7 +34,6 @@ from test_framework.script import (
     CScript,
     OP_CHECKLOCKTIMEVERIFY,
     OP_CHECKSEQUENCEVERIFY,
-    OP_DROP,
     OP_TRUE,
 )
 
@@ -33,10 +43,13 @@ from decimal import (
 )
 
 
-RAW_TX = '020000000156b958f78e3f24e0b2f4e4db1255426b0902027cb37e3ddadb52e37c3557dddb0000000000ffffffff01c0a6b929010000001600149a2ee8c77140a053f36018ac8124a6ececc1668a00000000'
+RAW_TX = '020000000156b958f78e3f24e0b2f4e4db1255426b0902027cb37e3ddadb52e37c3557dddb0000000000ffffffff01c0a6b929010000001600149a2ee8c77140a053f36018ac8124a6ececc1668a0000000001000000'
 
 
-class SignRawTransactionWithWalletTest(BitcoinTestFramework):
+class SignRawTransactionWithWalletTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
@@ -77,16 +90,16 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
 
         scripts = [
             # Valid pay-to-pubkey script
-            {'txid': '9b907ef1e3c26fc71fe4a4b3580bc75264112f95050014157059c736f0202e71', 'vout': 0,
+            {'txid': '9b907ef1e3c26fc71fe4a4b3580bc75264112f95050014157059c736f0202e71', 'vout': 0, 'refheight': 1,
              'scriptPubKey': '76a91460baa0f494b38ce3c940dea67f3804dc52d1fb9488ac'},
             # Invalid script
-            {'txid': '5b8673686910442c644b1f4993d8f7753c7c8fcb5c87ee40d56eaeef25204547', 'vout': 7,
+            {'txid': '5b8673686910442c644b1f4993d8f7753c7c8fcb5c87ee40d56eaeef25204547', 'vout': 7, 'refheight': 1,
              'scriptPubKey': 'badbadbadbad'}
         ]
 
         outputs = {'mpLQjfK79b7CCV4VMJWEWAj5Mpx8Up5zxB': 0.1}
 
-        rawTx = self.nodes[0].createrawtransaction(inputs, outputs)
+        rawTx = self.nodes[0].createrawtransaction(inputs, outputs, 0, 1)
 
         # Make sure decoderawtransaction is at least marginally sane
         decodedRawTx = self.nodes[0].decoderawtransaction(rawTx)
@@ -122,9 +135,9 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
         assert not rawTxSigned['errors'][0]['witness']
 
         # Now test signing failure for transaction with input witnesses
-        p2wpkh_raw_tx = "01000000000102fff7f7881a8099afa6940d42d1e7f6362bec38171ea3edf433541db4e4ad969f00000000494830450221008b9d1dc26ba6a9cb62127b02742fa9d754cd3bebf337f7a55d114c8e5cdd30be022040529b194ba3f9281a99f2b1c0a19c0489bc22ede944ccf4ecbab4cc618ef3ed01eeffffffef51e1b804cc89d182d279655c3aa89e815b1b309fe287d9b2b55d57b90ec68a0100000000ffffffff02202cb206000000001976a9148280b37df378db99f66f85c95a783a76ac7a6d5988ac9093510d000000001976a9143bde42dbee7e4dbe6a21b2d50ce2f0167faa815988ac000247304402203609e17b84f6a7d30c80bfa610b5b4542f32a8a0d5447a12fb1366d7f01cc44a0220573a954c4518331561406f90300e8f3358f51928d43c212a8caed02de67eebee0121025476c2e83188368da1ff3e292e7acafcdb3566bb0ad253f62fc70f07aeee635711000000"
+        p2wpk_raw_tx = "01000000ff0102fff7f7881a8099afa6940d42d1e7f6362bec38171ea3edf433541db4e4ad969f00000000494830450221008b9d1dc26ba6a9cb62127b02742fa9d754cd3bebf337f7a55d114c8e5cdd30be022040529b194ba3f9281a99f2b1c0a19c0489bc22ede944ccf4ecbab4cc618ef3ed01eeffffffef51e1b804cc89d182d279655c3aa89e815b1b309fe287d9b2b55d57b90ec68a0100000000ffffffff02202cb206000000001976a9148280b37df378db99f66f85c95a783a76ac7a6d5988ac9093510d000000001976a9143bde42dbee7e4dbe6a21b2d50ce2f0167faa815988ac000247304402203609e17b84f6a7d30c80bfa610b5b4542f32a8a0d5447a12fb1366d7f01cc44a0220573a954c4518331561406f90300e8f3358f51928d43c212a8caed02de67eebee0121025476c2e83188368da1ff3e292e7acafcdb3566bb0ad253f62fc70f07aeee63571100000001000000"
 
-        rawTxSigned = self.nodes[0].signrawtransactionwithwallet(p2wpkh_raw_tx)
+        rawTxSigned = self.nodes[0].signrawtransactionwithwallet(p2wpk_raw_tx)
 
         # 7) The transaction has no complete set of signatures
         assert not rawTxSigned['complete']
@@ -164,6 +177,7 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
             "0200000001FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
             "FFFFFFFF00000000044F024F9CFDFFFFFF01F0B9F5050000000023210277777777"
             "77777777777777777777777777777777777777777777777777777777AC66030000"
+            "01000000"
         )
         prev_txs = [
             {
@@ -171,7 +185,8 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
                 "vout": 0,
                 "scriptPubKey": "A914AE44AB6E9AA0B71F1CD2B453B69340E9BFBAEF6087",
                 "redeemScript": "4F9C",
-                "amount": 1,
+                "value": 1,
+                "refheight": 1,
             }
         ]
         txn = self.nodes[0].signrawtransactionwithwallet(hex_str, prev_txs)
@@ -183,17 +198,17 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
         getcontext().prec = 8
 
         # Make sure CSV is active
-        assert self.nodes[0].getdeploymentinfo()['deployments']['csv']['active']
+        assert self.nodes[0].getdeploymentinfo()['deployments']['locktime']['active']
 
         # Create a P2WSH script with CSV
-        script = CScript([1, OP_CHECKSEQUENCEVERIFY, OP_DROP])
+        script = CScript([1, OP_CHECKSEQUENCEVERIFY])
         address = script_to_p2wsh(script)
 
         # Fund that address and make the spend
         utxo1 = self.create_outpoints(self.nodes[0], outputs=[{address: 1}])[0]
         self.generate(self.nodes[0], 1)
         utxo2 = self.nodes[0].listunspent()[0]
-        amt = Decimal(1) + utxo2["amount"] - Decimal(0.00001)
+        amt = Decimal(1) + utxo2["value"] - Decimal(0.00001)
         tx = self.nodes[0].createrawtransaction(
             [{**utxo1, "sequence": 1},{"txid": utxo2["txid"], "vout": utxo2["vout"]}],
             [{self.nodes[0].getnewaddress(): amt}],
@@ -203,7 +218,7 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
         # Set the witness script
         ctx = tx_from_hex(tx)
         ctx.wit.vtxinwit.append(CTxInWitness())
-        ctx.wit.vtxinwit[0].scriptWitness.stack = [CScript([OP_TRUE]), script]
+        ctx.wit.vtxinwit[0].scriptWitness.stack = [CScript([OP_TRUE]), b'\x00' + script, b'']
         tx = ctx.serialize_with_witness().hex()
 
         # Sign and send the transaction
@@ -216,18 +231,15 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
         self.nodes[0].walletpassphrase("password", 9999)
         getcontext().prec = 8
 
-        # Make sure CLTV is active
-        assert self.nodes[0].getdeploymentinfo()['deployments']['bip65']['active']
-
         # Create a P2WSH script with CLTV
-        script = CScript([100, OP_CHECKLOCKTIMEVERIFY, OP_DROP])
+        script = CScript([100, OP_CHECKLOCKTIMEVERIFY])
         address = script_to_p2wsh(script)
 
         # Fund that address and make the spend
         utxo1 = self.create_outpoints(self.nodes[0], outputs=[{address: 1}])[0]
         self.generate(self.nodes[0], 1)
         utxo2 = self.nodes[0].listunspent()[0]
-        amt = Decimal(1) + utxo2["amount"] - Decimal(0.00001)
+        amt = Decimal(1) + utxo2["value"] - Decimal(0.00001)
         tx = self.nodes[0].createrawtransaction(
             [utxo1, {"txid": utxo2["txid"], "vout": utxo2["vout"]}],
             [{self.nodes[0].getnewaddress(): amt}],
@@ -237,7 +249,7 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
         # Set the witness script
         ctx = tx_from_hex(tx)
         ctx.wit.vtxinwit.append(CTxInWitness())
-        ctx.wit.vtxinwit[0].scriptWitness.stack = [CScript([OP_TRUE]), script]
+        ctx.wit.vtxinwit[0].scriptWitness.stack = [CScript([OP_TRUE]), b'\x00' + script, b'']
         tx = ctx.serialize_with_witness().hex()
 
         # Sign and send the transaction
@@ -247,7 +259,7 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
 
     def test_signing_with_missing_prevtx_info(self):
         txid = "1d1d4e24ed99057e84c3f80fd8fbec79ed9e1acee37da269356ecea000000000"
-        for type in ["bech32", "p2sh-segwit", "legacy"]:
+        for type in ["bech32", "legacy"]:
             self.log.info(f"Test signing with missing prevtx info ({type})")
             addr = self.nodes[0].getnewaddress("", type)
             addrinfo = self.nodes[0].getaddressinfo(addr)
@@ -256,20 +268,21 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
             outputs = {self.nodes[0].getnewaddress(): 1}
             rawtx = self.nodes[0].createrawtransaction(inputs, outputs)
 
-            prevtx = dict(txid=txid, scriptPubKey=pubkey, vout=3, amount=1)
+            prevtx = dict(txid=txid, scriptPubKey=pubkey, vout=3, value=1, refheight=1)
             succ = self.nodes[0].signrawtransactionwithwallet(rawtx, [prevtx])
             assert succ["complete"]
 
             if type == "legacy":
-                del prevtx["amount"]
+                del prevtx["value"]
                 succ = self.nodes[0].signrawtransactionwithwallet(rawtx, [prevtx])
                 assert succ["complete"]
             else:
-                assert_raises_rpc_error(-3, "Missing amount", self.nodes[0].signrawtransactionwithwallet, rawtx, [
+                assert_raises_rpc_error(-3, "Missing value", self.nodes[0].signrawtransactionwithwallet, rawtx, [
                     {
                         "txid": txid,
                         "scriptPubKey": pubkey,
                         "vout": 3,
+                        "refheight": 1,
                     }
                 ])
 
@@ -277,21 +290,32 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
                 {
                     "txid": txid,
                     "scriptPubKey": pubkey,
-                    "amount": 1,
+                    "value": 1,
+                    "refheight": 1,
+                }
+            ])
+            assert_raises_rpc_error(-3, "Missing refheight", self.nodes[0].signrawtransactionwithwallet, rawtx, [
+                {
+                    "txid": txid,
+                    "vout": 3,
+                    "scriptPubKey": pubkey,
+                    "value": 1,
                 }
             ])
             assert_raises_rpc_error(-3, "Missing txid", self.nodes[0].signrawtransactionwithwallet, rawtx, [
                 {
                     "scriptPubKey": pubkey,
                     "vout": 3,
-                    "amount": 1,
+                    "value": 1,
+                    "refheight": 1,
                 }
             ])
             assert_raises_rpc_error(-3, "Missing scriptPubKey", self.nodes[0].signrawtransactionwithwallet, rawtx, [
                 {
                     "txid": txid,
                     "vout": 3,
-                    "amount": 1
+                    "value": 1,
+                    "refheight": 1,
                 }
             ])
 

@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test multiple RPC users."""
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     str_to_b64str,
@@ -33,13 +44,13 @@ def call_with_auth(node, user, password, method="getbestblockhash"):
     return resp
 
 
-class HTTPBasicsTest(BitcoinTestFramework):
+class HTTPBasicsTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
         self.supports_cli = False
 
     def conf_setup(self):
-        #Append rpcauth to bitcoin.conf before initialization
+        #Append rpcauth to freicoin.conf before initialization
         self.rtpassword = "cA773lm788buwYe4g4WT+05pKyNruVKjQ25x3n0DQcM="
         rpcauth = "rpcauth=rt:93648e835a54c573682c2eb19f882535$7681e9c5b74bdd85e78166031d2058e1069b3ed7ed967c93fc63abba06f31144"
 
@@ -61,11 +72,11 @@ class HTTPBasicsTest(BitcoinTestFramework):
         rpcauth3 = lines[1]
         self.password = lines[3]
 
-        with open(self.nodes[0].datadir_path / "bitcoin.conf", "a", encoding="utf8") as f:
+        with open(self.nodes[0].datadir_path / "freicoin.conf", "a", encoding="utf8") as f:
             f.write(rpcauth + "\n")
             f.write(rpcauth2 + "\n")
             f.write(rpcauth3 + "\n")
-        with open(self.nodes[1].datadir_path / "bitcoin.conf", "a", encoding="utf8") as f:
+        with open(self.nodes[1].datadir_path / "freicoin.conf", "a", encoding="utf8") as f:
             f.write("rpcuser={}\n".format(self.rpcuser))
             f.write("rpcpassword={}\n".format(self.rpcpassword))
         self.restart_node(0)

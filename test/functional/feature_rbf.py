@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the RBF code."""
 
 from decimal import Decimal
@@ -10,7 +21,7 @@ from test_framework.messages import (
     MAX_BIP125_RBF_SEQUENCE,
     COIN,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than_or_equal,
@@ -18,10 +29,13 @@ from test_framework.util import (
     get_fee,
 )
 from test_framework.wallet import MiniWallet
-from test_framework.address import ADDRESS_BCRT1_UNSPENDABLE
+from test_framework.address import ADDRESS_FCRT1_UNSPENDABLE
 
 MAX_REPLACEMENT_LIMIT = 100
-class ReplaceByFeeTest(BitcoinTestFramework):
+class ReplaceByFeeTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.num_nodes = 2
         self.extra_args = [
@@ -114,14 +128,14 @@ class ReplaceByFeeTest(BitcoinTestFramework):
 
         # This will raise an exception due to insufficient fee
         reject_reason = "insufficient fee"
-        reject_details = f"{reject_reason}, rejecting replacement {tx.txid_hex}; new feerate 0.00300000 BTC/kvB <= old feerate 0.00300000 BTC/kvB"
+        reject_details = f"{reject_reason}, rejecting replacement {tx.hash}; new feerate 0.00300000 FRC/kvB <= old feerate 0.00300000 FRC/kvB"
         res = self.nodes[0].testmempoolaccept(rawtxs=[tx_hex])[0]
         assert_equal(res["reject-reason"], reject_reason)
         assert_equal(res["reject-details"], reject_details)
         assert_raises_rpc_error(-26, f"{reject_details}", self.nodes[0].sendrawtransaction, tx_hex, 0)
 
 
-        # Extra 0.1 BTC fee
+        # Extra 0.1 FRC fee
         tx.vout[0].nValue -= int(0.1 * COIN)
         tx1b_hex = tx.serialize().hex()
         # Works when enabled
@@ -154,7 +168,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
             chain_txids.append(prevout["txid"])
 
         # Whether the double-spend is allowed is evaluated by including all
-        # child fees - 4 BTC - so this attempt is rejected.
+        # child fees - 4 FRC - so this attempt is rejected.
         dbl_tx = self.wallet.create_self_transfer(
             utxo_to_spend=tx0_outpoint,
             sequence=0,
@@ -229,7 +243,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
         # This will raise an exception due to insufficient fee
         assert_raises_rpc_error(-26, "insufficient fee", self.nodes[0].sendrawtransaction, dbl_tx_hex, 0)
 
-        # 0.1 BTC fee is enough
+        # 0.1 FRC fee is enough
         dbl_tx_hex = self.wallet.create_self_transfer(
             utxo_to_spend=tx0_outpoint,
             sequence=0,
@@ -560,9 +574,9 @@ class ReplaceByFeeTest(BitcoinTestFramework):
     def test_rpc(self):
         us0 = self.wallet.get_utxo()
         ins = [us0]
-        outs = {ADDRESS_BCRT1_UNSPENDABLE: Decimal(1.0000000)}
-        rawtx0 = self.nodes[0].createrawtransaction(ins, outs, 0, True)
-        rawtx1 = self.nodes[0].createrawtransaction(ins, outs, 0, False)
+        outs = {ADDRESS_FCRT1_UNSPENDABLE: Decimal(1.0000000)}
+        rawtx0 = self.nodes[0].createrawtransaction(ins, outs, 0, -1, True)
+        rawtx1 = self.nodes[0].createrawtransaction(ins, outs, 0, -1, False)
         json0 = self.nodes[0].decoderawtransaction(rawtx0)
         json1 = self.nodes[0].decoderawtransaction(rawtx1)
         assert_equal(json0["vin"][0]["sequence"], 4294967293)

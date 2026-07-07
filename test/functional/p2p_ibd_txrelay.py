@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-2021 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test transaction relay behavior during IBD:
 - Set fee filters to MAX_MONEY
 - Don't request transactions
@@ -26,13 +37,13 @@ from test_framework.p2p import (
         P2PInterface,
         p2p_lock
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 
 MAX_FEE_FILTER = Decimal(9936506) / COIN
 NORMAL_FEE_FILTER = Decimal(10) / COIN
 
 
-class P2PIBDTxRelayTest(BitcoinTestFramework):
+class P2PIBDTxRelayTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
@@ -66,7 +77,7 @@ class P2PIBDTxRelayTest(BitcoinTestFramework):
         rawhex = "0100000001b14bdcbc3e01bdaad36cc08e81e69c82e1060bc14e518db2b49aa43ad90ba260000000004a01ff473" + \
             "04402203f16c6f40162ab686621ef3000b04e75418a0c0cb2d8aebeac894ae360ac1e780220ddc15ecdfc3507ac48e168" + \
             "1a33eb60996631bf6bf5bc0a0682c4db743ce7ca2b01ffffffff0140420f00000000001976a914660d4ef3a743e3e696a" + \
-            "d990364e555c271ad504b88ac00000000"
+            "d990364e555c271ad504b88ac0000000001000000"
         assert self.nodes[1].decoderawtransaction(rawhex) # returns a dict, should not throw
         tx = from_hex(CTransaction(), rawhex)
         peer_txer = self.nodes[0].add_p2p_connection(P2PInterface())

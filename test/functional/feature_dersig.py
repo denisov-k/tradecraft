@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test BIP66 (DER SIG).
 
 Test the DERSIG soft-fork activation on regtest.
@@ -10,11 +21,13 @@ Test the DERSIG soft-fork activation on regtest.
 from test_framework.blocktools import (
     create_block,
     create_coinbase,
+    get_final_tx_info,
+    add_final_tx,
 )
 from test_framework.messages import msg_block
 from test_framework.p2p import P2PInterface
 from test_framework.script import CScript
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
@@ -44,7 +57,7 @@ def unDERify(tx):
 DERSIG_HEIGHT = 102
 
 
-class BIP66Test(BitcoinTestFramework):
+class BIP66Test(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         # whitelist peers to speed up tx relay / mempool sync
@@ -79,12 +92,16 @@ class BIP66Test(BitcoinTestFramework):
 
         self.log.info("Test that a transaction with non-DER signature can still appear in a block")
 
+        final_tx = get_final_tx_info(self.nodes[0])
+
         spendtx = self.create_tx(self.coinbase_txids[0])
         unDERify(spendtx)
 
         tip = self.nodes[0].getbestblockhash()
         block_time = self.nodes[0].getblockheader(tip)['mediantime'] + 1
         block = create_block(int(tip, 16), create_coinbase(DERSIG_HEIGHT - 1), block_time, txlist=[spendtx])
+        final_tx = add_final_tx(final_tx, block)
+        block.rehash()
         block.solve()
 
         assert_equal(self.nodes[0].getblockcount(), DERSIG_HEIGHT - 2)
@@ -98,6 +115,8 @@ class BIP66Test(BitcoinTestFramework):
         tip = block.hash_int
         block_time += 1
         block = create_block(tip, create_coinbase(DERSIG_HEIGHT), block_time, version=2)
+        final_tx = add_final_tx(final_tx, block)
+        block.rehash()
         block.solve()
 
         with self.nodes[0].assert_debug_log(expected_msgs=[f'{block.hash_hex}, bad-version(0x00000002)']):
@@ -129,7 +148,7 @@ class BIP66Test(BitcoinTestFramework):
         )
 
         # Now we verify that a block with this transaction is also invalid.
-        block.vtx.append(spendtx)
+        block.vtx.insert(-1, spendtx)
         block.hashMerkleRoot = block.calc_merkle_root()
         block.solve()
 

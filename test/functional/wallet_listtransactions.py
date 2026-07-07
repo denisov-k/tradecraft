@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the listtransactions API."""
 
 from decimal import Decimal
@@ -15,7 +26,7 @@ from test_framework.messages import (
     COIN,
     tx_from_hex,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_not_equal,
     assert_array_result,
@@ -26,7 +37,10 @@ from test_framework.util import (
 from test_framework.wallet_util import get_generate_key
 
 
-class ListTransactionsTest(BitcoinTestFramework):
+class ListTransactionsTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.num_nodes = 3
         # whitelist peers to speed up tx relay / mempool sync
@@ -234,16 +248,11 @@ class ListTransactionsTest(BitcoinTestFramework):
         self.connect_nodes(2, 0)
 
         addr1 = self.nodes[0].getnewaddress("pizza1", 'legacy')
-        addr2 = self.nodes[0].getnewaddress("pizza2", 'p2sh-segwit')
         addr3 = self.nodes[0].getnewaddress("pizza3", 'bech32')
 
         self.log.info("Send to externally generated addresses")
         # send to an address beyond the next to be generated to test the keypool gap
         self.nodes[1].sendtoaddress(addr3, "0.001")
-        self.generate(self.nodes[1], 1)
-
-        # send to an address that is already marked as used due to the keypool gap mechanics
-        self.nodes[1].sendtoaddress(addr2, "0.001")
         self.generate(self.nodes[1], 1)
 
         # send to self transaction
@@ -268,7 +277,6 @@ class ListTransactionsTest(BitcoinTestFramework):
 
         self.log.info("Verify labels are persistent on the node that generated the addresses")
         assert_equal(['pizza1'], self.nodes[0].getaddressinfo(addr1)['labels'])
-        assert_equal(['pizza2'], self.nodes[0].getaddressinfo(addr2)['labels'])
         assert_equal(['pizza3'], self.nodes[0].getaddressinfo(addr3)['labels'])
 
     def run_coinjoin_test(self):
@@ -308,10 +316,10 @@ class ListTransactionsTest(BitcoinTestFramework):
 
     def test_op_return(self):
         """Test if OP_RETURN outputs will be displayed correctly."""
-        raw_tx = self.nodes[0].createrawtransaction([], [{'data': 'aa'}])
+        raw_tx = self.nodes[0].createrawtransaction([], [{'destroy': 0.0001}])
         funded_tx = self.nodes[0].fundrawtransaction(raw_tx)
         signed_tx = self.nodes[0].signrawtransactionwithwallet(funded_tx['hex'])
-        tx_id = self.nodes[0].sendrawtransaction(signed_tx['hex'])
+        tx_id = self.nodes[0].sendrawtransaction(signed_tx['hex'], maxburnamount=0.0001)
 
         op_ret_tx = [tx for tx in self.nodes[0].listtransactions() if tx['txid'] == tx_id][0]
 

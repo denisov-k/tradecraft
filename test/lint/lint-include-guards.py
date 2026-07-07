@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
 #
 # Copyright (c) 2018-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 Check include guards.
@@ -15,10 +26,10 @@ from subprocess import check_output
 from lint_ignore_dirs import SHARED_EXCLUDED_SUBTREES
 
 
-HEADER_ID_PREFIX = 'BITCOIN_'
+HEADER_ID_PREFIX = 'FREICOIN_'
 HEADER_ID_SUFFIX = '_H'
 
-EXCLUDE_FILES_WITH_PREFIX = ['contrib/devtools/bitcoin-tidy',
+EXCLUDE_FILES_WITH_PREFIX = ['contrib/devtools/freicoin-tidy',
                              'src/crypto/ctaes',
                              'src/tinyformat.h',
                              'src/bench/nanobench.h',
@@ -44,7 +55,7 @@ def _get_header_id(header_file: str) -> str:
     """ Helper function to get the header id from a header file
         string.
 
-        eg: 'src/wallet/walletdb.h' -> 'BITCOIN_WALLET_WALLETDB_H'
+        eg: 'src/wallet/walletdb.h' -> 'FREICOIN_WALLET_WALLETDB_H'
 
     Args:
         header_file: Filepath to header file.

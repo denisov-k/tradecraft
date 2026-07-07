@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
 # Copyright (c) 2018-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test bitcoin-wallet."""
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Test freicoin-wallet."""
 
 import os
 import stat
@@ -11,7 +22,9 @@ import textwrap
 
 from collections import OrderedDict
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.bdb import dump_bdb_kv
+from test_framework.messages import ser_string
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -19,7 +32,12 @@ from test_framework.util import (
 )
 
 
-class ToolWalletTest(BitcoinTestFramework):
+class ToolWalletTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+        parser.add_argument("--bdbro", action="store_true", help="Use the BerkeleyRO internal parser when dumping a Berkeley DB wallet file")
+        parser.add_argument("--swap-bdb-endian", action="store_true",help="When making Legacy BDB wallets, always make then byte swapped internally")
+
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
@@ -29,13 +47,13 @@ class ToolWalletTest(BitcoinTestFramework):
         self.skip_if_no_wallet()
         self.skip_if_no_wallet_tool()
 
-    def bitcoin_wallet_process(self, *args):
+    def freicoin_wallet_process(self, *args):
         default_args = ['-datadir={}'.format(self.nodes[0].datadir_path), '-chain=%s' % self.chain]
 
-        return subprocess.Popen(self.get_binaries().wallet_argv() + default_args + list(args), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return subprocess.Popen([self.options.freicoinwallet] + default_args + list(args), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     def assert_raises_tool_error(self, error, *args):
-        p = self.bitcoin_wallet_process(*args)
+        p = self.freicoin_wallet_process(*args)
         stdout, stderr = p.communicate()
         assert_equal(stdout, '')
         if isinstance(error, tuple):
@@ -46,7 +64,7 @@ class ToolWalletTest(BitcoinTestFramework):
             assert error in stderr.strip()
 
     def assert_tool_output(self, output, *args):
-        p = self.bitcoin_wallet_process(*args)
+        p = self.freicoin_wallet_process(*args)
         stdout, stderr = p.communicate()
         assert_equal(stderr, '')
         assert_equal(stdout, output)
@@ -67,19 +85,34 @@ class ToolWalletTest(BitcoinTestFramework):
 
     def get_expected_info_output(self, name="", transactions=0, keypool=2, address=0, imported_privs=0):
         wallet_name = self.default_wallet_name if name == "" else name
-        output_types = 4  # p2pkh, p2sh, segwit, bech32m
-        return textwrap.dedent('''\
-            Wallet info
-            ===========
-            Name: %s
-            Format: sqlite
-            Descriptors: yes
-            Encrypted: no
-            HD (hd seed available): yes
-            Keypool Size: %d
-            Transactions: %d
-            Address Book: %d
-        ''' % (wallet_name, keypool * output_types, transactions, imported_privs * 3 + address))
+        if self.options.descriptors:
+            output_types = 2  # p2pkh, segwit
+            return textwrap.dedent('''\
+                Wallet info
+                ===========
+                Name: %s
+                Format: sqlite
+                Descriptors: yes
+                Encrypted: no
+                HD (hd seed available): yes
+                Keypool Size: %d
+                Transactions: %d
+                Address Book: %d
+            ''' % (wallet_name, keypool * output_types, transactions, imported_privs * 2 + address))
+        else:
+            output_types = 2  # p2pkh, segwit. Legacy wallets do not support bech32m.
+            return textwrap.dedent('''\
+                Wallet info
+                ===========
+                Name: %s
+                Format: bdb
+                Descriptors: no
+                Encrypted: no
+                HD (hd seed available): yes
+                Keypool Size: %d
+                Transactions: %d
+                Address Book: %d
+            ''' % (wallet_name, keypool, transactions, (address + imported_privs) * output_types))
 
     def read_dump(self, filename):
         dump = OrderedDict()
@@ -97,7 +130,7 @@ class ToolWalletTest(BitcoinTestFramework):
 
     def write_dump(self, dump, filename, magic=None, skip_checksum=False):
         if magic is None:
-            magic = "BITCOIN_CORE_WALLET_DUMP"
+            magic = "FREICOIN_CORE_WALLET_DUMP"
         with open(filename, "w", encoding="utf8") as f:
             row = ",".join([magic, dump[magic]]) + "\n"
             f.write(row)
@@ -122,7 +155,7 @@ class ToolWalletTest(BitcoinTestFramework):
         self.assert_tool_output(load_output, *args)
         assert (self.nodes[0].wallets_path / wallet_name).is_dir()
 
-        self.assert_tool_output("The dumpfile may contain private keys. To ensure the safety of your Bitcoin, do not share the dumpfile.\n", '-wallet={}'.format(wallet_name), '-dumpfile={}'.format(rt_dumppath), 'dump')
+        self.assert_tool_output("The dumpfile may contain private keys. To ensure the safety of your Freicoin, do not share the dumpfile.\n", '-wallet={}'.format(wallet_name), '-dumpfile={}'.format(rt_dumppath), 'dump')
 
         wallet_dat = self.nodes[0].wallets_path / wallet_name / "wallet.dat"
         self.assert_is_sqlite(wallet_dat)
@@ -130,11 +163,11 @@ class ToolWalletTest(BitcoinTestFramework):
     def test_invalid_tool_commands_and_args(self):
         self.log.info('Testing that various invalid commands raise with specific error messages')
         self.assert_raises_tool_error("Error parsing command line arguments: Invalid command 'foo'", 'foo')
-        # `bitcoin-wallet help` raises an error. Use `bitcoin-wallet -help`.
+        # `freicoin-wallet help` raises an error. Use `freicoin-wallet -help`.
         self.assert_raises_tool_error("Error parsing command line arguments: Invalid command 'help'", 'help')
         self.assert_raises_tool_error('Error: Additional arguments provided (create). Methods do not take arguments. Please refer to `-help`.', 'info', 'create')
         self.assert_raises_tool_error('Error parsing command line arguments: Invalid parameter -foo', '-foo')
-        self.assert_raises_tool_error('No method provided. Run `bitcoin-wallet -help` for valid methods.')
+        self.assert_raises_tool_error('No method provided. Run `freicoin-wallet -help` for valid methods.')
         self.assert_raises_tool_error('Wallet name must be provided when creating a new wallet.', 'create')
         error = f"SQLiteDatabase: Unable to obtain an exclusive lock on the database, is it being used by another instance of {self.config['environment']['CLIENT_NAME']}?"
         self.assert_raises_tool_error(
@@ -236,8 +269,13 @@ class ToolWalletTest(BitcoinTestFramework):
         self.log.debug('Wallet file timestamp after calling getwalletinfo: {}'.format(timestamp_after))
 
         assert_equal(0, out['txcount'])
-        assert_equal(4000, out['keypoolsize'])
-        assert_equal(4000, out['keypoolsize_hd_internal'])
+        if not self.options.descriptors:
+            assert_equal(1000, out['keypoolsize'])
+            assert_equal(1000, out['keypoolsize_hd_internal'])
+            assert_equal(True, 'hdseedid' in out)
+        else:
+            assert_equal(2000, out['keypoolsize'])
+            assert_equal(2000, out['keypoolsize_hd_internal'])
 
         self.log_wallet_timestamp_comparison(timestamp_before, timestamp_after)
         assert_equal(timestamp_before, timestamp_after)
@@ -256,12 +294,12 @@ class ToolWalletTest(BitcoinTestFramework):
 
         self.log.info('Checking basic dump')
         wallet_dump = self.nodes[0].datadir_path / "wallet.dump"
-        self.assert_tool_output('The dumpfile may contain private keys. To ensure the safety of your Bitcoin, do not share the dumpfile.\n', '-wallet=todump', '-dumpfile={}'.format(wallet_dump), 'dump')
+        self.assert_tool_output('The dumpfile may contain private keys. To ensure the safety of your Freicoin, do not share the dumpfile.\n', '-wallet=todump', '-dumpfile={}'.format(wallet_dump), 'dump')
 
         dump_data = self.read_dump(wallet_dump)
         orig_dump = dump_data.copy()
         # Check the dump magic
-        assert_equal(dump_data['BITCOIN_CORE_WALLET_DUMP'], '1')
+        assert_equal(dump_data['FREICOIN_CORE_WALLET_DUMP'], '1')
         # Check the file format
         assert_equal(dump_data["format"], file_format)
 
@@ -281,20 +319,20 @@ class ToolWalletTest(BitcoinTestFramework):
 
         self.log.info('Checking createfromdump handling of magic and versions')
         bad_ver_wallet_dump = self.nodes[0].datadir_path / "wallet-bad_ver1.dump"
-        dump_data["BITCOIN_CORE_WALLET_DUMP"] = "0"
+        dump_data["FREICOIN_CORE_WALLET_DUMP"] = "0"
         self.write_dump(dump_data, bad_ver_wallet_dump)
-        self.assert_raises_tool_error('Error: Dumpfile version is not supported. This version of bitcoin-wallet only supports version 1 dumpfiles. Got dumpfile with version 0', '-wallet=badload', '-dumpfile={}'.format(bad_ver_wallet_dump), 'createfromdump')
+        self.assert_raises_tool_error('Error: Dumpfile version is not supported. This version of freicoin-wallet only supports version 1 dumpfiles. Got dumpfile with version 0', '-wallet=badload', '-dumpfile={}'.format(bad_ver_wallet_dump), 'createfromdump')
         assert not (self.nodes[0].wallets_path / "badload").is_dir()
         bad_ver_wallet_dump = self.nodes[0].datadir_path / "wallet-bad_ver2.dump"
-        dump_data["BITCOIN_CORE_WALLET_DUMP"] = "2"
+        dump_data["FREICOIN_CORE_WALLET_DUMP"] = "2"
         self.write_dump(dump_data, bad_ver_wallet_dump)
-        self.assert_raises_tool_error('Error: Dumpfile version is not supported. This version of bitcoin-wallet only supports version 1 dumpfiles. Got dumpfile with version 2', '-wallet=badload', '-dumpfile={}'.format(bad_ver_wallet_dump), 'createfromdump')
+        self.assert_raises_tool_error('Error: Dumpfile version is not supported. This version of freicoin-wallet only supports version 1 dumpfiles. Got dumpfile with version 2', '-wallet=badload', '-dumpfile={}'.format(bad_ver_wallet_dump), 'createfromdump')
         assert not (self.nodes[0].wallets_path / "badload").is_dir()
         bad_magic_wallet_dump = self.nodes[0].datadir_path / "wallet-bad_magic.dump"
-        del dump_data["BITCOIN_CORE_WALLET_DUMP"]
+        del dump_data["FREICOIN_CORE_WALLET_DUMP"]
         dump_data["not_the_right_magic"] = "1"
         self.write_dump(dump_data, bad_magic_wallet_dump, "not_the_right_magic")
-        self.assert_raises_tool_error('Error: Dumpfile identifier record is incorrect. Got "not_the_right_magic", expected "BITCOIN_CORE_WALLET_DUMP".', '-wallet=badload', '-dumpfile={}'.format(bad_magic_wallet_dump), 'createfromdump')
+        self.assert_raises_tool_error('Error: Dumpfile identifier record is incorrect. Got "not_the_right_magic", expected "FREICOIN_CORE_WALLET_DUMP".', '-wallet=badload', '-dumpfile={}'.format(bad_magic_wallet_dump), 'createfromdump')
         assert not (self.nodes[0].wallets_path / "badload").is_dir()
 
         self.log.info('Checking createfromdump handling of checksums')
@@ -371,11 +409,30 @@ class ToolWalletTest(BitcoinTestFramework):
             Descriptors: yes
             Encrypted: no
             HD (hd seed available): yes
-            Keypool Size: 8
+            Keypool Size: {"4" if self.options.descriptors else "1"}
             Transactions: 4
             Address Book: 4
         ''')
         self.assert_tool_output(expected_output, "-wallet=conflicts", "info")
+
+    def test_dump_endianness(self):
+        self.log.info("Testing dumps of the same contents with different BDB endianness")
+
+        self.start_node(0)
+        self.nodes[0].createwallet("endian")
+        self.stop_node(0)
+
+        wallet_dump = self.nodes[0].datadir_path / "endian.dump"
+        self.assert_tool_output("The dumpfile may contain private keys. To ensure the safety of your Freicoin, do not share the dumpfile.\n", "-wallet=endian", f"-dumpfile={wallet_dump}", "dump")
+        expected_dump = self.read_dump(wallet_dump)
+
+        self.do_tool_createfromdump("native_endian", "endian.dump", "bdb")
+        native_dump = self.read_dump(self.nodes[0].datadir_path / "rt-native_endian.dump")
+        self.assert_dump(expected_dump, native_dump)
+
+        self.do_tool_createfromdump("other_endian", "endian.dump", "bdb_swap")
+        other_dump = self.read_dump(self.nodes[0].datadir_path / "rt-other_endian.dump")
+        self.assert_dump(expected_dump, other_dump)
 
     def test_dump_very_large_records(self):
         self.log.info("Test that wallets with large records are successfully dumped")
@@ -393,7 +450,7 @@ class ToolWalletTest(BitcoinTestFramework):
         def_wallet = self.nodes[0].get_wallet_rpc(self.default_wallet_name)
         outputs = {}
         for i in range(500):
-            outputs[wallet.getnewaddress(address_type="p2sh-segwit")] = 0.01
+            outputs[wallet.getnewaddress(address_type="bech32")] = 0.01
         def_wallet.sendmany(amounts=outputs)
         self.generate(self.nodes[0], 1)
         send_res = wallet.sendall([def_wallet.getnewaddress()])
@@ -405,7 +462,7 @@ class ToolWalletTest(BitcoinTestFramework):
         self.stop_node(0)
 
         wallet_dump = self.nodes[0].datadir_path / "bigrecords.dump"
-        self.assert_tool_output("The dumpfile may contain private keys. To ensure the safety of your Bitcoin, do not share the dumpfile.\n", "-wallet=bigrecords", f"-dumpfile={wallet_dump}", "dump")
+        self.assert_tool_output("The dumpfile may contain private keys. To ensure the safety of your Freicoin, do not share the dumpfile.\n", "-wallet=bigrecords", f"-dumpfile={wallet_dump}", "dump")
         dump = self.read_dump(wallet_dump)
         for k,v in dump.items():
             if tx["hex"] in v:
@@ -416,10 +473,65 @@ class ToolWalletTest(BitcoinTestFramework):
     def test_no_create_legacy(self):
         self.log.info("Test that legacy wallets cannot be created")
 
-        self.assert_raises_tool_error("Invalid parameter -legacy", "-wallet=legacy", "-legacy", "create")
-        assert not (self.nodes[0].wallets_path / "legacy").exists()
-        self.assert_raises_tool_error("Invalid parameter -descriptors", "-wallet=legacy", "-descriptors=false", "create")
-        assert not (self.nodes[0].wallets_path / "legacy").exists()
+        self.start_node(0, extra_args=["-flushwallet=0"])
+        self.nodes[0].createwallet("unclean_lsn")
+        wallet = self.nodes[0].get_wallet_rpc("unclean_lsn")
+        # First unload and load normally to make sure everything is written
+        wallet.unloadwallet()
+        self.nodes[0].loadwallet("unclean_lsn")
+        # Next cause a bunch of writes by filling the keypool
+        wallet.keypoolrefill(wallet.getwalletinfo()["keypoolsize"] + 100)
+        # Lastly kill freicoind so that the LSNs don't get reset
+        self.nodes[0].process.kill()
+        self.nodes[0].wait_until_stopped(expected_ret_code=1 if platform.system() == "Windows" else -9)
+        assert self.nodes[0].is_node_stopped()
+
+        wallet_dump = self.nodes[0].datadir_path / "unclean_lsn.dump"
+        self.assert_raises_tool_error("LSNs are not reset, this database is not completely flushed. Please reopen then close the database with a version that has BDB support", "-wallet=unclean_lsn", f"-dumpfile={wallet_dump}", "dump")
+
+        # File can be dumped after reload it normally
+        self.start_node(0)
+        self.nodes[0].loadwallet("unclean_lsn")
+        self.stop_node(0)
+        self.assert_tool_output("The dumpfile may contain private keys. To ensure the safety of your Freicoin, do not share the dumpfile.\n", "-wallet=unclean_lsn", f"-dumpfile={wallet_dump}", "dump")
+
+    def test_compare_legacy_dump_with_framework_bdb_parser(self):
+        self.log.info("Verify that legacy wallet database dump matches the one from the test framework's BDB parser")
+        wallet_name = "bdb_ro_test"
+        self.start_node(0)
+        # add some really large labels (above twice the largest valid page size) to create BDB overflow pages
+        self.nodes[0].createwallet(wallet_name)
+        wallet_rpc = self.nodes[0].get_wallet_rpc(wallet_name)
+        generated_labels = {}
+        for i in range(10):
+            address = getnewdestination()[2]
+            large_label = ''.join([random.choice(string.ascii_letters) for _ in range(150000)])
+            wallet_rpc.setlabel(address, large_label)
+            generated_labels[address] = large_label
+        # fill the keypool to create BDB internal pages
+        wallet_rpc.keypoolrefill(1000)
+        self.stop_node(0)
+
+        wallet_dumpfile = self.nodes[0].datadir_path / "bdb_ro_test.dump"
+        self.assert_tool_output("The dumpfile may contain private keys. To ensure the safety of your Bitcoin, do not share the dumpfile.\n", "-wallet={}".format(wallet_name), "-dumpfile={}".format(wallet_dumpfile), "dump")
+
+        expected_dump = self.read_dump(wallet_dumpfile)
+        # remove extra entries from wallet tool dump that are not actual key/value pairs from the database
+        del expected_dump['BITCOIN_CORE_WALLET_DUMP']
+        del expected_dump['format']
+        del expected_dump['checksum']
+        bdb_ro_parser_dump_raw = dump_bdb_kv(self.nodes[0].wallets_path / wallet_name / "wallet.dat")
+        bdb_ro_parser_dump = OrderedDict()
+        assert any([len(bytes.fromhex(value)) >= 150000 for value in expected_dump.values()])
+        for key, value in sorted(bdb_ro_parser_dump_raw.items()):
+            bdb_ro_parser_dump[key.hex()] = value.hex()
+        assert_equal(bdb_ro_parser_dump, expected_dump)
+
+        # check that all labels were created with the correct address
+        for address, label in generated_labels.items():
+            key_bytes = b'\x04name' + ser_string(address.encode())
+            assert key_bytes in bdb_ro_parser_dump_raw
+            assert_equal(bdb_ro_parser_dump_raw[key_bytes], ser_string(label.encode()))
 
     def run_test(self):
         self.wallet_path = self.nodes[0].wallets_path / self.default_wallet_name / self.wallet_data_filename

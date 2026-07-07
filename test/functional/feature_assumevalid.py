@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test logic for skipping signature validation on old blocks.
 
 Test logic for skipping signature validation on blocks which we've assumed
@@ -32,6 +43,7 @@ Start three nodes:
 
 from test_framework.blocktools import (
     COINBASE_MATURITY,
+    add_final_tx,
     create_block,
     create_coinbase,
 )
@@ -49,7 +61,7 @@ from test_framework.script import (
     CScript,
     OP_TRUE,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_equal
 from test_framework.wallet_util import generate_keypair
 
@@ -61,7 +73,7 @@ class BaseNode(P2PInterface):
         self.send_without_ping(headers_message)
 
 
-class AssumeValidTest(BitcoinTestFramework):
+class AssumeValidTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 3
@@ -98,6 +110,15 @@ class AssumeValidTest(BitcoinTestFramework):
         # Create the first block with a coinbase output to our key
         height = 1
         block = create_block(self.tip, create_coinbase(height, coinbase_pubkey), self.block_time)
+        block.vtx[0].vout.insert(0, CTxOut(0, CScript([OP_TRUE])))
+        block.vtx[0].rehash()
+        final_tx = [{
+            'txid': block.vtx[0].hash,
+            'vout': 0,
+            'amount': 0,
+        }]
+        block.hashMerkleRoot = block.calc_merkle_root()
+        block.rehash()
         self.blocks.append(block)
         self.block_time += 1
         block.solve()
@@ -109,6 +130,8 @@ class AssumeValidTest(BitcoinTestFramework):
         # Bury the block 100 deep so the coinbase output is spendable
         for _ in range(100):
             block = create_block(self.tip, create_coinbase(height), self.block_time)
+            if height > 100:
+                final_tx = add_final_tx(final_tx, block)
             block.solve()
             self.blocks.append(block)
             self.tip = block.hash_int
@@ -117,11 +140,12 @@ class AssumeValidTest(BitcoinTestFramework):
 
         # Create a transaction spending the coinbase output with an invalid (null) signature
         tx = CTransaction()
-        tx.vin.append(CTxIn(COutPoint(self.block1.vtx[0].txid_int, 0), scriptSig=b""))
+        tx.vin.append(CTxIn(COutPoint(self.block1.vtx[0].sha256, 1), scriptSig=b""))
         tx.vout.append(CTxOut(49 * 100000000, CScript([OP_TRUE])))
 
         block102 = create_block(self.tip, create_coinbase(height), self.block_time, txlist=[tx])
         self.block_time += 1
+        final_tx = add_final_tx(final_tx, block102)
         block102.solve()
         self.blocks.append(block102)
         self.tip = block102.hash_int
@@ -131,6 +155,7 @@ class AssumeValidTest(BitcoinTestFramework):
         # Bury the assumed valid block 2100 deep
         for _ in range(2100):
             block = create_block(self.tip, create_coinbase(height), self.block_time)
+            final_tx = add_final_tx(final_tx, block)
             block.solve()
             self.blocks.append(block)
             self.tip = block.hash_int

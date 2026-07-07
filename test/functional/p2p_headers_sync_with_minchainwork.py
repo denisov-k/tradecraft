@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 # Copyright (c) 2019-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test that we reject low difficulty headers to prevent our block tree from filling up with useless bloat"""
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 
 from test_framework.p2p import (
     P2PInterface,
@@ -27,7 +38,7 @@ NODE1_BLOCKS_REQUIRED = 15
 NODE2_BLOCKS_REQUIRED = 2047
 
 
-class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
+class RejectLowDifficultyHeadersTest(FreicoinTestFramework):
     def set_test_params(self):
         self.rpc_timeout *= 4  # To avoid timeout when generating BLOCKS_TO_MINE
         self.setup_clean_chain = True
@@ -79,7 +90,7 @@ class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
             assert len(chaintips) == 1
             assert {
                 'height': 0,
-                'hash': '0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206',
+                'hash': '67756db06265141574ff8e7c3f97ebd57c443791e0ca27ee8b03758d6056edb8',
                 'branchlen': 0,
                 'status': 'active',
             } in chaintips
@@ -91,7 +102,7 @@ class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
 
         assert {
             'height': 0,
-            'hash': '0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206',
+            'hash': '67756db06265141574ff8e7c3f97ebd57c443791e0ca27ee8b03758d6056edb8',
             'branchlen': 0,
             'status': 'active',
         } in self.nodes[2].getchaintips()
@@ -126,7 +137,9 @@ class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
         new_blocks = []
         hashPrevBlock = int(node.getblockhash(0), 16)
         for i in range(2000):
-            block = create_block(hashprev = hashPrevBlock, tmpl=node.getblocktemplate(NORMAL_GBT_REQUEST_PARAMS))
+            gbt_request_params = NORMAL_GBT_REQUEST_PARAMS.copy()
+            gbt_request_params['rules'].append('finaltx') # remove after 'finaltx' support is added
+            block = create_block(hashprev = hashPrevBlock, tmpl=node.getblocktemplate(gbt_request_params))
             block.solve()
             new_blocks.append(block)
             hashPrevBlock = block.hash_int

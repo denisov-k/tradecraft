@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2024-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Test that 1p1c package submission allows a 1p1c package to propagate in a "network" of nodes. Send
 various packages from different nodes on a network in which some nodes have already received some of
@@ -23,7 +34,7 @@ from test_framework.messages import (
 from test_framework.p2p import (
     P2PInterface,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -33,13 +44,18 @@ from test_framework.wallet import (
     MiniWalletMode,
 )
 
-class PackageRelayTest(BitcoinTestFramework):
+# 1sat/vB feerate denominated in FRC/KvB
+FEERATE_1SAT_VB = Decimal("0.00001000")
+
+class PackageRelayTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 4
         # hugely speeds up the test, as it involves multiple hops of tx relay.
         self.noban_tx_relay = True
         self.extra_args = [[
+            "-datacarrier=1",
+            "-datacarriersize=100000",
             "-maxmempool=5",
         ]] * self.num_nodes
 
@@ -66,7 +82,7 @@ class PackageRelayTest(BitcoinTestFramework):
             num_outputs=2,
         )
 
-        # Target 1sat/vB so the number of satoshis is equal to the vsize.
+        # Target 1sat/vB so the number of kria is equal to the vsize.
         # Round up. The goal is to be between min relay feerate and mempool min feerate.
         fee_2outs = ceil(low_fee_parent_2outs_tester["tx"].get_vsize() / 2)
 

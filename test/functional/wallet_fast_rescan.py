@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test that fast rescan using block filters for descriptor wallets detects
    top-ups correctly and finds the same transactions than the slow variant."""
 from test_framework.address import address_to_scriptpubkey
 from test_framework.descriptors import descsum_create
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.test_node import TestNode
 from test_framework.util import assert_equal
 from test_framework.wallet import MiniWallet
@@ -14,11 +25,14 @@ from test_framework.wallet_util import get_generate_key
 
 
 KEYPOOL_SIZE = 100   # smaller than default size to speed-up test
-NUM_DESCRIPTORS = 9  # number of descriptors (8 default ranged ones + 1 fixed non-ranged one)
+NUM_DESCRIPTORS = 5  # number of descriptors (4 default ranged ones + 1 fixed non-ranged one)
 NUM_BLOCKS = 6       # number of blocks to mine
 
 
-class WalletFastRescanTest(BitcoinTestFramework):
+class WalletFastRescanTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser, legacy=False)
+
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [[f'-keypool={KEYPOOL_SIZE}', '-blockfilterindex=1']]
@@ -40,7 +54,7 @@ class WalletFastRescanTest(BitcoinTestFramework):
         node.createwallet(wallet_name='topup_test')
         w = node.get_wallet_rpc('topup_test')
         fixed_key = get_generate_key()
-        print(w.importdescriptors([{"desc": descsum_create(f"wpkh({fixed_key.privkey})"), "timestamp": "now"}]))
+        print(w.importdescriptors([{"desc": descsum_create(f"wpk({fixed_key.privkey})"), "timestamp": "now"}]))
         descriptors = w.listdescriptors()['descriptors']
         assert_equal(len(descriptors), NUM_DESCRIPTORS)
         w.backupwallet(WALLET_BACKUP_FILENAME)
@@ -55,8 +69,8 @@ class WalletFastRescanTest(BitcoinTestFramework):
                     spk = address_to_scriptpubkey(addr)
                     self.log.info(f"-> range [{start_range},{end_range}], last address {addr}")
                 else:
-                    spk = bytes.fromhex(fixed_key.p2wpkh_script)
-                    self.log.info(f"-> fixed non-range descriptor address {fixed_key.p2wpkh_addr}")
+                    spk = bytes.fromhex(fixed_key.p2wpk_script)
+                    self.log.info(f"-> fixed non-range descriptor address {fixed_key.p2wpk_addr}")
                 wallet.send_to(from_node=node, scriptPubKey=spk, amount=10000)
             self.generate(node, 1)
 

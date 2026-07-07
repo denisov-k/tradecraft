@@ -1,24 +1,96 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or https://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.address import (
-    ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR,
+    ADDRESS_FCRT1_UNSPENDABLE,
+    ADDRESS_FCRT1_UNSPENDABLE_DESCRIPTOR,
 )
 from test_framework.util import (
     assert_equal,
 )
 
 
-class WalletBlankTest(BitcoinTestFramework):
+class WalletBlankTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
+
+    def add_options(self, options):
+        self.add_wallet_options(options)
+
+    def test_importaddress(self):
+        if self.options.descriptors:
+            return
+        self.log.info("Test that importaddress unsets the blank flag")
+        self.nodes[0].createwallet(wallet_name="iaddr", disable_private_keys=True, blank=True)
+        wallet = self.nodes[0].get_wallet_rpc("iaddr")
+        info = wallet.getwalletinfo()
+        assert_equal(info["descriptors"], False)
+        assert_equal(info["blank"], True)
+        wallet.importaddress(ADDRESS_FCRT1_UNSPENDABLE)
+        assert_equal(wallet.getwalletinfo()["blank"], False)
+
+    def test_importpubkey(self):
+        if self.options.descriptors:
+            return
+        self.log.info("Test that importpubkey unsets the blank flag")
+        for i, comp in enumerate([True, False]):
+            self.nodes[0].createwallet(wallet_name=f"ipub{i}", disable_private_keys=True, blank=True)
+            wallet = self.nodes[0].get_wallet_rpc(f"ipub{i}")
+            info = wallet.getwalletinfo()
+            assert_equal(info["descriptors"], False)
+            assert_equal(info["blank"], True)
+
+            _, pubkey = generate_keypair(compressed=comp)
+            wallet.importpubkey(pubkey.hex())
+            assert_equal(wallet.getwalletinfo()["blank"], False)
+
+    def test_importprivkey(self):
+        if self.options.descriptors:
+            return
+        self.log.info("Test that importprivkey unsets the blank flag")
+        for i, comp in enumerate([True, False]):
+            self.nodes[0].createwallet(wallet_name=f"ipriv{i}", blank=True)
+            wallet = self.nodes[0].get_wallet_rpc(f"ipriv{i}")
+            info = wallet.getwalletinfo()
+            assert_equal(info["descriptors"], False)
+            assert_equal(info["blank"], True)
+
+            wif, _ = generate_keypair(compressed=comp, wif=True)
+            wallet.importprivkey(wif)
+            assert_equal(wallet.getwalletinfo()["blank"], False)
+
+    def test_importmulti(self):
+        if self.options.descriptors:
+            return
+        self.log.info("Test that importmulti unsets the blank flag")
+        self.nodes[0].createwallet(wallet_name="imulti", disable_private_keys=True, blank=True)
+        wallet = self.nodes[0].get_wallet_rpc("imulti")
+        info = wallet.getwalletinfo()
+        assert_equal(info["descriptors"], False)
+        assert_equal(info["blank"], True)
+        wallet.importmulti([{
+            "desc": ADDRESS_FCRT1_UNSPENDABLE_DESCRIPTOR,
+            "timestamp": "now",
+        }])
+        assert_equal(wallet.getwalletinfo()["blank"], False)
 
     def test_importdescriptors(self):
         self.log.info("Test that importdescriptors preserves the blank flag")
@@ -28,7 +100,7 @@ class WalletBlankTest(BitcoinTestFramework):
         assert_equal(info["descriptors"], True)
         assert_equal(info["blank"], True)
         wallet.importdescriptors([{
-            "desc": ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR,
+            "desc": ADDRESS_FCRT1_UNSPENDABLE_DESCRIPTOR,
             "timestamp": "now",
         }])
         assert_equal(wallet.getwalletinfo()["blank"], True)

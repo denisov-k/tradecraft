@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Class for v2 P2P protocol (see BIP 324)"""
 
 import random
@@ -226,7 +237,7 @@ class EncryptedP2PState:
     def initialize_v2_transport(self, ecdh_secret):
         """Sets the peer object with various BIP324 derived keys and ciphers."""
         peer = {}
-        salt = b'bitcoin_v2_shared_secret' + MAGIC_BYTES[self.net]
+        salt = b'freicoin_v2_shared_secret' + MAGIC_BYTES[self.net]
         for name in ('initiator_L', 'initiator_P', 'responder_L', 'responder_P', 'garbage_terminators', 'session_id'):
             peer[name] = hkdf_sha256(salt=salt, ikm=ecdh_secret, info=name.encode('utf-8'), length=32)
         if self.initiating:

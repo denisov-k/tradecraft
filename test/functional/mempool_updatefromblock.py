@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test mempool descendants/ancestors information update.
 
 Test mempool update of transaction descendants/ancestors information (count, size)
@@ -11,12 +22,8 @@ from decimal import Decimal
 from math import ceil
 import time
 
-from test_framework.blocktools import (
-    create_block,
-    create_coinbase,
-)
-from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import assert_equal, assert_raises_rpc_error
+from test_framework.test_framework import FreicoinTestFramework
+from test_framework.util import assert_equal
 from test_framework.wallet import MiniWallet
 
 MAX_DISCONNECTED_TX_POOL_BYTES = 20_000_000
@@ -24,7 +31,7 @@ MAX_DISCONNECTED_TX_POOL_BYTES = 20_000_000
 CUSTOM_ANCESTOR_COUNT = 100
 CUSTOM_DESCENDANT_COUNT = CUSTOM_ANCESTOR_COUNT
 
-class MempoolUpdateFromBlockTest(BitcoinTestFramework):
+class MempoolUpdateFromBlockTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         # Ancestor and descendant limits depend on transaction_graph_test requirements

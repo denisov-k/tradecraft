@@ -1,21 +1,30 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022 The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or https://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test output type mixing during coin selection
 
 A wallet may have different types of UTXOs to choose from during coin selection,
 where output type is one of the following:
-    - BECH32M
     - BECH32
-    - P2SH-SEGWIT
     - LEGACY
 
 This test verifies that mixing different output types is avoided unless
 absolutely necessary. Both wallets start with zero funds. Alice mines
 enough blocks to have spendable coinbase outputs. Alice sends three
-random value payments which sum to 10BTC for each output type to Bob,
-for a total of 40BTC in Bob's wallet.
+random value payments which sum to 10FRC for each output type to Bob,
+for a total of 40FRC in Bob's wallet.
 
 Bob then sends random valued payments back to Alice, some of which need
 unconfirmed change, and we verify that none of these payments contain mixed
@@ -28,13 +37,11 @@ but still know when to expect mixing due to the wallet being close to empty.
 """
 
 import random
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.blocktools import COINBASE_MATURITY
 
 ADDRESS_TYPES = [
-    "bech32m",
     "bech32",
-    "p2sh-segwit",
     "legacy",
 ]
 
@@ -42,23 +49,7 @@ ADDRESS_TYPES = [
 def is_bech32_address(node, addr):
     """Check if an address contains a bech32 output."""
     addr_info = node.getaddressinfo(addr)
-    return addr_info['desc'].startswith('wpkh(')
-
-
-def is_bech32m_address(node, addr):
-    """Check if an address contains a bech32m output."""
-    addr_info = node.getaddressinfo(addr)
-    return addr_info['desc'].startswith('tr(')
-
-
-def is_p2sh_segwit_address(node, addr):
-    """Check if an address contains a P2SH-Segwit output.
-       Note: this function does not actually determine the type
-       of P2SH output, but is sufficient for this test in that
-       we are only generating P2SH-Segwit outputs.
-    """
-    addr_info = node.getaddressinfo(addr)
-    return addr_info['desc'].startswith('sh(wpkh(')
+    return addr_info['desc'].startswith('wpk(')
 
 
 def is_legacy_address(node, addr):
@@ -80,21 +71,15 @@ def is_same_type(node, tx):
             )['vout'][n]['scriptPubKey']['address']
         )
     has_legacy = False
-    has_p2sh = False
     has_bech32 = False
-    has_bech32m = False
 
     for addr in inputs:
         if is_legacy_address(node, addr):
             has_legacy = True
-        if is_p2sh_segwit_address(node, addr):
-            has_p2sh = True
         if is_bech32_address(node, addr):
             has_bech32 = True
-        if is_bech32m_address(node, addr):
-            has_bech32m = True
 
-    return (sum([has_legacy, has_p2sh, has_bech32, has_bech32m]) == 1)
+    return (sum([has_legacy, has_bech32]) == 1)
 
 
 def generate_payment_values(n, m):
@@ -105,7 +90,10 @@ def generate_payment_values(n, m):
     return [a - b for a, b in zip(dividers + [m], [0] + dividers)]
 
 
-class AddressInputTypeGrouping(BitcoinTestFramework):
+class AddressInputTypeGrouping(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser, legacy=False)
+
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
@@ -116,7 +104,7 @@ class AddressInputTypeGrouping(BitcoinTestFramework):
                 "-addresstype=bech32",
             ],
             [
-                "-addresstype=p2sh-segwit",
+                "-addresstype=legacy",
                 "-txindex",
             ],
         ]
@@ -126,7 +114,7 @@ class AddressInputTypeGrouping(BitcoinTestFramework):
 
     def make_payment(self, A, B, v, addr_type):
         fee_rate = random.randint(1, 20)
-        self.log.debug(f"Making payment of {v} BTC at fee_rate {fee_rate}")
+        self.log.debug(f"Making payment of {v} FRC at fee_rate {fee_rate}")
         tx = B.sendtoaddress(
             address=A.getnewaddress(address_type=addr_type),
             amount=v,
@@ -142,20 +130,20 @@ class AddressInputTypeGrouping(BitcoinTestFramework):
 
         self.log.info("Creating mixed UTXOs in B's wallet")
         for v in generate_payment_values(3, 10):
-            self.log.debug(f"Making payment of {v} BTC to legacy")
+            self.log.debug(f"Making payment of {v} FRC to legacy")
             A.sendtoaddress(B.getnewaddress(address_type="legacy"), v)
 
         for v in generate_payment_values(3, 10):
-            self.log.debug(f"Making payment of {v} BTC to p2sh")
-            A.sendtoaddress(B.getnewaddress(address_type="p2sh-segwit"), v)
+            self.log.debug(f"Making payment of {v} FRC to legacy")
+            A.sendtoaddress(B.getnewaddress(address_type="legacy"), v)
 
         for v in generate_payment_values(3, 10):
-            self.log.debug(f"Making payment of {v} BTC to bech32")
+            self.log.debug(f"Making payment of {v} FRC to bech32")
             A.sendtoaddress(B.getnewaddress(address_type="bech32"), v)
 
         for v in generate_payment_values(3, 10):
-            self.log.debug(f"Making payment of {v} BTC to bech32m")
-            A.sendtoaddress(B.getnewaddress(address_type="bech32m"), v)
+            self.log.debug(f"Making payment of {v} FRC to bech32")
+            A.sendtoaddress(B.getnewaddress(address_type="bech32"), v)
 
         self.generate(A, 1)
 
