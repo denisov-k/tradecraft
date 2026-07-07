@@ -63,10 +63,10 @@ struct DBVal {
     CAmount total_amount;
     CAmount total_subsidy;
     CAmount block_demurrage;
-    CAmount total_unspendable_value;
-    CAmount total_prevout_spent_amount;
-    CAmount total_new_outputs_ex_coinbase_amount;
-    CAmount total_coinbase_amount;
+    arith_uint256 total_unspendable_value;
+    arith_uint256 total_prevout_spent_amount;
+    arith_uint256 total_new_outputs_ex_coinbase_amount;
+    arith_uint256 total_coinbase_amount;
     CAmount total_unspendables_genesis_block;
     CAmount total_unspendables_bip30;
     CAmount total_unspendables_scripts;
@@ -74,7 +74,8 @@ struct DBVal {
 
     SERIALIZE_METHODS(DBVal, obj)
     {
-        uint256 prevout_spent, new_outputs, coinbase;
+        uint256 unspendable_value, prevout_spent, new_outputs, coinbase;
+        SER_WRITE(obj, unspendable_value = ArithToUint256(obj.total_unspendable_value));
         SER_WRITE(obj, prevout_spent = ArithToUint256(obj.total_prevout_spent_amount));
         SER_WRITE(obj, new_outputs = ArithToUint256(obj.total_new_outputs_ex_coinbase_amount));
         SER_WRITE(obj, coinbase = ArithToUint256(obj.total_coinbase_amount));
@@ -86,15 +87,16 @@ struct DBVal {
         READWRITE(obj.total_amount);
         READWRITE(obj.total_subsidy);
         READWRITE(obj.block_demurrage);
-        READWRITE(obj.total_unspendable_value);
-        READWRITE(obj.total_prevout_spent_amount);
-        READWRITE(obj.total_new_outputs_ex_coinbase_amount);
-        READWRITE(obj.total_coinbase_amount);
+        READWRITE(unspendable_value);
+        READWRITE(prevout_spent);
+        READWRITE(new_outputs);
+        READWRITE(coinbase);
         READWRITE(obj.total_unspendables_genesis_block);
         READWRITE(obj.total_unspendables_bip30);
         READWRITE(obj.total_unspendables_scripts);
         READWRITE(obj.total_unspendables_unclaimed_rewards);
 
+        SER_READ(obj, obj.total_unspendable_value = UintToArith256(unspendable_value));
         SER_READ(obj, obj.total_prevout_spent_amount = UintToArith256(prevout_spent));
         SER_READ(obj, obj.total_new_outputs_ex_coinbase_amount = UintToArith256(new_outputs));
         SER_READ(obj, obj.total_coinbase_amount = UintToArith256(coinbase));
@@ -146,7 +148,7 @@ bool CoinStatsIndex::CustomAppend(const interfaces::BlockInfo& block)
             const bool is_coinbase{tx->IsCoinBase()};
 
             // Skip duplicate txid coinbase transactions (BIP30).
-            if (IsBIP30Unspendable(*pindex) && tx->IsCoinBase()) {
+            if (is_coinbase && IsBIP30Unspendable(block.hash, block.height)) {
                 m_total_unspendable_value += block_subsidy;
                 m_total_unspendables_bip30 += block_subsidy;
                 continue;
@@ -154,9 +156,9 @@ bool CoinStatsIndex::CustomAppend(const interfaces::BlockInfo& block)
 
             for (uint32_t j = 0; j < tx->vout.size(); ++j) {
                 const CTxOut& out{tx->vout[j]};
-                Coin coin{out, tx->lock_height, block.height, tx->IsCoinBase()};
+                Coin coin{out, tx->lock_height, block.height, is_coinbase};
                 COutPoint outpoint{tx->GetHash(), j};
-                CAmount adjusted = coin.GetPresentValue(pindex->nHeight);
+                CAmount adjusted = coin.GetPresentValue(block.height);
 
                 // Skip unspendable coins
                 if (coin.out.scriptPubKey.IsUnspendable()) {
@@ -188,7 +190,7 @@ bool CoinStatsIndex::CustomAppend(const interfaces::BlockInfo& block)
                 for (size_t j = 0; j < tx_undo.vprevout.size(); ++j) {
                     Coin coin{tx_undo.vprevout[j]};
                     COutPoint outpoint{tx->vin[j].prevout.hash, tx->vin[j].prevout.n};
-                    CAmount adjusted = coin.GetPresentValue(pindex->nHeight);
+                    CAmount adjusted = coin.GetPresentValue(block.height);
 
                     RemoveCoinHash(m_muhash, outpoint, coin);
 
@@ -211,9 +213,10 @@ bool CoinStatsIndex::CustomAppend(const interfaces::BlockInfo& block)
     // new outputs + coinbase + current unspendable amount this means
     // the miner did not claim the full block reward. Unclaimed block
     // rewards are also unspendable.
-    const CAmount unclaimed_rewards{(m_total_prevout_spent_amount + m_total_subsidy) - (m_total_new_outputs_ex_coinbase_amount + m_total_coinbase_amount + m_total_unspendable_value)};
+    const arith_uint256 unclaimed_rewards{(m_total_prevout_spent_amount + m_total_subsidy) - (m_total_new_outputs_ex_coinbase_amount + m_total_coinbase_amount + m_total_unspendable_value)};
+    assert(unclaimed_rewards <= arith_uint256(std::numeric_limits<CAmount>::max()));
     m_total_unspendable_value += unclaimed_rewards;
-    m_total_unspendables_unclaimed_rewards += unclaimed_rewards;
+    m_total_unspendables_unclaimed_rewards += static_cast<CAmount>(unclaimed_rewards.GetLow64());
 
     std::pair<uint256, DBVal> value;
     value.first = block.hash;
@@ -398,8 +401,8 @@ bool CoinStatsIndex::RevertBlock(const interfaces::BlockInfo& block)
         for (uint32_t j = 0; j < tx->vout.size(); ++j) {
             const CTxOut& out{tx->vout[j]};
             COutPoint outpoint{tx->GetHash(), j};
-            Coin coin{out, tx->lock_height, pindex->nHeight, tx->IsCoinBase()};
-            CAmount adjusted = coin.GetPresentValue(pindex->nHeight);
+            Coin coin{out, tx->lock_height, block.height, is_coinbase};
+            CAmount adjusted = coin.GetPresentValue(block.height);
 
             // Skip unspendable coins
             if (coin.out.scriptPubKey.IsUnspendable()) {
@@ -431,7 +434,7 @@ bool CoinStatsIndex::RevertBlock(const interfaces::BlockInfo& block)
             for (size_t j = 0; j < tx_undo.vprevout.size(); ++j) {
                 Coin coin{tx_undo.vprevout[j]};
                 COutPoint outpoint{tx->vin[j].prevout.hash, tx->vin[j].prevout.n};
-                CAmount adjusted = coin.GetPresentValue(pindex->nHeight);
+                CAmount adjusted = coin.GetPresentValue(block.height);
 
                 ApplyCoinHash(m_muhash, outpoint, coin);
 
@@ -448,9 +451,10 @@ bool CoinStatsIndex::RevertBlock(const interfaces::BlockInfo& block)
     m_block_demurrage = read_out.second.block_demurrage;
     m_total_amount += m_block_demurrage;
 
-    const CAmount unclaimed_rewards{(m_total_new_outputs_ex_coinbase_amount + m_total_coinbase_amount + m_total_unspendable_value) - (m_total_prevout_spent_amount + m_total_subsidy)};
+    const arith_uint256 unclaimed_rewards{(m_total_new_outputs_ex_coinbase_amount + m_total_coinbase_amount + m_total_unspendable_value) - (m_total_prevout_spent_amount + m_total_subsidy)};
+    assert(unclaimed_rewards <= arith_uint256(std::numeric_limits<CAmount>::max()));
     m_total_unspendable_value -= unclaimed_rewards;
-    m_total_unspendables_unclaimed_rewards -= unclaimed_rewards;
+    m_total_unspendables_unclaimed_rewards -= static_cast<CAmount>(unclaimed_rewards.GetLow64());
 
     // Check that the rolled back internal values are consistent with the DB read out
     uint256 out;

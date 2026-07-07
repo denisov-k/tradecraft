@@ -64,14 +64,6 @@ struct CCoinsStats {
     CAmount total_subsidy{0};
     //! Residual value of spent coins removed from circulation due to demurrage
     CAmount block_demurrage{0};
-    //! Total cumulative value of unspendable coins up to and including this block
-    CAmount total_unspendable_value{0};
-    //! Total cumulative amount of prevouts spent up to and including this block
-    CAmount total_prevout_spent_amount{0};
-    //! Total cumulative amount of outputs created up to and including this block
-    CAmount total_new_outputs_ex_coinbase_amount{0};
-    //! Total cumulative amount of coinbase outputs up to and including this block
-    CAmount total_coinbase_amount{0};
     //! The unspendable coinbase amount from the genesis block
     CAmount total_unspendables_genesis_block{0};
     //! The two unspendable coinbase outputs total amount caused by BIP30
@@ -83,6 +75,8 @@ struct CCoinsStats {
 
     // Despite containing amounts the following values use a uint256 type to prevent overflowing
 
+    //! Total cumulative value of unspendable coins up to and including this block
+    arith_uint256 total_unspendable_value{0};
     //! Total cumulative amount of prevouts spent up to and including this block
     arith_uint256 total_prevout_spent_amount{0};
     //! Total cumulative amount of outputs created up to and including this block
