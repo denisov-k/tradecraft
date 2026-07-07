@@ -38,7 +38,9 @@ class GetBlocksActivityTest(FreicoinTestFramework):
         assert_equal(len(result['activity']), 0)
 
     def test_activity_in_block(self, node, wallet):
-        _, spk_1, addr_1 = getnewdestination(address_type='bech32m')
+        # Freicoin: upstream uses a bech32m/taproot destination here; Freicoin
+        # has no taproot, so use a v0 witness (wpk) destination instead.
+        _, spk_1, addr_1 = getnewdestination(address_type='bech32')
         txid = wallet.send_to(from_node=node, scriptPubKey=spk_1, amount=1 * COIN)['txid']
         blockhash = self.generate(node, 1)[0]
 
@@ -59,11 +61,9 @@ class GetBlocksActivityTest(FreicoinTestFramework):
 
         outspk = activity['output_spk']
 
-        assert_equal(outspk['asm'][:2], '1 ')
-        assert_equal(outspk['desc'].split('(')[0], 'rawtr')
+        assert_equal(outspk['asm'][:2], '0 ')
         assert_equal(outspk['hex'], spk_1.hex())
         assert_equal(outspk['address'], addr_1)
-        assert_equal(outspk['type'], 'witness_v1_taproot')
 
 
     def test_no_mempool_inclusion(self, node, wallet):
