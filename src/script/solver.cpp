@@ -1,7 +1,18 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <pubkey.h>
 #include <script/interpreter.h>
@@ -24,10 +35,10 @@ std::string GetTxnOutputType(TxoutType t)
     case TxoutType::SCRIPTHASH: return "scripthash";
     case TxoutType::MULTISIG: return "multisig";
     case TxoutType::NULL_DATA: return "nulldata";
+    case TxoutType::UNSPENDABLE: return "unspendable";
     case TxoutType::ANCHOR: return "anchor";
-    case TxoutType::WITNESS_V0_KEYHASH: return "witness_v0_keyhash";
-    case TxoutType::WITNESS_V0_SCRIPTHASH: return "witness_v0_scripthash";
-    case TxoutType::WITNESS_V1_TAPROOT: return "witness_v1_taproot";
+    case TxoutType::WITNESS_V0_SHORTHASH: return "witness_v0_shorthash";
+    case TxoutType::WITNESS_V0_LONGHASH: return "witness_v0_longhash";
     case TxoutType::WITNESS_UNKNOWN: return "witness_unknown";
     } // no default case, so the compiler can warn about missing cases
     assert(false);
@@ -153,28 +164,21 @@ TxoutType Solver(const CScript& scriptPubKey, std::vector<std::vector<unsigned c
 
     int witnessversion;
     std::vector<unsigned char> witnessprogram;
-    if (scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
-        if (witnessversion == 0 && witnessprogram.size() == WITNESS_V0_KEYHASH_SIZE) {
+    if (scriptPubKey.IsWitnessProgram(&witnessversion, &witnessprogram)) {
+        if (witnessversion == 0 && witnessprogram.size() == WITNESS_V0_SHORTHASH_SIZE) {
             vSolutionsRet.push_back(std::move(witnessprogram));
-            return TxoutType::WITNESS_V0_KEYHASH;
+            return TxoutType::WITNESS_V0_SHORTHASH;
         }
-        if (witnessversion == 0 && witnessprogram.size() == WITNESS_V0_SCRIPTHASH_SIZE) {
+        if (witnessversion == 0 && witnessprogram.size() == WITNESS_V0_LONGHASH_SIZE) {
             vSolutionsRet.push_back(std::move(witnessprogram));
-            return TxoutType::WITNESS_V0_SCRIPTHASH;
-        }
-        if (witnessversion == 1 && witnessprogram.size() == WITNESS_V1_TAPROOT_SIZE) {
-            vSolutionsRet.push_back(std::move(witnessprogram));
-            return TxoutType::WITNESS_V1_TAPROOT;
+            return TxoutType::WITNESS_V0_LONGHASH;
         }
         if (scriptPubKey.IsPayToAnchor()) {
             return TxoutType::ANCHOR;
         }
-        if (witnessversion != 0) {
-            vSolutionsRet.push_back(std::vector<unsigned char>{(unsigned char)witnessversion});
-            vSolutionsRet.push_back(std::move(witnessprogram));
-            return TxoutType::WITNESS_UNKNOWN;
-        }
-        return TxoutType::NONSTANDARD;
+        vSolutionsRet.push_back(std::vector<unsigned char>{(unsigned char)witnessversion});
+        vSolutionsRet.push_back(std::move(witnessprogram));
+        return TxoutType::WITNESS_UNKNOWN;
     }
 
     // Provably prunable, data-carrying output
@@ -183,7 +187,11 @@ TxoutType Solver(const CScript& scriptPubKey, std::vector<std::vector<unsigned c
     // byte passes the IsPushOnly() test we don't care what exactly is in the
     // script.
     if (scriptPubKey.size() >= 1 && scriptPubKey[0] == OP_RETURN && scriptPubKey.IsPushOnly(scriptPubKey.begin()+1)) {
-        return TxoutType::NULL_DATA;
+        if (scriptPubKey.size() == 1) {
+            return TxoutType::UNSPENDABLE;
+        } else {
+            return TxoutType::NULL_DATA;
+        }
     }
 
     std::vector<unsigned char> data;
