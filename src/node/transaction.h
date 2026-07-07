@@ -1,9 +1,20 @@
 // Copyright (c) 2017-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_NODE_TRANSACTION_H
-#define BITCOIN_NODE_TRANSACTION_H
+#ifndef FREICOIN_NODE_TRANSACTION_H
+#define FREICOIN_NODE_TRANSACTION_H
 
 #include <common/messages.h>
 #include <policy/feerate.h>
@@ -20,7 +31,7 @@ class BlockManager;
 struct NodeContext;
 
 /** Maximum fee rate for sendrawtransaction and testmempoolaccept RPC calls.
- * Also used by the GUI when broadcasting a completed PSBT.
+ * Also used by the GUI when broadcasting a completed PST.
  * By default, a transaction with a fee rate higher than this will be rejected
  * by these RPCs and the GUI. This can be overridden with the maxfeerate argument.
  */
@@ -66,4 +77,4 @@ static const CAmount DEFAULT_MAX_BURN_AMOUNT{0};
 CTransactionRef GetTransaction(const CBlockIndex* const block_index, const CTxMemPool* const mempool, const uint256& hash, uint256& hashBlock, const BlockManager& blockman);
 } // namespace node
 
-#endif // BITCOIN_NODE_TRANSACTION_H
+#endif // FREICOIN_NODE_TRANSACTION_H

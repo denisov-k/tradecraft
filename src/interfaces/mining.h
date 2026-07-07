@@ -1,19 +1,32 @@
 // Copyright (c) 2024 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_INTERFACES_MINING_H
-#define BITCOIN_INTERFACES_MINING_H
+#ifndef FREICOIN_INTERFACES_MINING_H
+#define FREICOIN_INTERFACES_MINING_H
 
+#include <coins.h>                  // for Coin
 #include <consensus/amount.h>       // for CAmount
 #include <interfaces/types.h>       // for BlockRef
 #include <node/types.h>             // for BlockCreateOptions
 #include <primitives/block.h>       // for CBlock, CBlockHeader
-#include <primitives/transaction.h> // for CTransactionRef
+#include <primitives/transaction.h> // for CTransactionRef, COutPoint
 #include <stdint.h>                 // for int64_t
 #include <uint256.h>                // for uint256
 #include <util/time.h>              // for MillisecondsDouble
 
+#include <map>      // for map
 #include <memory>   // for unique_ptr, shared_ptr
 #include <optional> // for optional
 #include <vector>   // for vector
@@ -42,6 +55,11 @@ public:
     virtual CTransactionRef getCoinbaseTx() = 0;
     virtual std::vector<unsigned char> getCoinbaseCommitment() = 0;
     virtual int getWitnessCommitmentIndex() = 0;
+
+    //! Freicoin: whether the template ends with a block-final transaction.
+    virtual bool hasBlockFinalTx() = 0;
+    //! Freicoin: UTXO records for the block-final transaction inputs.
+    virtual std::map<COutPoint, Coin> getBlockFinalTxCoinMap() = 0;
 
     /**
      * Compute merkle path to the coinbase transaction
@@ -103,4 +121,4 @@ std::unique_ptr<Mining> MakeMining(node::NodeContext& node);
 
 } // namespace interfaces
 
-#endif // BITCOIN_INTERFACES_MINING_H
+#endif // FREICOIN_INTERFACES_MINING_H
