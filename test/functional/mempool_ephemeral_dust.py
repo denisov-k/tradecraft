@@ -215,7 +215,9 @@ class EphemeralDustTest(FreicoinTestFramework):
 
         res = self.nodes[0].submitpackage([dusty_tx["hex"], sweep_tx["hex"]])
         assert_equal(res["package_msg"], "transaction failed")
-        assert_equal(res["tx-results"][dusty_tx["wtxid"]]["error"], "min relay fee not met, 0 < 147")
+        # Freicoin tx serialization (lock_height, no marker/flag padding) gives
+        # the two-output dust package tx a vsize of 143, not 147.
+        assert_equal(res["tx-results"][dusty_tx["wtxid"]]["error"], "min relay fee not met, 0 < 143")
 
         assert_equal(self.nodes[0].getrawmempool(), [])
 

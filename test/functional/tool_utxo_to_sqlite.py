@@ -42,11 +42,12 @@ def calculate_muhash_from_sqlite_utxos(filename):
     muhash = MuHash3072()
     con = sqlite3.connect(filename)
     cur = con.cursor()
-    for (txid_hex, vout, value, coinbase, height, spk_hex) in cur.execute("SELECT * FROM utxos"):
+    for (txid_hex, vout, value, coinbase, height, refheight, spk_hex) in cur.execute("SELECT * FROM utxos"):
         # serialize UTXO for MuHash (see function `TxOutSer` in the  coinstats module)
         utxo_ser = COutPoint(int(txid_hex, 16), vout).serialize()
         utxo_ser += (height * 2 + coinbase).to_bytes(4, 'little')
         utxo_ser += CTxOut(value, bytes.fromhex(spk_hex)).serialize()
+        utxo_ser += refheight.to_bytes(4, 'little')
         muhash.insert(utxo_ser)
     con.close()
     return muhash.digest()[::-1].hex()

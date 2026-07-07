@@ -106,7 +106,7 @@ class RPCWhitelistTest(FreicoinTestFramework):
 
         # Replace file configurations
         self.nodes[0].replace_in_config([("rpcwhitelistdefault=0", "rpcwhitelistdefault=1")])
-        with open(self.nodes[0].datadir_path / "bitcoin.conf", 'a', encoding='utf8') as f:
+        with open(self.nodes[0].datadir_path / "freicoin.conf", 'a', encoding='utf8') as f:
             f.write("rpcwhitelist=__cookie__:getblockcount,getblockchaininfo,getmempoolinfo,stop\n")
         self.restart_node(0)
 

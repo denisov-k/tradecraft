@@ -28,6 +28,7 @@ from test_framework.address import (
     key_to_p2pkh,
     key_to_p2wpk,
     output_key_to_p2tr,
+    script_to_p2wsh,
 )
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.descriptors import descsum_create
@@ -48,6 +49,7 @@ from test_framework.messages import (
 from test_framework.script import (
     CScript,
     OP_1,
+    OP_DROP,
     OP_NOP,
     OP_RETURN,
     OP_TRUE,
@@ -67,6 +69,75 @@ from test_framework.util import (
 from test_framework.wallet_util import generate_keypair
 
 DEFAULT_FEE = Decimal("0.0001")
+
+# Exponentiation ladder of 0.64 fixed-point demurrage factors for power-of-2
+# block intervals, as (high word, low word) pairs. Mirrors the k32 table in
+# TimeAdjustValueForward (consensus/amount.cpp).
+_DEMURRAGE_K32 = (
+    (0xfffff000, 0x00000000),
+    (0xffffe000, 0x01000000),
+    (0xffffc000, 0x05ffffc0),
+    (0xffff8000, 0x1bfffc80),
+    (0xffff0000, 0x77ffdd00),
+    (0xfffe0001, 0xeffeca00),
+    (0xfffc0007, 0xdff5d409),
+    (0xfff8001f, 0xbfaca8a2),
+    (0xfff0007f, 0x7d5d5a6a),
+    (0xffe001fe, 0xeacb48a8),
+    (0xffc007fd, 0x55dfda2a),
+    (0xff801ff6, 0xad5499cd),
+    (0xff007fcd, 0x67f98aad),
+    (0xfe01fe9b, 0x74f0943e),
+    (0xfc07f540, 0x767d2a82),
+    (0xf81fab16, 0x3dc15990),
+    (0xf07d5f65, 0xf9604ac9),
+    (0xe1eb5045, 0x80b6ebf7),
+    (0xc75f7b66, 0xa5075def),
+    (0x9b459576, 0x663bbb3e),
+    (0x5e2d55e7, 0x48e27ab4),
+    (0x22a5531d, 0x29a95916),
+    (0x04b054d7, 0xfda49c4d),
+    (0x0015fc1b, 0x85085be9),
+    (0x000001e3, 0x54ca043c),
+    (0x00000000, 0x00039089),
+)
+
+
+def time_adjust_value_forward(initial_value, distance):
+    """Bit-exact port of TimeAdjustValueForward (consensus/amount.cpp):
+    the demurrage-adjusted present value of `initial_value` (in kria)
+    after `distance` blocks."""
+    assert distance >= 0
+    sign = (initial_value > 0) - (initial_value < 0)
+    value = abs(initial_value)
+    if distance == 0:
+        return initial_value
+    if distance >= (1 << 26):
+        return 0
+
+    # Raise the per-block rate (1 - 2^-20) to the distance'th power via the
+    # exponentiation ladder, keeping the first 64 fractional bits (w0, w1)
+    # and reproducing the C++ term-by-term truncation exactly.
+    w0 = w1 = None
+    for bit in range(26):
+        if distance & (1 << bit):
+            k0, k1 = _DEMURRAGE_K32[bit]
+            if w0 is None:
+                w0, w1 = k0, k1
+                continue
+            acc = k1 * w0 + k0 * w1
+            acc = (acc >> 32) + k0 * w0
+            w1 = acc & 0xffffffff
+            w0 = (acc >> 32) & 0xffffffff
+
+    # Multiply the value by the aggregate demurrage factor.
+    v0 = value >> 32
+    v1 = value & 0xffffffff
+    acc = (w1 * v1) >> 32
+    acc += w1 * v0 + w0 * v1
+    acc = (acc >> 32) + w0 * v0
+    return sign * acc
+
 
 class MiniWalletMode(Enum):
     """Determines the transaction type the MiniWallet is creating and spending.
@@ -99,6 +170,13 @@ class MiniWallet:
         self._test_node = test_node
         self._utxos = []
         self._mode = mode
+        # In -bitcoinmode the node disables demurrage, so input values must
+        # not be time-adjusted when building transactions.
+        try:
+            with open(test_node.datadir_path / "freicoin.conf", encoding="utf8") as f:
+                self._time_adjust = "bitcoinmode=1" not in f.read()
+        except OSError:
+            self._time_adjust = True
 
         assert isinstance(mode, MiniWalletMode)
         if mode == MiniWalletMode.RAW_OP_TRUE:
@@ -112,7 +190,14 @@ class MiniWallet:
             pub_key = self._priv_key.get_pubkey()
             self._scriptPubKey = key_to_p2pk_script(pub_key.get_bytes())
         elif mode == MiniWalletMode.ADDRESS_OP_TRUE:
-            self._address = ADDRESS_FCRT1_P2WSH_OP_TRUE
+            if tag_name is None:
+                self._witness_script = CScript([OP_TRUE])
+                self._address = ADDRESS_FCRT1_P2WSH_OP_TRUE
+            else:
+                # tag-specific anyone-can-spend witness script, so that
+                # UTXOs of tagged wallet instances don't mix with others
+                self._witness_script = CScript([hash256(tag_name.encode()), OP_DROP, OP_TRUE])
+                self._address = script_to_p2wsh(self._witness_script)
             self._scriptPubKey = address_to_scriptpubkey(self._address)
 
         # When the pre-mined test framework chain is used, it contains coinbase
@@ -202,7 +287,7 @@ class MiniWallet:
         elif self._mode == MiniWalletMode.ADDRESS_OP_TRUE:
             tx.wit.vtxinwit = [CTxInWitness()] * len(tx.vin)
             for i in tx.wit.vtxinwit:
-                i.scriptWitness.stack = [b"\x00" + CScript([OP_TRUE]), b""]
+                i.scriptWitness.stack = [b"\x00" + self._witness_script, b""]
         else:
             assert False
 
@@ -329,8 +414,12 @@ class MiniWallet:
         if lockheight <= 0:
             lockheight = max([utxo['refheight'] for utxo in utxos_to_spend])
 
-        # calculate output amount
-        inputs_value_total = sum([int(COIN * utxo['value']) for utxo in utxos_to_spend])
+        # calculate output amount; input coins older than the tx lock_height
+        # are only worth their demurrage-adjusted present value
+        if self._time_adjust:
+            inputs_value_total = sum([time_adjust_value_forward(int(COIN * utxo['value']), lockheight - utxo['refheight']) for utxo in utxos_to_spend])
+        else:
+            inputs_value_total = sum([int(COIN * utxo['value']) for utxo in utxos_to_spend])
         outputs_value_total = inputs_value_total - fee_per_output * num_outputs
         amount_per_output = amount_per_output or (outputs_value_total // num_outputs)
         assert amount_per_output > 0
@@ -384,7 +473,11 @@ class MiniWallet:
         assert fee >= 0
         # calculate fee
         if self._mode in (MiniWalletMode.RAW_OP_TRUE, MiniWalletMode.ADDRESS_OP_TRUE):
-            vsize = Decimal(100)  # anyone-can-spend
+            # anyone-can-spend; a tagged witness script adds 34 witness bytes
+            # (a 32-byte push + OP_DROP) over the plain OP_TRUE one
+            vsize = Decimal(100)
+            if getattr(self, "_witness_script", None) is not None and len(self._witness_script) > 1:
+                vsize = Decimal(109)
         elif self._mode == MiniWalletMode.RAW_P2PK:
             vsize = Decimal(172)  # P2PK (73 bytes scriptSig + 35 bytes scriptPubKey + 64 bytes other)
         else:

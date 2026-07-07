@@ -43,9 +43,7 @@ TOO_MANY_ARGS = 'error: too many arguments (maximum 2 for nblocks and maxtries)'
 WALLET_NOT_LOADED = 'Requested wallet does not exist or is not loaded'
 WALLET_NOT_SPECIFIED = (
     "Multiple wallets are loaded. Please select which wallet to use by requesting the RPC "
-    "through the /wallet/<walletname> URI path. Or for the CLI, specify the \"-rpcwallet=<walletname>\" "
-    "option before the command (run \"bitcoin-cli -h\" for help or \"bitcoin-cli listwallets\" to see "
-    "which wallets are currently loaded)."
+    "through the /wallet/<walletname> URI path."
 )
 
 

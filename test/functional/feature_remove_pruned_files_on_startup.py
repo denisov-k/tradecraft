@@ -72,7 +72,9 @@ class FeatureRemovePrunedFilesOnStartupTest(FreicoinTestFramework):
             ]
             return sorted(ls)
 
-        assert_equal(len(ls_files()), 4)
+        # Freicoin blocks carry a block-final tx, so 800 blocks span one more
+        # -fastprune file pair than upstream (files 2-4 survive the prune).
+        assert_equal(len(ls_files()), 6)
         self.restart_node(0, extra_args=self.extra_args[0] + ["-reindex"])
         assert_equal(self.nodes[0].getblockcount(), 0)
         self.stop_node(0)  # Stop node to flush the two newly created files

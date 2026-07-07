@@ -105,8 +105,9 @@ class DustRelayFeeTest(FreicoinTestFramework):
         assert sweep_txid in mempool_entries
         assert_equal(len(mempool_entries), 2)
 
-        # Wipe extra arg to reset dust relay
-        self.restart_node(0, extra_args=[])
+        # Wipe extra arg to reset dust relay (keep the datacarrier/baremultisig
+        # args from set_test_params; Freicoin defaults -datacarrier off)
+        self.restart_node(0, extra_args=['-datacarrier=1', '-permitbaremultisig'])
 
         assert_equal(self.nodes[0].getrawmempool(), [])
 
