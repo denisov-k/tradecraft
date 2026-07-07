@@ -1,16 +1,29 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_PRIMITIVES_TRANSACTION_H
-#define BITCOIN_PRIMITIVES_TRANSACTION_H
+#ifndef FREICOIN_PRIMITIVES_TRANSACTION_H
+#define FREICOIN_PRIMITIVES_TRANSACTION_H
 
 #include <attributes.h>
 #include <consensus/amount.h>
 #include <primitives/transaction_identifier.h> // IWYU pragma: export
 #include <script/script.h>
 #include <serialize.h>
+#include <streams.h>
+#include <uint256.h>
 
 #include <compare>
 #include <cstddef>
@@ -138,8 +151,23 @@ public:
  */
 class CTxOut
 {
+/**
+ * The vast majority of the accesses to CTxOut::nValue are from unit
+ * tests. Rather than update all of these to use the setters/getters
+ * and jump through hoops to set exact values, we make the nValue
+ * field public when compiling unit tests.
+ */
+#ifdef FREICOIN_TEST
 public:
+#else
+protected:
+    /* The TxOutCompression struct (defined in src/compressor.h) needs to
+     * read/write the nValue field. */
+    friend struct TxOutCompression;
+#endif
     CAmount nValue;
+
+public:
     CScript scriptPubKey;
 
     CTxOut()
@@ -162,6 +190,67 @@ public:
         return (nValue == -1);
     }
 
+    /**
+     * The value of an input in freicoin is adjusted based on the
+     * difference between the reference height of the transaction
+     * which spends it and the transaction which created it. In
+     * updating any code from bitcoin which accesses a CTxOut's
+     * nValue, the value might need to be adjusted to either the
+     * spending reference height or the present. In order to make sure
+     * that no instance gets through accidentally unconsidered, we
+     * force the access of this value through getters and setters.
+     *
+     * Generally speaking, access to CTxOut::nValue falls into one of
+     * three categories:
+     *
+     * 1. Historical records or reports of a transaction, which are
+     *    recorded at the reference height of the transaction. The
+     *    historical fact that a transaction debits 10frc from a
+     *    wallet does not change over time.
+     *
+     * 2. Inputs to other transactions, in which case the value of the
+     *    input is decayed by demurrage according to the difference
+     *    between the two transactions reference heights.
+     *
+     * 3. Lists of unspent outputs or wallet balances, which report
+     *    each unspent output as decayed to present value (the height
+     *    of the next block), for coin selection and available balance
+     *    purposes.
+     *
+     * The only odd thing worth noting is the interaction between
+     * account or address views. With Freicoin the decision was made
+     * that these views provide an aggregate view of historical
+     * records. So if you wallet has received 100frc that is an
+     * average of 1 year old, `getbalance` would return ~95frc, but
+     * `listreceivedbyaddress` would show a per-address view of
+     * historical amounts which if summed would yield 100frc.
+     */
+    CTxOut& SetReferenceValue(const CAmount& value_in)
+    {
+        nValue = value_in;
+        return *this;
+    }
+
+    /* There are a few points in transaction creation logic where a
+     * CTxOut::nValue is adjusted by some amount, e.g. to subtract
+     * fee. This method exists to make those scenarios a little bit
+     * more concise. */
+    CTxOut& AdjustReferenceValue(const CAmount& delta)
+    {
+        nValue += delta;
+        return *this;
+    }
+
+    CAmount GetReferenceValue() const
+    {
+        return nValue;
+    }
+
+    CAmount GetTimeAdjustedValue(int relative_depth) const
+    {
+        return ::GetTimeAdjustedValue(nValue, relative_depth);
+    }
+
     friend bool operator==(const CTxOut& a, const CTxOut& b)
     {
         return (a.nValue       == b.nValue &&
@@ -169,6 +258,24 @@ public:
     }
 
     std::string ToString() const;
+};
+
+struct SpentOutput
+{
+    //! unspent transaction output
+    CTxOut out;
+
+    //! lock height of the CTransaction, which serves double-duty as
+    //! the reference height for demurrage calculations
+    uint32_t refheight;
+
+    CAmount GetPresentValue(uint32_t height) const {
+        return out.GetTimeAdjustedValue((int)height - refheight);
+    }
+
+    SpentOutput() : refheight(0) { }
+    SpentOutput(const CTxOut &_out, uint32_t _refheight) : out(_out), refheight(_refheight) { }
+    SpentOutput(CTxOut &&_out, uint32_t _refheight) : out(_out), refheight(_refheight) { }
 };
 
 struct CMutableTransaction;
@@ -186,16 +293,18 @@ static constexpr TransactionSerParams TX_NO_WITNESS{.allow_witness = false};
  * - std::vector<CTxIn> vin
  * - std::vector<CTxOut> vout
  * - uint32_t nLockTime
+ * - uint32_t lock_height
  *
  * Extended transaction serialization format:
  * - uint32_t version
- * - unsigned char dummy = 0x00
+ * - unsigned char dummy = 0xff
  * - unsigned char flags (!= 0)
  * - std::vector<CTxIn> vin
  * - std::vector<CTxOut> vout
  * - if (flags & 1):
  *   - CScriptWitness scriptWitness; (deserialized into CTxIn)
  * - uint32_t nLockTime
+ * - uint32_t lock_height
  */
 template<typename Stream, typename TxType>
 void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& params)
@@ -206,19 +315,64 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
     unsigned char flags = 0;
     tx.vin.clear();
     tx.vout.clear();
-    /* Try to read the vin. In case the dummy is there, this will be read as an empty vector. */
-    s >> tx.vin;
-    if (tx.vin.size() == 0 && fAllowWitness) {
-        /* We read a dummy or an empty vin. */
+    // We don't know yet if we are reading a CompactSize for the number of CTxIn
+    // structures, or the dummy value indicating an extended transaction
+    // serialization format.
+    unsigned char dummy = 0;
+    s >> dummy;
+    // It is impossible to have more than 2^32 inputs in a single transaction,
+    // so we use 0xff (which in the CompactSize format indicates a 64-bit number
+    // follows) as the sentinal value indicating extended serialization format.
+    if (dummy == 255) {
+        // The dummy value is followed by an integer flags field indicating
+        // which extended parameters are present. This provides an easy
+        // mechanism to extend the format in the future without a similarly
+        // convoluted serialization hack. So far only one bit is used, to
+        // indicate the presence of the input witness vector.
         s >> flags;
-        if (flags != 0) {
-            s >> tx.vin;
-            s >> tx.vout;
-        }
-    } else {
-        /* We read a non-empty vin. Assume a normal vout follows. */
-        s >> tx.vout;
+        // The input vector is read by the other branch (since the "dummy" value
+        // was the first part of its size), so to synchronize state we also read
+        // in the vector here.
+        s >> tx.vin;
     }
+    // Otherwise what we read was the first byte of a CompactSize integer
+    // serialization of the length of the input vector in the legacy transaction
+    // serialization structure.
+    else {
+        // There are some data validation checks performed when deserializing a
+        // CompactSize number (see serialization.h).  Since we don't want to
+        // replicate that logic, we create a temporary data stream with the
+        // contents of the CompactSize object, and deserialize from there. It
+        // would be better to use lookahead, but not all streams support that
+        // capability.
+        DataStream ds;
+        ser_writedata8(ds, dummy);
+        if (dummy >= 253) {
+            // Either 16 bit, or the first half of 32-bit number.
+            uint16_t lo = 0;
+            s >> lo;
+            ds << lo;
+        }
+        if (dummy == 254) {
+            // Second half of 32-bit number.
+            uint16_t hi = 0;
+            s >> hi;
+            ds << hi;
+        }
+        uint64_t size = ReadCompactSize(ds);
+        if (!ds.empty()) {
+            // This should never happen.
+            throw std::ios_base::failure("Unexpected data while decoding compact size.");
+        }
+        // We now read in the CTxIn data into the vin vector. Since we already
+        // read the size off the stream we inline that vector serialization.
+        tx.vin.resize(size);
+        for (CTxIn& txin : tx.vin) {
+            s >> txin;
+        }
+    }
+    // Reading vout requires no special handling.
+    s >> tx.vout;
     if ((flags & 1) && fAllowWitness) {
         /* The witness flag is present, and we support witnesses. */
         flags ^= 1;
@@ -235,6 +389,11 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
         throw std::ios_base::failure("Unknown transaction optional data");
     }
     s >> tx.nLockTime;
+    if (tx.version != 1 || tx.vin.size() != 1 || !tx.vin[0].prevout.IsNull()) {
+        s >> tx.lock_height;
+    } else {
+        tx.lock_height = 0;
+    }
 }
 
 template<typename Stream, typename TxType>
@@ -253,8 +412,8 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
     }
     if (flags) {
         /* Use extended format in case witnesses are to be serialized. */
-        std::vector<CTxIn> vinDummy;
-        s << vinDummy;
+        unsigned char dummy = 255;
+        s << dummy;
         s << flags;
     }
     s << tx.vin;
@@ -265,12 +424,15 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
         }
     }
     s << tx.nLockTime;
+    if (tx.version != 1 || tx.vin.size() != 1 || !tx.vin[0].prevout.IsNull()) {
+        s << tx.lock_height;
+    }
 }
 
 template<typename TxType>
 inline CAmount CalculateOutputValue(const TxType& tx)
 {
-    return std::accumulate(tx.vout.cbegin(), tx.vout.cend(), CAmount{0}, [](CAmount sum, const auto& txout) { return sum + txout.nValue; });
+    return std::accumulate(tx.vout.cbegin(), tx.vout.cend(), CAmount{0}, [](CAmount sum, const auto& txout) { return sum + txout.GetReferenceValue(); });
 }
 
 
@@ -292,6 +454,7 @@ public:
     const std::vector<CTxOut> vout;
     const uint32_t version;
     const uint32_t nLockTime;
+    const uint32_t lock_height;
 
 private:
     /** Memory only. */
@@ -330,6 +493,14 @@ public:
 
     // Return sum of txouts.
     CAmount GetValueOut() const;
+    // GetValueIn() is a method on CCoinsViewCache, because
+    // inputs must be known to compute value in.
+
+    CAmount GetPresentValueOfOutput(int n, uint32_t height) const
+    {
+        assert(n < (int)vout.size());
+        return vout[n].GetTimeAdjustedValue((int)height - lock_height);
+    }
 
     /**
      * Calculate the total transaction size in bytes, including witness data.
@@ -360,6 +531,7 @@ struct CMutableTransaction
     std::vector<CTxOut> vout;
     uint32_t version;
     uint32_t nLockTime;
+    uint32_t lock_height;
 
     explicit CMutableTransaction();
     explicit CMutableTransaction(const CTransaction& tx);
@@ -403,4 +575,4 @@ struct CMutableTransaction
 typedef std::shared_ptr<const CTransaction> CTransactionRef;
 template <typename Tx> static inline CTransactionRef MakeTransactionRef(Tx&& txIn) { return std::make_shared<const CTransaction>(std::forward<Tx>(txIn)); }
 
-#endif // BITCOIN_PRIMITIVES_TRANSACTION_H
+#endif // FREICOIN_PRIMITIVES_TRANSACTION_H
