@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_PROTOCOL_H
-#define BITCOIN_PROTOCOL_H
+#ifndef FREICOIN_PROTOCOL_H
+#define FREICOIN_PROTOCOL_H
 
 #include <kernel/messagestartchars.h> // IWYU pragma: export
 #include <netaddress.h>
@@ -54,7 +65,7 @@ public:
 };
 
 /**
- * Bitcoin protocol message types. When adding new message types, don't forget
+ * Freicoin protocol message types. When adding new message types, don't forget
  * to update ALL_NET_MESSAGE_TYPES below.
  */
 namespace NetMsgType {
@@ -255,7 +266,7 @@ inline constexpr const char* CFCHECKPT{"cfcheckpt"};
 /**
  * Indicates that a node prefers to relay transactions via wtxid, rather than
  * txid.
- * @since protocol version 70016 as described by BIP 339.
+ * @since protocol version 70017 as described by BIP 339.
  */
 inline constexpr const char* WTXIDRELAY{"wtxidrelay"};
 /**
@@ -311,7 +322,7 @@ enum ServiceFlags : uint64_t {
     // Nothing
     NODE_NONE = 0,
     // NODE_NETWORK means that the node is capable of serving the complete block chain. It is currently
-    // set by all Bitcoin Core non pruned nodes, and is unset by SPV clients or other light clients.
+    // set by all Freicoin non pruned nodes, and is unset by SPV clients or other light clients.
     NODE_NETWORK = (1 << 0),
     // NODE_BLOOM means the node is capable and willing to handle bloom-filtered connections.
     NODE_BLOOM = (1 << 2),
@@ -331,7 +342,7 @@ enum ServiceFlags : uint64_t {
 
     // Bits 24-31 are reserved for temporary experiments. Just pick a bit that
     // isn't getting used, or one not being used much, and notify the
-    // bitcoin-development mailing list. Remember that service bits are just
+    // freicoin-development mailing list. Remember that service bits are just
     // unauthenticated advertisements, so your code must be robust against
     // collisions and other cases where nodes may be advertising a service they
     // do not actually support. Other service bits should be allocated via the
@@ -528,4 +539,4 @@ public:
 /** Convert a TX/WITNESS_TX/WTX CInv to a GenTxid. */
 GenTxid ToGenTxid(const CInv& inv);
 
-#endif // BITCOIN_PROTOCOL_H
+#endif // FREICOIN_PROTOCOL_H

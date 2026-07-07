@@ -1,9 +1,20 @@
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_NETADDRESS_H
-#define BITCOIN_NETADDRESS_H
+#ifndef FREICOIN_NETADDRESS_H
+#define FREICOIN_NETADDRESS_H
 
 #include <compat/compat.h>
 #include <crypto/siphash.h>
@@ -70,11 +81,11 @@ static const std::array<uint8_t, 6> TORV2_IN_IPV6_PREFIX{
 
 /// Prefix of an IPv6 address when it contains an embedded "internal" address.
 /// Used when (un)serializing addresses in ADDRv1 format (pre-BIP155).
-/// The prefix comes from 0xFD + SHA256("bitcoin")[0:5].
+/// The prefix comes from 0xFD + SHA256("freicoin")[0:5].
 /// Such dummy IPv6 addresses are guaranteed to not be publicly routable as they
 /// fall under RFC4193's fc00::/7 subnet allocated to unique-local addresses.
 static const std::array<uint8_t, 6> INTERNAL_IN_IPV6_PREFIX{
-    0xFD, 0x6B, 0x88, 0xC0, 0x87, 0x24 // 0xFD + sha256("bitcoin")[0:5].
+    0xFD, 0x6B, 0x88, 0xC0, 0x87, 0x24 // 0xFD + sha256("freicoin")[0:5].
 };
 
 /// All CJDNS addresses start with 0xFC. See
@@ -595,4 +606,4 @@ private:
     const uint64_t m_salt_k1;
 };
 
-#endif // BITCOIN_NETADDRESS_H
+#endif // FREICOIN_NETADDRESS_H
