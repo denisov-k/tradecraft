@@ -1,6 +1,17 @@
 // Copyright (c) 2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or https://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <addresstype.h>
 #include <bench/bench.h>
@@ -67,14 +78,15 @@ void generateFakeBlock(const CChainParams& params,
     // Create block
     CBlock block;
     CMutableTransaction coinbase_tx;
+    coinbase_tx.lock_height = tip.tip_height;
     coinbase_tx.vin.resize(1);
     coinbase_tx.vin[0].prevout.SetNull();
     coinbase_tx.vout.resize(2);
     coinbase_tx.vout[0].scriptPubKey = coinbase_out_script;
-    coinbase_tx.vout[0].nValue = 48 * COIN;
+    coinbase_tx.vout[0].SetReferenceValue(49 * COIN);
     coinbase_tx.vin[0].scriptSig = CScript() << ++tip.tip_height << OP_0;
     coinbase_tx.vout[1].scriptPubKey = coinbase_out_script; // extra output
-    coinbase_tx.vout[1].nValue = 1 * COIN;
+    coinbase_tx.vout[1].SetReferenceValue(1 * COIN);
 
     // Fill the coinbase with outputs that don't belong to the wallet in order to benchmark
     // AvailableCoins' behavior with unnecessary TXOs
@@ -135,22 +147,28 @@ static void WalletCreateTx(benchmark::Bench& bench, const OutputType output_type
     }
 
     // Check available balance
-    auto bal = WITH_LOCK(wallet.cs_wallet, return wallet::AvailableCoins(wallet).GetTotalAmount()); // Cache
-    assert(bal == 49 * COIN * (chain_size - COINBASE_MATURITY));
+    int next_height = test_setup->m_node.chain->getHeight().value() + 1;
+    auto bal = WITH_LOCK(wallet.cs_wallet, return wallet::AvailableCoins(wallet, next_height).GetTotalAmount()); // Cache
+    CAmount total{0};
+    for (unsigned int height = 0; height < chain_size - COINBASE_MATURITY; ++height) {
+        total += GetTimeAdjustedValue(49 * COIN, next_height - height);
+        total += GetTimeAdjustedValue( 1 * COIN, next_height - height);
+    }
+    assert(bal == total);
 
     wallet::CCoinControl coin_control;
     coin_control.m_allow_other_inputs = allow_other_inputs;
 
     CAmount target = 0;
     if (preset_inputs) {
-        // Select inputs, each has 48 BTC
+        // Select inputs, each has 49 FRC
         wallet::CoinFilterParams filter_coins;
         filter_coins.max_count = preset_inputs->num_of_internal_inputs;
         const auto& res = WITH_LOCK(wallet.cs_wallet,
-                                    return wallet::AvailableCoins(wallet, /*coinControl=*/nullptr, /*feerate=*/std::nullopt, filter_coins));
+                                    return wallet::AvailableCoins(wallet, next_height, /*coinControl=*/nullptr, /*feerate=*/std::nullopt, filter_coins));
         for (int i=0; i < preset_inputs->num_of_internal_inputs; i++) {
             const auto& coin{res.coins.at(output_type)[i]};
-            target += coin.txout.nValue;
+            target += coin.adjusted;
             coin_control.Select(coin.outpoint);
         }
     }
@@ -161,7 +179,7 @@ static void WalletCreateTx(benchmark::Bench& bench, const OutputType output_type
 
     bench.run([&] {
         LOCK(wallet.cs_wallet);
-        const auto& tx_res = CreateTransaction(wallet, recipients, /*change_pos=*/std::nullopt, coin_control);
+        const auto& tx_res = CreateTransaction(wallet, recipients, /*refheight=*/chain_size, /*change_pos=*/std::nullopt, coin_control);
         assert(tx_res);
     });
 }
@@ -195,12 +213,18 @@ static void AvailableCoins(benchmark::Bench& bench, const std::vector<OutputType
     }
 
     // Check available balance
-    auto bal = WITH_LOCK(wallet.cs_wallet, return wallet::AvailableCoins(wallet).GetTotalAmount()); // Cache
-    assert(bal == 49 * COIN * (chain_size - COINBASE_MATURITY));
+    int next_height = test_setup->m_node.chain->getHeight().value() + 1;
+    auto bal = WITH_LOCK(wallet.cs_wallet, return wallet::AvailableCoins(wallet, next_height).GetTotalAmount()); // Cache
+    CAmount total{0};
+    for (unsigned int height = 0; height < chain_size - COINBASE_MATURITY; ++height) {
+        total += GetTimeAdjustedValue(49 * COIN, next_height - height);
+        total += GetTimeAdjustedValue( 1 * COIN, next_height - height);
+    }
+    assert(bal == total);
 
     bench.run([&] {
         LOCK(wallet.cs_wallet);
-        const auto& res = wallet::AvailableCoins(wallet);
+        const auto& res = wallet::AvailableCoins(wallet, next_height);
         assert(res.All().size() == (chain_size - COINBASE_MATURITY) * 2);
     });
 }
@@ -211,7 +235,7 @@ static void WalletCreateTxUseOnlyPresetInputs(benchmark::Bench& bench) { WalletC
 static void WalletCreateTxUsePresetInputsAndCoinSelection(benchmark::Bench& bench) { WalletCreateTx(bench, OutputType::BECH32, /*allow_other_inputs=*/true,
                                                                                                     {{/*num_of_internal_inputs=*/4}}); }
 
-static void WalletAvailableCoins(benchmark::Bench& bench) { AvailableCoins(bench, {OutputType::BECH32M}); }
+static void WalletAvailableCoins(benchmark::Bench& bench) { AvailableCoins(bench, {OutputType::BECH32}); }
 
 BENCHMARK(WalletCreateTxUseOnlyPresetInputs, benchmark::PriorityLevel::LOW)
 BENCHMARK(WalletCreateTxUsePresetInputsAndCoinSelection, benchmark::PriorityLevel::LOW)

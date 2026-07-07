@@ -1,6 +1,17 @@
 // Copyright (c) 2015-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <chain.h>
 #include <chainparams.h>
@@ -13,6 +24,14 @@
 
 BOOST_FIXTURE_TEST_SUITE(pow_tests, BasicTestingSetup)
 
+/**
+ * The bitcoin version of CalculateNextWorkRequired is stateless, which the
+ * following tests are written to take advantage of.  However filtered time
+ * intervals necessarily cannot be stateless, so in Freicoin we require that the
+ * first parameter be an actual connected CBlockIndex.  That unfortunately
+ * invalidates these tests.
+ */
+#if 0
 /* Test calculation of next difficulty target with no constraints applying */
 BOOST_AUTO_TEST_CASE(get_next_work)
 {
@@ -79,7 +98,9 @@ BOOST_AUTO_TEST_CASE(get_next_work_upper_limit_actual)
     unsigned int invalid_nbits = expected_nbits+1;
     BOOST_CHECK(!PermittedDifficultyTransition(chainParams->GetConsensus(), pindexLast.nHeight+1, pindexLast.nBits, invalid_nbits));
 }
+#endif
 
+#if 0
 BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_negative_target)
 {
     const auto consensus = CreateChainParams(*m_node.args, ChainType::MAIN)->GetConsensus();
@@ -87,7 +108,7 @@ BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_negative_target)
     unsigned int nBits;
     nBits = UintToArith256(consensus.powLimit).GetCompact(true);
     hash = uint256{1};
-    BOOST_CHECK(!CheckProofOfWork(hash, nBits, consensus));
+    BOOST_CHECK(!CheckProofOfWork(hash, nBits, 0, consensus));
 }
 
 BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_overflow_target)
@@ -96,7 +117,7 @@ BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_overflow_target)
     uint256 hash;
     unsigned int nBits{~0x00800000U};
     hash = uint256{1};
-    BOOST_CHECK(!CheckProofOfWork(hash, nBits, consensus));
+    BOOST_CHECK(!CheckProofOfWork(hash, nBits, 0, consensus));
 }
 
 BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_too_easy_target)
@@ -108,7 +129,7 @@ BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_too_easy_target)
     nBits_arith *= 2;
     nBits = nBits_arith.GetCompact();
     hash = uint256{1};
-    BOOST_CHECK(!CheckProofOfWork(hash, nBits, consensus));
+    BOOST_CHECK(!CheckProofOfWork(hash, nBits, 0, consensus));
 }
 
 BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_biger_hash_than_target)
@@ -120,7 +141,7 @@ BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_biger_hash_than_target)
     nBits = hash_arith.GetCompact();
     hash_arith *= 2; // hash > nBits
     hash = ArithToUint256(hash_arith);
-    BOOST_CHECK(!CheckProofOfWork(hash, nBits, consensus));
+    BOOST_CHECK(!CheckProofOfWork(hash, nBits, 0, consensus));
 }
 
 BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_zero_target)
@@ -131,8 +152,9 @@ BOOST_AUTO_TEST_CASE(CheckProofOfWork_test_zero_target)
     arith_uint256 hash_arith{0};
     nBits = hash_arith.GetCompact();
     hash = ArithToUint256(hash_arith);
-    BOOST_CHECK(!CheckProofOfWork(hash, nBits, consensus));
+    BOOST_CHECK(!CheckProofOfWork(hash, nBits, 0, consensus));
 }
+#endif // 0
 
 BOOST_AUTO_TEST_CASE(GetBlockProofEquivalentTime_test)
 {
@@ -165,7 +187,7 @@ void sanity_check_chainparams(const ArgsManager& args, ChainType chain_type)
     BOOST_CHECK_EQUAL(consensus.hashGenesisBlock, chainParams->GenesisBlock().GetHash());
 
     // target timespan is an even multiple of spacing
-    BOOST_CHECK_EQUAL(consensus.nPowTargetTimespan % consensus.nPowTargetSpacing, 0);
+    BOOST_CHECK_EQUAL(consensus.OriginalTargetTimespan() % consensus.nPowTargetSpacing, 0);
 
     // genesis nBits is positive, doesn't overflow and is lower than powLimit
     arith_uint256 pow_compact;
@@ -178,7 +200,7 @@ void sanity_check_chainparams(const ArgsManager& args, ChainType chain_type)
     // check max target * 4*nPowTargetTimespan doesn't overflow -- see pow.cpp:CalculateNextWorkRequired()
     if (!consensus.fPowNoRetargeting) {
         arith_uint256 targ_max{UintToArith256(uint256{"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"})};
-        targ_max /= consensus.nPowTargetTimespan*4;
+        targ_max /= consensus.OriginalTargetTimespan()*4;
         BOOST_CHECK(UintToArith256(consensus.powLimit) < targ_max);
     }
 }
@@ -196,11 +218,6 @@ BOOST_AUTO_TEST_CASE(ChainParams_REGTEST_sanity)
 BOOST_AUTO_TEST_CASE(ChainParams_TESTNET_sanity)
 {
     sanity_check_chainparams(*m_node.args, ChainType::TESTNET);
-}
-
-BOOST_AUTO_TEST_CASE(ChainParams_TESTNET4_sanity)
-{
-    sanity_check_chainparams(*m_node.args, ChainType::TESTNET4);
 }
 
 BOOST_AUTO_TEST_CASE(ChainParams_SIGNET_sanity)

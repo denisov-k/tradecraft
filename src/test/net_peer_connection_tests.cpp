@@ -1,6 +1,17 @@
 // Copyright (c) 2023-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <chainparams.h>
 #include <compat/compat.h>
@@ -65,6 +76,7 @@ void AddPeer(NodeId& id, std::vector<CNode*>& nodes, PeerManager& peerman, Connm
     const bool inbound_onion{onion_peer && conn_type == ConnectionType::INBOUND};
 
     nodes.emplace_back(new CNode{++id,
+                                 DEFAULT_MAX_PEER_CONNECTIONS,
                                  /*sock=*/nullptr,
                                  addr,
                                  /*nKeyedNetGroupIn=*/0,
@@ -92,7 +104,7 @@ BOOST_FIXTURE_TEST_CASE(test_addnode_getaddednodeinfo_and_connection_detection, 
 
     // Connect a localhost peer.
     {
-        ASSERT_DEBUG_LOG("Added connection to 127.0.0.1:8333 peer=1");
+        ASSERT_DEBUG_LOG("Added connection to 127.0.0.1:8639 peer=1");
         AddPeer(id, nodes, *peerman, *connman, ConnectionType::MANUAL, /*onion_peer=*/false, /*address=*/"127.0.0.1");
         BOOST_REQUIRE(nodes.back() != nullptr);
     }
@@ -101,7 +113,7 @@ BOOST_FIXTURE_TEST_CASE(test_addnode_getaddednodeinfo_and_connection_detection, 
     // address that resolves to multiple IPs, including that of the connected peer.
     // The connection attempt should consistently fail due to the check in ConnectNode().
     for (int i = 0; i < 10; ++i) {
-        ASSERT_DEBUG_LOG("Not opening a connection to localhost, already connected to 127.0.0.1:8333");
+        ASSERT_DEBUG_LOG("Not opening a connection to localhost, already connected to 127.0.0.1:8639");
         BOOST_CHECK(!connman->ConnectNodePublic(*peerman, "localhost", ConnectionType::MANUAL));
     }
 

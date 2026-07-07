@@ -1,6 +1,17 @@
 // Copyright (c) 2023 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <addresstype.h>
 #include <bench/bench.h>
@@ -12,6 +23,7 @@
 #include <script/script.h>
 #include <script/sign.h>
 #include <script/signingprovider.h>
+#include <script/solver.h>
 #include <span.h>
 #include <test/util/random.h>
 #include <uint256.h>
@@ -40,12 +52,13 @@ static void SignTransactionSingleInput(benchmark::Bench& bench, InputType input_
         CKeyID key_id = pubkey.GetID();
         keystore.keys.emplace(key_id, privkey);
         keystore.pubkeys.emplace(key_id, pubkey);
+        WitnessV0ScriptEntry entry(/*version=*/0, GetScriptForRawPubKey(pubkey));
+        keystore.witscripts.emplace(entry.GetShortHash(), entry);
 
         // Create specified locking script type
         CScript prev_spk;
         switch (input_type) {
-        case InputType::P2WPKH: prev_spk = GetScriptForDestination(WitnessV0KeyHash(pubkey)); break;
-        case InputType::P2TR:   prev_spk = GetScriptForDestination(WitnessV1Taproot(XOnlyPubKey{pubkey})); break;
+        case InputType::P2WPKH: prev_spk = GetScriptForDestination(WitnessV0ShortHash(/*version=*/0, pubkey)); break;
         default: assert(false);
         }
         prev_spks.push_back(prev_spk);
@@ -63,7 +76,7 @@ static void SignTransactionSingleInput(benchmark::Bench& bench, InputType input_
         CMutableTransaction tx{unsigned_tx};
         std::map<COutPoint, Coin> coins;
         const CScript& prev_spk = prev_spks[(iter++) % prev_spks.size()];
-        coins[prevout] = Coin(CTxOut(10000, prev_spk), /*nHeightIn=*/100, /*fCoinBaseIn=*/false);
+        coins[prevout] = Coin(CTxOut(10000, prev_spk), /*refheight=*/1, /*nHeightIn=*/100, /*fCoinBaseIn=*/false);
         std::map<int, bilingual_str> input_errors;
         bool complete = SignTransaction(tx, &keystore, coins, SIGHASH_ALL, input_errors);
         assert(complete);
@@ -71,7 +84,6 @@ static void SignTransactionSingleInput(benchmark::Bench& bench, InputType input_
 }
 
 static void SignTransactionECDSA(benchmark::Bench& bench)   { SignTransactionSingleInput(bench, InputType::P2WPKH); }
-static void SignTransactionSchnorr(benchmark::Bench& bench) { SignTransactionSingleInput(bench, InputType::P2TR);   }
 
 static void SignSchnorrTapTweakBenchmark(benchmark::Bench& bench, bool use_null_merkle_root)
 {
@@ -101,6 +113,5 @@ static void SignSchnorrWithNullMerkleRoot(benchmark::Bench& bench)
 }
 
 BENCHMARK(SignTransactionECDSA, benchmark::PriorityLevel::HIGH);
-BENCHMARK(SignTransactionSchnorr, benchmark::PriorityLevel::HIGH);
 BENCHMARK(SignSchnorrWithMerkleRoot, benchmark::PriorityLevel::HIGH);
 BENCHMARK(SignSchnorrWithNullMerkleRoot, benchmark::PriorityLevel::HIGH);

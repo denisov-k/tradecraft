@@ -1,6 +1,17 @@
-// Copyright (c) 2023-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2023 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <coins.h>
 #include <crypto/sha256.h>
@@ -72,7 +83,7 @@ struct PrecomputedData
                 std::copy(hash.begin(), hash.begin() + 20, coins[i].out.scriptPubKey.begin() + 2);
                 coins[i].out.scriptPubKey[12] = OP_EQUAL;
                 break;
-            case 2: /* P2WPKH */
+            case 2: /* P2WPK */
                 coins[i].out.scriptPubKey.resize(22);
                 coins[i].out.scriptPubKey[0] = OP_0;
                 coins[i].out.scriptPubKey[1] = 20;
@@ -93,7 +104,7 @@ struct PrecomputedData
             }
             /* Hash again to construct nValue and fCoinBase. */
             CSHA256().Write(PREFIX_M, 1).Write(ser, sizeof(ser)).Finalize(hash.begin());
-            coins[i].out.nValue = CAmount(hash.GetUint64(0) % MAX_MONEY);
+            coins[i].out.SetReferenceValue(CAmount(hash.GetUint64(0) % MAX_MONEY));
             coins[i].fCoinBase = (hash.GetUint64(1) & 7) == 0;
             coins[i].nHeight = 0; /* Real nHeight used in simulation is set dynamically. */
         }
@@ -163,7 +174,7 @@ public:
     std::unique_ptr<CCoinsViewCursor> Cursor() const final { return {}; }
     size_t EstimateSize() const final { return m_data.size(); }
 
-    bool BatchWrite(CoinsViewCacheCursor& cursor, const uint256&) final
+    bool BatchWrite(CoinsViewCacheCursor& cursor, const uint256&, const BlockFinalTxEntry&) final
     {
         for (auto it{cursor.Begin()}; it != cursor.End(); it = cursor.NextAndMaybeErase(*it)) {
             if (it->second.IsDirty()) {

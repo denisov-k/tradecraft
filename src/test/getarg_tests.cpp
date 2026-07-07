@@ -1,6 +1,17 @@
 // Copyright (c) 2012-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <common/args.h>
 #include <common/settings.h>
@@ -28,7 +39,7 @@ void ResetArgs(ArgsManager& local_args, const std::string& strArg)
     }
 
     // Insert dummy executable name:
-    vecArg.insert(vecArg.begin(), "testbitcoin");
+    vecArg.insert(vecArg.begin(), "testfreicoin");
 
     // Convert to char*:
     std::vector<const char*> vecChar;
@@ -312,60 +323,60 @@ BOOST_AUTO_TEST_CASE(patharg)
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), win_root_path);
 #endif
 
-    const fs::path absolute_path{"/home/user/.bitcoin"};
-    ResetArgs(local_args, "-dir=/home/user/.bitcoin");
+    const fs::path absolute_path{"/home/user/.freicoin"};
+    ResetArgs(local_args, "-dir=/home/user/.freicoin");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), absolute_path);
 
-    ResetArgs(local_args, "-dir=/root/../home/user/.bitcoin");
+    ResetArgs(local_args, "-dir=/root/../home/user/.freicoin");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), absolute_path);
 
-    ResetArgs(local_args, "-dir=/home/./user/.bitcoin");
+    ResetArgs(local_args, "-dir=/home/./user/.freicoin");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), absolute_path);
 
-    ResetArgs(local_args, "-dir=/home/user/.bitcoin/");
+    ResetArgs(local_args, "-dir=/home/user/.freicoin/");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), absolute_path);
 
-    ResetArgs(local_args, "-dir=/home/user/.bitcoin//");
+    ResetArgs(local_args, "-dir=/home/user/.freicoin//");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), absolute_path);
 
-    ResetArgs(local_args, "-dir=/home/user/.bitcoin/.");
+    ResetArgs(local_args, "-dir=/home/user/.freicoin/.");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), absolute_path);
 
-    ResetArgs(local_args, "-dir=/home/user/.bitcoin/./");
+    ResetArgs(local_args, "-dir=/home/user/.freicoin/./");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), absolute_path);
 
-    ResetArgs(local_args, "-dir=/home/user/.bitcoin/.//");
+    ResetArgs(local_args, "-dir=/home/user/.freicoin/.//");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), absolute_path);
 
-    const fs::path relative_path{"user/.bitcoin"};
-    ResetArgs(local_args, "-dir=user/.bitcoin");
+    const fs::path relative_path{"user/.freicoin"};
+    ResetArgs(local_args, "-dir=user/.freicoin");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), relative_path);
 
-    ResetArgs(local_args, "-dir=somewhere/../user/.bitcoin");
+    ResetArgs(local_args, "-dir=somewhere/../user/.freicoin");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), relative_path);
 
-    ResetArgs(local_args, "-dir=user/./.bitcoin");
+    ResetArgs(local_args, "-dir=user/./.freicoin");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), relative_path);
 
-    ResetArgs(local_args, "-dir=user/.bitcoin/");
+    ResetArgs(local_args, "-dir=user/.freicoin/");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), relative_path);
 
-    ResetArgs(local_args, "-dir=user/.bitcoin//");
+    ResetArgs(local_args, "-dir=user/.freicoin//");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), relative_path);
 
-    ResetArgs(local_args, "-dir=user/.bitcoin/.");
+    ResetArgs(local_args, "-dir=user/.freicoin/.");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), relative_path);
 
-    ResetArgs(local_args, "-dir=user/.bitcoin/./");
+    ResetArgs(local_args, "-dir=user/.freicoin/./");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), relative_path);
 
-    ResetArgs(local_args, "-dir=user/.bitcoin/.//");
+    ResetArgs(local_args, "-dir=user/.freicoin/.//");
     BOOST_CHECK_EQUAL(local_args.GetPathArg("-dir"), relative_path);
 
     // Check negated and default argument handling. Specifying an empty argument
     // is the same as not specifying the argument. This is convenient for
     // scripting so later command line arguments can override earlier command
-    // line arguments or bitcoin.conf values. Currently the -dir= case cannot be
+    // line arguments or freicoin.conf values. Currently the -dir= case cannot be
     // distinguished from -dir case with no assignment, but #16545 would add the
     // ability to distinguish these in the future (and treat the no-assign case
     // like an imperative command or an error).

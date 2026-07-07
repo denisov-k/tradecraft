@@ -1,6 +1,17 @@
 // Copyright (c) 2019-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <chainparams.h>
 #include <compressor.h>
@@ -57,6 +68,7 @@ FUZZ_TARGET(script, .init = initialize_script)
     if (!is_standard_ret) {
         assert(which_type == TxoutType::NONSTANDARD ||
                which_type == TxoutType::NULL_DATA ||
+               which_type == TxoutType::UNSPENDABLE ||
                which_type == TxoutType::MULTISIG);
     }
     if (which_type == TxoutType::NONSTANDARD) {
@@ -65,8 +77,12 @@ FUZZ_TARGET(script, .init = initialize_script)
     if (which_type == TxoutType::NULL_DATA) {
         assert(script.IsUnspendable());
     }
+    if (which_type == TxoutType::UNSPENDABLE) {
+        assert(script.IsUnspendable());
+    }
     if (script.IsUnspendable()) {
         assert(which_type == TxoutType::NULL_DATA ||
+               which_type == TxoutType::UNSPENDABLE ||
                which_type == TxoutType::NONSTANDARD);
     }
 
@@ -76,10 +92,12 @@ FUZZ_TARGET(script, .init = initialize_script)
         assert(which_type == TxoutType::PUBKEY ||
                which_type == TxoutType::NONSTANDARD ||
                which_type == TxoutType::NULL_DATA ||
+               which_type == TxoutType::UNSPENDABLE ||
                which_type == TxoutType::MULTISIG);
     }
     if (which_type == TxoutType::NONSTANDARD ||
         which_type == TxoutType::NULL_DATA ||
+        which_type == TxoutType::UNSPENDABLE ||
         which_type == TxoutType::MULTISIG) {
         assert(!extract_destination_ret);
     }
@@ -118,14 +136,11 @@ FUZZ_TARGET(script, .init = initialize_script)
             (void)FindAndDelete(script_mut, *other_script);
         }
         const std::vector<std::string> random_string_vector = ConsumeRandomLengthStringVector(fuzzed_data_provider);
-        const uint32_t u32{fuzzed_data_provider.ConsumeIntegral<uint32_t>()};
-        const uint32_t flags{u32 | SCRIPT_VERIFY_P2SH};
         {
             CScriptWitness wit;
             for (const auto& s : random_string_vector) {
                 wit.stack.emplace_back(s.begin(), s.end());
             }
-            (void)CountWitnessSigOps(script, *other_script, &wit, flags);
             wit.SetNull();
         }
     }

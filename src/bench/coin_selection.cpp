@@ -1,6 +1,17 @@
 // Copyright (c) 2012-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bench/bench.h>
 #include <consensus/amount.h>
@@ -45,7 +56,8 @@ static void addCoin(const CAmount& nValue, const CWallet& wallet, std::vector<st
     CMutableTransaction tx;
     tx.nLockTime = nextLockTime++; // so all transactions get different hashes
     tx.vout.resize(1);
-    tx.vout[0].nValue = nValue;
+    tx.vout[0].SetReferenceValue(nValue);
+    tx.lock_height = 1;
     wtxs.push_back(std::make_unique<CWalletTx>(MakeTransactionRef(std::move(tx)), TxStateInactive{}));
 }
 
@@ -74,7 +86,7 @@ static void CoinSelection(benchmark::Bench& bench)
     wallet::CoinsResult available_coins;
     for (const auto& wtx : wtxs) {
         const auto txout = wtx->tx->vout.at(0);
-        available_coins.coins[OutputType::BECH32].emplace_back(COutPoint(wtx->GetHash(), 0), txout, /*depth=*/6 * 24, CalculateMaximumSignedInputSize(txout, &wallet, /*coin_control=*/nullptr), /*solvable=*/true, /*safe=*/true, wtx->GetTxTime(), /*from_me=*/true, /*fees=*/ 0);
+        available_coins.coins[OutputType::BECH32].emplace_back(/*atheight=*/1, wtx->tx->GetPresentValueOfOutput(/*n=*/0, /*refheight=*/1), COutPoint(wtx->GetHash(), 0), SpentOutput{txout, /*refheight=*/1}, /*depth=*/6 * 24, CalculateMaximumSignedInputSize(txout, &wallet, /*coin_control=*/nullptr), /*solvable=*/true, /*safe=*/true, wtx->GetTxTime(), /*from_me=*/true, /*fees=*/ 0);
     }
 
     const CoinEligibilityFilter filter_standard(1, 6, 0);
@@ -104,8 +116,8 @@ static void add_coin(const CAmount& nValue, int nInput, std::vector<OutputGroup>
 {
     CMutableTransaction tx;
     tx.vout.resize(nInput + 1);
-    tx.vout[nInput].nValue = nValue;
-    COutput output(COutPoint(tx.GetHash(), nInput), tx.vout.at(nInput), /*depth=*/0, /*input_bytes=*/-1, /*solvable=*/true, /*safe=*/true, /*time=*/0, /*from_me=*/true, /*fees=*/0);
+    tx.vout[nInput].SetReferenceValue(nValue);
+    COutput output(/*atheight=*/ 1, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 0, /*input_bytes=*/ -1, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ true, /*fees=*/ 0);
     set.emplace_back();
     set.back().Insert(std::make_shared<COutput>(output), /*ancestors=*/ 0, /*descendants=*/ 0);
 }

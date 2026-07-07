@@ -1,6 +1,17 @@
 // Copyright (c) 2020-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <chain.h>
 #include <chainparams.h>
@@ -63,8 +74,8 @@ FUZZ_TARGET(pow, .init = initialize_pow)
         }
         {
             (void)GetBlockProof(current_block);
-            (void)CalculateNextWorkRequired(&current_block, fuzzed_data_provider.ConsumeIntegralInRange<int64_t>(0, std::numeric_limits<int64_t>::max()), consensus_params);
-            if (current_block.nHeight != std::numeric_limits<int>::max() && current_block.nHeight - (consensus_params.DifficultyAdjustmentInterval() - 1) >= 0) {
+            (void)CalculateNextWorkRequired(&current_block, consensus_params);
+            if (current_block.nHeight != std::numeric_limits<int>::max() && current_block.nHeight - (consensus_params.original_adjust_interval - 1) >= 0) {
                 (void)GetNextWorkRequired(&current_block, &(*block_header), consensus_params);
             }
         }
@@ -75,12 +86,6 @@ FUZZ_TARGET(pow, .init = initialize_pow)
             try {
                 (void)GetBlockProofEquivalentTime(*to, *from, *tip, consensus_params);
             } catch (const uint_error&) {
-            }
-        }
-        {
-            const std::optional<uint256> hash = ConsumeDeserializable<uint256>(fuzzed_data_provider);
-            if (hash) {
-                (void)CheckProofOfWorkImpl(*hash, fuzzed_data_provider.ConsumeIntegral<unsigned int>(), consensus_params);
             }
         }
     }
@@ -105,12 +110,12 @@ FUZZ_TARGET(pow_transition, .init = initialize_pow)
         nbits = pow_limit.GetCompact();
     }
     // Create one difficulty adjustment period worth of headers
-    for (int height = 0; height < consensus_params.DifficultyAdjustmentInterval(); ++height) {
+    for (int height = 0; height < consensus_params.original_adjust_interval; ++height) {
         CBlockHeader header;
         header.nVersion = version;
         header.nTime = old_time;
         header.nBits = nbits;
-        if (height == consensus_params.DifficultyAdjustmentInterval() - 1) {
+        if (height == consensus_params.original_adjust_interval - 1) {
             header.nTime = new_time;
         }
         auto current_block{std::make_unique<CBlockIndex>(header)};

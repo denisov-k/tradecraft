@@ -1,11 +1,22 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
  * See https://www.boost.org/doc/libs/1_78_0/libs/test/doc/html/boost_test/adv_scenarios/single_header_customizations/multiple_translation_units.html
  */
-#define BOOST_TEST_MODULE Bitcoin Core Test Suite
+#define BOOST_TEST_MODULE Freicoin Test Suite
 
 #include <boost/test/included/unit_test.hpp>
 
@@ -29,7 +40,7 @@ const std::function<void(const std::string&)> G_TEST_LOG_FUN = [](const std::str
 /**
  * Retrieve the command line arguments from boost.
  * Allows usage like:
- * `test_bitcoin --run_test="net_tests/cnode_listen_port" -- -checkaddrman=1 -printtoconsole=1`
+ * `test_freicoin --run_test="net_tests/cnode_listen_port" -- -checkaddrman=1 -printtoconsole=1`
  * which would return `["-checkaddrman=1", "-printtoconsole=1"]`.
  */
 const std::function<std::vector<const char*>()> G_TEST_COMMAND_LINE_ARGUMENTS = []() {

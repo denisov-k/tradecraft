@@ -1,8 +1,21 @@
-// Copyright (c) 2011-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Unit tests for denial-of-service detection/prevention code
+
+#include <test/util/setup_common.h>
 
 #include <banman.h>
 #include <chainparams.h>
@@ -55,6 +68,7 @@ BOOST_AUTO_TEST_CASE(outbound_slow_chain_eviction)
     CAddress addr1(ip(0xa0b0c001), NODE_NONE);
     NodeId id{0};
     CNode dummyNode1{id++,
+                     DEFAULT_MAX_PEER_CONNECTIONS,
                      /*sock=*/nullptr,
                      addr1,
                      /*nKeyedNetGroupIn=*/0,
@@ -121,6 +135,7 @@ void AddRandomOutboundPeer(NodeId& id, std::vector<CNode*>& vNodes, PeerManager&
     }
 
     vNodes.emplace_back(new CNode{id++,
+                                  DEFAULT_MAX_PEER_CONNECTIONS,
                                   /*sock=*/nullptr,
                                   addr,
                                   /*nKeyedNetGroupIn=*/0,
@@ -151,7 +166,7 @@ BOOST_FIXTURE_TEST_CASE(stale_tip_peer_management, OutboundTest)
 
     const auto time_init{GetTime<std::chrono::seconds>()};
     SetMockTime(time_init);
-    const auto time_later{time_init + 3 * std::chrono::seconds{m_node.chainman->GetConsensus().nPowTargetSpacing} + 1s};
+    const auto time_later{time_init + 3 * m_node.chainman->GetConsensus().AuxPowTargetSpacing() + 1s};
     connman->Init(options);
     std::vector<CNode *> vNodes;
 
@@ -320,6 +335,7 @@ BOOST_AUTO_TEST_CASE(peer_discouragement)
     banman->ClearBanned();
     NodeId id{0};
     nodes[0] = new CNode{id++,
+                         DEFAULT_MAX_PEER_CONNECTIONS,
                          /*sock=*/nullptr,
                          addr[0],
                          /*nKeyedNetGroupIn=*/0,
@@ -340,6 +356,7 @@ BOOST_AUTO_TEST_CASE(peer_discouragement)
     BOOST_CHECK(!banman->IsDiscouraged(other_addr)); // Different address, not discouraged
 
     nodes[1] = new CNode{id++,
+                         DEFAULT_MAX_PEER_CONNECTIONS,
                          /*sock=*/nullptr,
                          addr[1],
                          /*nKeyedNetGroupIn=*/1,
@@ -370,6 +387,7 @@ BOOST_AUTO_TEST_CASE(peer_discouragement)
     // Make sure non-IP peers are discouraged and disconnected properly.
 
     nodes[2] = new CNode{id++,
+                         DEFAULT_MAX_PEER_CONNECTIONS,
                          /*sock=*/nullptr,
                          addr[2],
                          /*nKeyedNetGroupIn=*/1,
@@ -412,6 +430,7 @@ BOOST_AUTO_TEST_CASE(DoS_bantime)
     CAddress addr(ip(0xa0b0c001), NODE_NONE);
     NodeId id{0};
     CNode dummyNode{id++,
+                    DEFAULT_MAX_PEER_CONNECTIONS,
                     /*sock=*/nullptr,
                     addr,
                     /*nKeyedNetGroupIn=*/4,

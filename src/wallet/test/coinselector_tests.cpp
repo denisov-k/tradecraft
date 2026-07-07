@@ -56,7 +56,7 @@ static void add_coin(const CAmount& nValue, int nInput, std::vector<COutput>& se
     tx.vout[nInput].nValue = nValue;
     tx.nLockTime = nextLockTime++;        // so all transactions get different hashes
     tx.lock_height = 1;
-    set.emplace_back(tx.lock_height, nValue, COutPoint(tx.GetHash(), nInput), SpentOutput{tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, /*input_bytes=*/ -1, /*spendable=*/ true, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, /*fees=*/ 0);
+    set.emplace_back(tx.lock_height, nValue, COutPoint(tx.GetHash(), nInput), SpentOutput{tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, /*input_bytes=*/ -1, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, /*fees=*/ 0);
 }
 
 static void add_coin(const CAmount& nValue, int nInput, SelectionResult& result)
@@ -66,7 +66,7 @@ static void add_coin(const CAmount& nValue, int nInput, SelectionResult& result)
     tx.vout[nInput].nValue = nValue;
     tx.nLockTime = nextLockTime++;        // so all transactions get different hashes
     tx.lock_height = 1;
-    COutput output(tx.lock_height, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, /*input_bytes=*/ -1, /*spendable=*/ true, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, /*fees=*/ 0);
+    COutput output(tx.lock_height, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, /*input_bytes=*/ -1, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, /*fees=*/ 0);
     OutputGroup group;
     group.Insert(std::make_shared<COutput>(output), /*ancestors=*/ 0, /*descendants=*/ 0);
     result.AddInput(group);
@@ -79,7 +79,7 @@ static void add_coin(const CAmount& nValue, int nInput, SelectionResult& result,
     tx.vout[nInput].nValue = nValue;
     tx.nLockTime = nextLockTime++;        // so all transactions get different hashes
     tx.lock_height = 1;
-    std::shared_ptr<COutput> coin = std::make_shared<COutput>(tx.lock_height, nValue, COutPoint(tx.GetHash(), nInput), SpentOutput{tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, /*input_bytes=*/ 148, /*spendable=*/ true, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, fee);
+    std::shared_ptr<COutput> coin = std::make_shared<COutput>(tx.lock_height, nValue, COutPoint(tx.GetHash(), nInput), SpentOutput{tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, /*input_bytes=*/ 148, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, fee);
     OutputGroup group;
     group.Insert(coin, /*ancestors=*/ 0, /*descendants=*/ 0);
     coin->long_term_fee = long_term_fee; // group.Insert() will modify long_term_fee, so we need to set it afterwards
@@ -103,7 +103,7 @@ static void add_coin(CoinsResult& available_coins, CWallet& wallet, const CAmoun
     assert(ret.second);
     CWalletTx& wtx = (*ret.first).second;
     const auto& txout = wtx.tx->vout.at(nInput);
-    available_coins.Add(OutputType::BECH32, {tx.lock_height, nValue, COutPoint(wtx.GetHash(), nInput), SpentOutput{txout, /*refheight=*/1}, nAge, custom_size == 0 ? CalculateMaximumSignedInputSize(txout, &wallet, /*coin_control=*/nullptr) : custom_size, /*spendable=*/ true, /*solvable=*/ true, /*safe=*/ true, wtx.GetTxTime(), fIsFromMe, feerate});
+    available_coins.Add(OutputType::BECH32, {tx.lock_height, nValue, COutPoint(wtx.GetHash(), nInput), SpentOutput{txout, /*refheight=*/1}, nAge, custom_size == 0 ? CalculateMaximumSignedInputSize(txout, &wallet, /*coin_control=*/nullptr) : custom_size, /*solvable=*/ true, /*safe=*/ true, wtx.GetTxTime(), fIsFromMe, feerate});
 }
 
 // Helpers
@@ -345,9 +345,9 @@ BOOST_AUTO_TEST_CASE(bnb_sffo_restriction)
     params.m_min_change_target = params.m_cost_of_change + 1;
     // Add spendable coin at the BnB selection upper bound
     CoinsResult available_coins;
-    add_coin(available_coins, *wallet, COIN + params.m_cost_of_change, /*feerate=*/params.m_effective_feerate, /*nAge=*/6, /*fIsFromMe=*/true, /*nInput=*/0, /*spendable=*/true);
-    add_coin(available_coins, *wallet, 0.5 * COIN + params.m_cost_of_change, /*feerate=*/params.m_effective_feerate, /*nAge=*/6, /*fIsFromMe=*/true, /*nInput=*/0, /*spendable=*/true);
-    add_coin(available_coins, *wallet, 0.5 * COIN, /*feerate=*/params.m_effective_feerate, /*nAge=*/6, /*fIsFromMe=*/true, /*nInput=*/0, /*spendable=*/true);
+    add_coin(available_coins, *wallet, COIN + params.m_cost_of_change, /*feerate=*/params.m_effective_feerate, /*nAge=*/6, /*fIsFromMe=*/true, /*nInput=*/0);
+    add_coin(available_coins, *wallet, 0.5 * COIN + params.m_cost_of_change, /*feerate=*/params.m_effective_feerate, /*nAge=*/6, /*fIsFromMe=*/true, /*nInput=*/0);
+    add_coin(available_coins, *wallet, 0.5 * COIN, /*feerate=*/params.m_effective_feerate, /*nAge=*/6, /*fIsFromMe=*/true, /*nInput=*/0);
     // Knapsack will only find a changeless solution on an exact match to the kria, SRD doesn’t look for changeless
     // If BnB were run, it would produce a single input solution with the best waste score
     auto result = WITH_LOCK(wallet->cs_wallet, return SelectCoins(*wallet, available_coins, /*pre_set_inputs=*/{}, COIN, /*coin_control=*/{}, params));
@@ -936,26 +936,26 @@ BOOST_AUTO_TEST_CASE(effective_value_test)
     tx.vout[nInput].nValue = nValue;
 
     // standard case, pass feerate in constructor
-    COutput output1(/*atheight=*/1, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, input_bytes, /*spendable=*/ true, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, feerate);
+    COutput output1(/*atheight=*/1, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, input_bytes, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, feerate);
     const CAmount expected_ev1 = 9852; // 10000 - 148
     BOOST_CHECK_EQUAL(output1.GetEffectiveValue(), expected_ev1);
 
     // input bytes unknown (input_bytes = -1), pass feerate in constructor
-    COutput output2(/*atheight=*/1, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, /*input_bytes=*/ -1, /*spendable=*/ true, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, feerate);
+    COutput output2(/*atheight=*/1, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, /*input_bytes=*/ -1, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, feerate);
     BOOST_CHECK_EQUAL(output2.GetEffectiveValue(), nValue); // The effective value should be equal to the absolute value if input_bytes is -1
 
     // negative effective value, pass feerate in constructor
-    COutput output3(/*atheight=*/1, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, input_bytes, /*spendable=*/ true, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, CFeeRate(100000));
+    COutput output3(/*atheight=*/1, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, input_bytes, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, CFeeRate(100000));
     const CAmount expected_ev3 = -4800; // 10000 - 14800
     BOOST_CHECK_EQUAL(output3.GetEffectiveValue(), expected_ev3);
 
     // standard case, pass fees in constructor
     const CAmount fees = 148;
-    COutput output4(/*atheight=*/1, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, input_bytes, /*spendable=*/ true, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, fees);
+    COutput output4(/*atheight=*/1, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, input_bytes, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, fees);
     BOOST_CHECK_EQUAL(output4.GetEffectiveValue(), expected_ev1);
 
     // input bytes unknown (input_bytes = -1), pass fees in constructor
-    COutput output5(/*atheight=*/1, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, /*input_bytes=*/ -1, /*spendable=*/ true, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, /*fees=*/ 0);
+    COutput output5(/*atheight=*/1, nValue, COutPoint(tx.GetHash(), nInput), {tx.vout.at(nInput), /*refheight=*/ 1}, /*depth=*/ 1, /*input_bytes=*/ -1, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, /*fees=*/ 0);
     BOOST_CHECK_EQUAL(output5.GetEffectiveValue(), nValue); // The effective value should be equal to the absolute value if input_bytes is -1
 }
 

@@ -1,6 +1,17 @@
 // Copyright (c) 2023 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <consensus/validation.h>
 #include <node/context.h>
@@ -48,7 +59,7 @@ void initialize_tx_pool()
     options.coinbase_output_script = P2WSH_EMPTY;
 
     for (int i = 0; i < 2 * COINBASE_MATURITY; ++i) {
-        COutPoint prevout{MineBlock(g_setup->m_node, options)};
+        COutPoint prevout{MineBlock(g_setup->m_node, options).first};
         if (i < COINBASE_MATURITY) {
             // Remember the txids to avoid expensive disk access later on
             g_outpoints_coinbase_init_mature.push_back(prevout);
@@ -298,7 +309,7 @@ FUZZ_TARGET(ephemeral_package_eval, .init = initialize_tx_pool)
                 }
                 // We need newly-created values for the duration of this run
                 for (size_t i = 0; i < tx->vout.size(); ++i) {
-                    outpoints_value[COutPoint(tx->GetHash(), i)] = tx->vout[i].nValue;
+                    outpoints_value[COutPoint(tx->GetHash(), i)] = tx->vout[i].GetReferenceValue();
                 }
                 return tx;
             }());
@@ -342,7 +353,7 @@ FUZZ_TARGET(ephemeral_package_eval, .init = initialize_tx_pool)
 
     node.validation_signals->UnregisterSharedValidationInterface(outpoints_updater);
 
-    WITH_LOCK(::cs_main, tx_pool.check(chainstate.CoinsTip(), chainstate.m_chain.Height() + 1));
+    WITH_LOCK(::cs_main, tx_pool.check(chainstate.CoinsTip(), chainstate.m_chain.Height() + 1, chainstate.m_chainman.GetParams().GetConsensus()));
 }
 
 
@@ -460,7 +471,7 @@ FUZZ_TARGET(tx_package_eval, .init = initialize_tx_pool)
                 }
                 // We need newly-created values for the duration of this run
                 for (size_t i = 0; i < tx->vout.size(); ++i) {
-                    outpoints_value[COutPoint(tx->GetHash(), i)] = tx->vout[i].nValue;
+                    outpoints_value[COutPoint(tx->GetHash(), i)] = tx->vout[i].GetReferenceValue();
                 }
                 return tx;
             }());
@@ -537,6 +548,6 @@ FUZZ_TARGET(tx_package_eval, .init = initialize_tx_pool)
 
     node.validation_signals->UnregisterSharedValidationInterface(outpoints_updater);
 
-    WITH_LOCK(::cs_main, tx_pool.check(chainstate.CoinsTip(), chainstate.m_chain.Height() + 1));
+    WITH_LOCK(::cs_main, tx_pool.check(chainstate.CoinsTip(), chainstate.m_chain.Height() + 1, chainstate.m_chainman.GetParams().GetConsensus()));
 }
 } // namespace

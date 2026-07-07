@@ -1,6 +1,19 @@
 // Copyright (c) 2012-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#include <test/util/setup_common.h>
 
 #include <consensus/tx_verify.h>
 #include <key.h>
@@ -51,7 +64,7 @@ static bool Verify(const CScript& scriptSig, const CScript& scriptPubKey, bool f
     txTo.vin[0].scriptSig = scriptSig;
     txTo.vout[0].nValue = 1;
 
-    return VerifyScript(scriptSig, scriptPubKey, nullptr, fStrict ? SCRIPT_VERIFY_P2SH : SCRIPT_VERIFY_NONE, MutableTransactionSignatureChecker(&txTo, 0, txFrom.vout[0].nValue, MissingDataBehavior::ASSERT_FAIL), &err);
+    return VerifyScript(scriptSig, scriptPubKey, nullptr, fStrict ? SCRIPT_VERIFY_P2SH : SCRIPT_VERIFY_NONE, MutableTransactionSignatureChecker(&txTo, 0, txFrom.vout[0].nValue, txFrom.lock_height, MissingDataBehavior::ASSERT_FAIL), &err);
 }
 
 
@@ -121,7 +134,7 @@ BOOST_AUTO_TEST_CASE(sign)
         {
             CScript sigSave = txTo[i].vin[0].scriptSig;
             txTo[i].vin[0].scriptSig = txTo[j].vin[0].scriptSig;
-            bool sigOK = !CScriptCheck(txFrom.vout[txTo[i].vin[0].prevout.n], CTransaction(txTo[i]), signature_cache, 0, SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC, false, &txdata)().has_value();
+            bool sigOK = !CScriptCheck(txFrom.vout[txTo[i].vin[0].prevout.n], txFrom.lock_height, CTransaction(txTo[i]), signature_cache, 0, SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC, false, &txdata)().has_value();
             if (i == j)
                 BOOST_CHECK_MESSAGE(sigOK, strprintf("VerifySignature %d %d", i, j));
             else
@@ -292,7 +305,7 @@ BOOST_AUTO_TEST_CASE(AreInputsStandard)
         keys.push_back(key[i].GetPubKey());
 
     CMutableTransaction txFrom;
-    txFrom.vout.resize(7);
+    txFrom.vout.resize(10);
 
     // First three are standard:
     CScript pay1 = GetScriptForDestination(PKHash(key[0].GetPubKey()));
@@ -319,14 +332,16 @@ BOOST_AUTO_TEST_CASE(AreInputsStandard)
 
     // vout[4] is max sigops:
     CScript fifteenSigops; fifteenSigops << OP_1;
-    for (unsigned i = 0; i < MAX_P2SH_SIGOPS; i++)
+    for (unsigned i = 0; i < 15; i++)
         fifteenSigops << ToByteVector(key[i%3].GetPubKey());
     fifteenSigops << OP_15 << OP_CHECKMULTISIG;
     BOOST_CHECK(keystore.AddCScript(fifteenSigops));
     txFrom.vout[4].scriptPubKey = GetScriptForDestination(ScriptHash(fifteenSigops));
     txFrom.vout[4].nValue = 5000;
 
-    // vout[5/6] are non-standard because they exceed MAX_P2SH_SIGOPS
+    // vout[5/6] are standard because they do not exceed MAX_P2SH_SIGOPS
+    // even though real scripts using CHECKMULTISIG with that many pubkeys
+    // would exceed the 520 redeem script limit.
     CScript sixteenSigops; sixteenSigops << OP_16 << OP_CHECKMULTISIG;
     BOOST_CHECK(keystore.AddCScript(sixteenSigops));
     txFrom.vout[5].scriptPubKey = GetScriptForDestination(ScriptHash(sixteenSigops));
@@ -335,6 +350,45 @@ BOOST_AUTO_TEST_CASE(AreInputsStandard)
     BOOST_CHECK(keystore.AddCScript(twentySigops));
     txFrom.vout[6].scriptPubKey = GetScriptForDestination(ScriptHash(twentySigops));
     txFrom.vout[6].nValue = 6000;
+
+    // vout[7/8] are standard because they fit within 520 bytes and do
+    // not exceed MAX_P2SH_SIGOPS, even though there is no way for the
+    // same to be said of a normal CHECKMULTISIG doing the same
+    CScript nineteenSigops; nineteenSigops << OP_TRUE << OP_0;
+    for (int i = 0; i < 19; ++i)
+        nineteenSigops << OP_2ROT
+                       << OP_DUP
+                       << OP_HASH160
+                       << ToByteVector(key[i%3].GetPubKey().GetID())
+                       << OP_EQUALVERIFY
+                       << OP_CHECKSIG
+                       << OP_ADD;
+    nineteenSigops << (int64_t)19 << OP_EQUALVERIFY;
+    BOOST_CHECK(nineteenSigops.size() == 518);
+    keystore.AddCScript(nineteenSigops);
+    txFrom.vout[7].scriptPubKey = GetScriptForDestination(ScriptHash(nineteenSigops));
+    txFrom.vout[7].nValue = 7000;
+    CScript twentyoftwenty;
+    for (int i = 0; i < 19; ++i)
+        twentyoftwenty << OP_DUP
+                       << OP_HASH160
+                       << ToByteVector(key[i%3].GetPubKey().GetID())
+                       << OP_EQUALVERIFY
+                       << OP_CHECKSIGVERIFY;
+    twentyoftwenty << ToByteVector(key[20%3].GetPubKey())
+                   << OP_CHECKSIG;
+    BOOST_CHECK(twentyoftwenty.size() == 510);
+    keystore.AddCScript(twentyoftwenty);
+    txFrom.vout[8].scriptPubKey = GetScriptForDestination(ScriptHash(twentyoftwenty));
+    txFrom.vout[8].nValue = 8000;
+
+    // but add one more sigop in vout[9] and it's nonstandard
+    CScript twentyoneSigops(twentyoftwenty);
+    twentyoneSigops << OP_CHECKSIG;
+    BOOST_CHECK(twentyoneSigops.size() == 511);
+    keystore.AddCScript(twentyoneSigops);
+    txFrom.vout[9].scriptPubKey = GetScriptForDestination(ScriptHash(twentyoneSigops));
+    txFrom.vout[9].nValue = 9000;
 
     AddCoins(coins, CTransaction(txFrom), 0);
 
@@ -379,7 +433,7 @@ BOOST_AUTO_TEST_CASE(AreInputsStandard)
     txToNonStd1.vin[0].prevout.hash = txFrom.GetHash();
     txToNonStd1.vin[0].scriptSig << std::vector<unsigned char>(sixteenSigops.begin(), sixteenSigops.end());
 
-    BOOST_CHECK(!::AreInputsStandard(CTransaction(txToNonStd1), coins));
+    BOOST_CHECK(::AreInputsStandard(CTransaction(txToNonStd1), coins));
     BOOST_CHECK_EQUAL(GetP2SHSigOpCount(CTransaction(txToNonStd1), coins), 16U);
 
     CMutableTransaction txToNonStd2;
@@ -391,8 +445,44 @@ BOOST_AUTO_TEST_CASE(AreInputsStandard)
     txToNonStd2.vin[0].prevout.hash = txFrom.GetHash();
     txToNonStd2.vin[0].scriptSig << std::vector<unsigned char>(twentySigops.begin(), twentySigops.end());
 
-    BOOST_CHECK(!::AreInputsStandard(CTransaction(txToNonStd2), coins));
+    BOOST_CHECK(::AreInputsStandard(CTransaction(txToNonStd2), coins));
     BOOST_CHECK_EQUAL(GetP2SHSigOpCount(CTransaction(txToNonStd2), coins), 20U);
+
+    CMutableTransaction txToStd3;
+    txToStd3.vout.resize(1);
+    txToStd3.vout[0].scriptPubKey = GetScriptForDestination(PKHash(key[1].GetPubKey()));
+    txToStd3.vout[0].nValue = 1000;
+    txToStd3.vin.resize(1);
+    txToStd3.vin[0].prevout.n = 7;
+    txToStd3.vin[0].prevout.hash = txFrom.GetHash();
+    txToStd3.vin[0].scriptSig << std::vector<unsigned char>(nineteenSigops.begin(), nineteenSigops.end());
+
+    BOOST_CHECK(::AreInputsStandard(CTransaction(txToStd3), coins));
+    BOOST_CHECK_EQUAL(GetP2SHSigOpCount(CTransaction(txToStd3), coins), 19U);
+
+    CMutableTransaction txToStd4;
+    txToStd4.vout.resize(1);
+    txToStd4.vout[0].scriptPubKey = GetScriptForDestination(PKHash(key[1].GetPubKey()));
+    txToStd4.vout[0].nValue = 1000;
+    txToStd4.vin.resize(1);
+    txToStd4.vin[0].prevout.n = 8;
+    txToStd4.vin[0].prevout.hash = txFrom.GetHash();
+    txToStd4.vin[0].scriptSig << std::vector<unsigned char>(twentyoftwenty.begin(), twentyoftwenty.end());
+
+    BOOST_CHECK(::AreInputsStandard(CTransaction(txToStd4), coins));
+    BOOST_CHECK_EQUAL(GetP2SHSigOpCount(CTransaction(txToStd4), coins), 20U);
+
+    CMutableTransaction txToNonStd5;
+    txToNonStd5.vout.resize(1);
+    txToNonStd5.vout[0].scriptPubKey = GetScriptForDestination(PKHash(key[1].GetPubKey()));
+    txToNonStd5.vout[0].nValue = 1000;
+    txToNonStd5.vin.resize(1);
+    txToNonStd5.vin[0].prevout.n = 9;
+    txToNonStd5.vin[0].prevout.hash = txFrom.GetHash();
+    txToNonStd5.vin[0].scriptSig << std::vector<unsigned char>(twentyoneSigops.begin(), twentyoneSigops.end());
+
+    BOOST_CHECK(!::AreInputsStandard(CTransaction(txToNonStd5), coins));
+    BOOST_CHECK_EQUAL(GetP2SHSigOpCount(CTransaction(txToNonStd5), coins), 21U);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

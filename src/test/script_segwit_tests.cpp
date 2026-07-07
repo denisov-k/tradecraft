@@ -1,6 +1,17 @@
 // Copyright (c) 2012-2021 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <script/script.h>
 #include <test/util/setup_common.h>
@@ -31,9 +42,10 @@ BOOST_AUTO_TEST_CASE(IsPayToWitnessScriptHash_Invalid_NotOp0)
 
 BOOST_AUTO_TEST_CASE(IsPayToWitnessScriptHash_Invalid_Size)
 {
-    uint160 dummy;
+    std::vector<unsigned char> dummy;
+    dummy.resize(17);
     CScript notp2wsh;
-    notp2wsh << OP_0 << ToByteVector(dummy);
+    notp2wsh << OP_0 << dummy;
     BOOST_CHECK(!notp2wsh.IsPayToWitnessScriptHash());
 }
 
@@ -73,7 +85,7 @@ bool IsExpectedWitnessProgram(const CScript& script, const int expectedVersion, 
 {
     int actualVersion;
     std::vector<unsigned char> actualProgram;
-    if (!script.IsWitnessProgram(actualVersion, actualProgram)) {
+    if (!script.IsWitnessProgram(&actualVersion, &actualProgram)) {
         return false;
     }
     BOOST_CHECK_EQUAL(actualVersion, expectedVersion);
@@ -83,9 +95,7 @@ bool IsExpectedWitnessProgram(const CScript& script, const int expectedVersion, 
 
 bool IsNoWitnessProgram(const CScript& script)
 {
-    int dummyVersion;
-    std::vector<unsigned char> dummyProgram;
-    return !script.IsWitnessProgram(dummyVersion, dummyProgram);
+    return !script.IsWitnessProgram();
 }
 
 } // anonymous namespace
@@ -99,15 +109,15 @@ BOOST_AUTO_TEST_CASE(IsWitnessProgram_Valid)
     BOOST_CHECK(IsExpectedWitnessProgram(wit, 0, program));
 
     wit.clear();
-    // Witness programs have a maximum data push of 40 bytes.
-    program.resize(40);
+    // Witness programs have a maximum data push of 75 bytes.
+    program.resize(75);
     wit << OP_16 << program;
-    BOOST_CHECK(IsExpectedWitnessProgram(wit, 16, program));
+    BOOST_CHECK(IsExpectedWitnessProgram(wit, 17, program));
 
     program.resize(32);
     std::vector<unsigned char> bytes = {OP_5, static_cast<unsigned char>(program.size())};
     bytes.insert(bytes.end(), program.begin(), program.end());
-    BOOST_CHECK(IsExpectedWitnessProgram(CScript(bytes.begin(), bytes.end()), 5, program));
+    BOOST_CHECK(IsExpectedWitnessProgram(CScript(bytes.begin(), bytes.end()), 6, program));
 }
 
 BOOST_AUTO_TEST_CASE(IsWitnessProgram_Invalid_Version)
@@ -115,7 +125,7 @@ BOOST_AUTO_TEST_CASE(IsWitnessProgram_Invalid_Version)
     std::vector<unsigned char> program(10);
     CScript nowit;
     nowit << OP_1NEGATE << program;
-    BOOST_CHECK(IsNoWitnessProgram(nowit));
+    BOOST_CHECK(IsExpectedWitnessProgram(nowit, 1, program));
 }
 
 BOOST_AUTO_TEST_CASE(IsWitnessProgram_Invalid_Size)
@@ -126,7 +136,7 @@ BOOST_AUTO_TEST_CASE(IsWitnessProgram_Invalid_Size)
     BOOST_CHECK(IsNoWitnessProgram(nowit));
 
     nowit.clear();
-    program.resize(41);
+    program.resize(76);
     nowit << OP_0 << program;
     BOOST_CHECK(IsNoWitnessProgram(nowit));
 }

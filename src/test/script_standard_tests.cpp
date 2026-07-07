@@ -1,6 +1,17 @@
 // Copyright (c) 2017-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <test/data/bip341_wallet_vectors.json.h>
 
@@ -97,42 +108,59 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_success)
     BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::NULL_DATA);
     BOOST_CHECK_EQUAL(solutions.size(), 0U);
 
-    // TxoutType::WITNESS_V0_KEYHASH
+    // TxoutType::UNSPENDABLE
     s.clear();
-    s << OP_0 << ToByteVector(pubkeys[0].GetID());
-    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_V0_KEYHASH);
-    BOOST_CHECK_EQUAL(solutions.size(), 1U);
-    BOOST_CHECK(solutions[0] == ToByteVector(pubkeys[0].GetID()));
+    s << OP_RETURN;
+    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::UNSPENDABLE);
+    BOOST_CHECK_EQUAL(solutions.size(), 0U);
 
-    // TxoutType::WITNESS_V0_SCRIPTHASH
-    uint256 scriptHash;
-    CSHA256().Write(redeemScript.data(), redeemScript.size())
-        .Finalize(scriptHash.begin());
+    // TxoutType::WITNESS_V0_LONGHASH
+    CScript witnessScript_inner;
+    witnessScript_inner << ToByteVector(pubkeys[0]) << OP_CHECKSIG;
+    std::vector<unsigned char> witnessScript;
+    witnessScript.push_back(0x00);
+    witnessScript.insert(witnessScript.end(),
+                         witnessScript_inner.begin(),
+                         witnessScript_inner.end());
 
+    WitnessV0LongHash long_hash;
+    CHash256().Write(witnessScript).Finalize(long_hash);
     s.clear();
-    s << OP_0 << ToByteVector(scriptHash);
-    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_V0_SCRIPTHASH);
+    s << OP_0 << ToByteVector(long_hash);
+    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_V0_LONGHASH);
     BOOST_CHECK_EQUAL(solutions.size(), 1U);
-    BOOST_CHECK(solutions[0] == ToByteVector(scriptHash));
+    BOOST_CHECK(solutions[0] == ToByteVector(long_hash));
+
+    // TxoutType::WITNESS_V0_SHORTHASH
+    WitnessV0ShortHash short_hash;
+    CRIPEMD160()
+        .Write(long_hash.begin(), 32)
+        .Finalize(short_hash.begin());
+    s.clear();
+    s << OP_0 << ToByteVector(short_hash);
+    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_V0_SHORTHASH);
+    BOOST_CHECK_EQUAL(solutions.size(), 1U);
+    BOOST_CHECK(solutions[0] == ToByteVector(short_hash));
 
     // TxoutType::WITNESS_V1_TAPROOT
     s.clear();
-    s << OP_1 << ToByteVector(uint256::ZERO);
-    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_V1_TAPROOT);
-    BOOST_CHECK_EQUAL(solutions.size(), 1U);
-    BOOST_CHECK(solutions[0] == ToByteVector(uint256::ZERO));
+    s << OP_1NEGATE << ToByteVector(uint256::ZERO);
+    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_UNKNOWN);
+    BOOST_CHECK_EQUAL(solutions.size(), 2U);
+    BOOST_CHECK(solutions[0] == std::vector<unsigned char>{1});
+    BOOST_CHECK(solutions[1] == ToByteVector(uint256::ZERO));
 
     // TxoutType::WITNESS_UNKNOWN
     s.clear();
     s << OP_16 << ToByteVector(uint256::ONE);
     BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_UNKNOWN);
     BOOST_CHECK_EQUAL(solutions.size(), 2U);
-    BOOST_CHECK(solutions[0] == std::vector<unsigned char>{16});
+    BOOST_CHECK(solutions[0] == std::vector<unsigned char>{17});
     BOOST_CHECK(solutions[1] == ToByteVector(uint256::ONE));
 
     // TxoutType::ANCHOR
     s.clear();
-    s << OP_1 << ANCHOR_BYTES;
+    s << OP_1NEGATE << ANCHOR_BYTES;
     BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::ANCHOR);
     BOOST_CHECK(solutions.empty());
 
@@ -140,7 +168,7 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_success)
     int version{-1};
     std::vector<unsigned char> witness_program;
     BOOST_CHECK(s.IsPayToAnchor());
-    BOOST_CHECK(s.IsWitnessProgram(version, witness_program));
+    BOOST_CHECK(s.IsWitnessProgram(&version, &witness_program));
     BOOST_CHECK(CScript::IsPayToAnchor(version, witness_program));
 
     // TxoutType::NONSTANDARD
@@ -200,7 +228,7 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_failure)
     // TxoutType::WITNESS_V0_{KEY,SCRIPT}HASH with incorrect program size (-> consensus-invalid, i.e. non-standard)
     s.clear();
     s << OP_0 << std::vector<unsigned char>(19, 0x01);
-    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::NONSTANDARD);
+    BOOST_CHECK_EQUAL(Solver(s, solutions), TxoutType::WITNESS_UNKNOWN);
 
     // TxoutType::WITNESS_V1_TAPROOT with incorrect program size (-> undefined, but still policy-valid)
     s.clear();
@@ -260,48 +288,43 @@ BOOST_AUTO_TEST_CASE(script_standard_ExtractDestination)
     s << OP_RETURN << std::vector<unsigned char>({75});
     BOOST_CHECK(!ExtractDestination(s, address));
 
-    // TxoutType::WITNESS_V0_KEYHASH
+    // TxoutType::UNSPENDABLE
     s.clear();
-    s << OP_0 << ToByteVector(pubkey.GetID());
-    BOOST_CHECK(ExtractDestination(s, address));
-    WitnessV0KeyHash keyhash;
-    CHash160().Write(pubkey).Finalize(keyhash);
-    BOOST_CHECK(std::get<WitnessV0KeyHash>(address) == keyhash);
+    s << OP_RETURN;
+    BOOST_CHECK(!ExtractDestination(s, address));
 
-    // TxoutType::WITNESS_V0_SCRIPTHASH
+    // TxoutType::WITNESS_V0_LONGHASH
+    unsigned char prefix = 0x00;
+    WitnessV0LongHash long_hash;
+    CHash256().Write({&prefix, 1}).Write(redeemScript).Finalize(long_hash);
     s.clear();
-    WitnessV0ScriptHash scripthash;
-    CSHA256().Write(redeemScript.data(), redeemScript.size()).Finalize(scripthash.begin());
-    s << OP_0 << ToByteVector(scripthash);
+    s << OP_0 << ToByteVector(long_hash);
     BOOST_CHECK(ExtractDestination(s, address));
-    BOOST_CHECK(std::get<WitnessV0ScriptHash>(address) == scripthash);
+    BOOST_CHECK(std::get_if<WitnessV0LongHash>(&address) && *std::get_if<WitnessV0LongHash>(&address) == long_hash);
 
-    // TxoutType::WITNESS_V1_TAPROOT
+    // TxoutType::WITNESS_V0_SHORTHASH
+    WitnessV0ShortHash short_hash;
+    CRIPEMD160()
+        .Write(long_hash.begin(),
+               long_hash.size())
+        .Finalize(short_hash.begin());
     s.clear();
-    auto xpk = XOnlyPubKey(pubkey);
-    s << OP_1 << ToByteVector(xpk);
+    s << OP_0 << ToByteVector(short_hash);
     BOOST_CHECK(ExtractDestination(s, address));
-    BOOST_CHECK(std::get<WitnessV1Taproot>(address) == WitnessV1Taproot(xpk));
+    BOOST_CHECK(std::get_if<WitnessV0ShortHash>(&address) && *std::get_if<WitnessV0ShortHash>(&address) == short_hash);
 
     // TxoutType::ANCHOR
     s.clear();
-    s << OP_1 << ANCHOR_BYTES;
+    s << OP_1NEGATE << ANCHOR_BYTES;
     BOOST_CHECK(ExtractDestination(s, address));
     BOOST_CHECK(std::get<PayToAnchor>(address) == PayToAnchor());
 
     // TxoutType::WITNESS_UNKNOWN with unknown version
-    // -> segwit version 1 with an undefined program size (33 bytes in this test case)
     s.clear();
     s << OP_1 << ToByteVector(pubkey);
     BOOST_CHECK(ExtractDestination(s, address));
-    WitnessUnknown unk_v1{1, ToByteVector(pubkey)};
-    BOOST_CHECK(std::get<WitnessUnknown>(address) == unk_v1);
-    s.clear();
-    // -> segwit versions 2+ are not specified yet
-    s << OP_2 << ToByteVector(xpk);
-    BOOST_CHECK(ExtractDestination(s, address));
-    WitnessUnknown unk_v2{2, ToByteVector(xpk)};
-    BOOST_CHECK(std::get<WitnessUnknown>(address) == unk_v2);
+    WitnessUnknown unk{2, ToByteVector(pubkey)};
+    BOOST_CHECK(std::get<WitnessUnknown>(address) == unk);
 }
 
 BOOST_AUTO_TEST_CASE(script_standard_GetScriptFor_)
@@ -348,147 +371,6 @@ BOOST_AUTO_TEST_CASE(script_standard_GetScriptFor_)
         OP_3 << OP_CHECKMULTISIG;
     result = GetScriptForMultisig(2, std::vector<CPubKey>(pubkeys, pubkeys + 3));
     BOOST_CHECK(result == expected);
-
-    // WitnessV0KeyHash
-    expected.clear();
-    expected << OP_0 << ToByteVector(pubkeys[0].GetID());
-    result = GetScriptForDestination(WitnessV0KeyHash(Hash160(ToByteVector(pubkeys[0]))));
-    BOOST_CHECK(result == expected);
-    result = GetScriptForDestination(WitnessV0KeyHash(pubkeys[0].GetID()));
-    BOOST_CHECK(result == expected);
-
-    // WitnessV0ScriptHash (multisig)
-    CScript witnessScript;
-    witnessScript << OP_1 << ToByteVector(pubkeys[0]) << OP_1 << OP_CHECKMULTISIG;
-
-    uint256 scriptHash;
-    CSHA256().Write(witnessScript.data(), witnessScript.size())
-        .Finalize(scriptHash.begin());
-
-    expected.clear();
-    expected << OP_0 << ToByteVector(scriptHash);
-    result = GetScriptForDestination(WitnessV0ScriptHash(witnessScript));
-    BOOST_CHECK(result == expected);
-
-    // WitnessV1Taproot
-    auto xpk = XOnlyPubKey(pubkeys[0]);
-    expected.clear();
-    expected << OP_1 << ToByteVector(xpk);
-    result = GetScriptForDestination(WitnessV1Taproot(xpk));
-    BOOST_CHECK(result == expected);
-
-    // PayToAnchor
-    expected.clear();
-    expected << OP_1 << ANCHOR_BYTES;
-    result = GetScriptForDestination(PayToAnchor());
-    BOOST_CHECK(result == expected);
-}
-
-BOOST_AUTO_TEST_CASE(script_standard_taproot_builder)
-{
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({}), true);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0}), true);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0,0}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0,1}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0,2}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1,0}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1,1}), true);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1,2}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,0}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,1}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,2}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0,0,0}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0,0,1}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0,0,2}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0,1,0}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0,1,1}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0,1,2}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0,2,0}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0,2,1}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({0,2,2}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1,0,0}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1,0,1}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1,0,2}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1,1,0}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1,1,1}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1,1,2}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1,2,0}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1,2,1}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({1,2,2}), true);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,0,0}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,0,1}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,0,2}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,1,0}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,1,1}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,1,2}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,2,0}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,2,1}), true);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,2,2}), false);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({2,2,2,3,4,5,6,7,8,9,10,11,12,14,14,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,31,31,31,31,31,31,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,128}), true);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({128,128,127,126,125,124,123,122,121,120,119,118,117,116,115,114,113,112,111,110,109,108,107,106,105,104,103,102,101,100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1}), true);
-    BOOST_CHECK_EQUAL(TaprootBuilder::ValidDepths({129,129,128,127,126,125,124,123,122,121,120,119,118,117,116,115,114,113,112,111,110,109,108,107,106,105,104,103,102,101,100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1}), false);
-
-    XOnlyPubKey key_inner{"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"_hex_u8};
-    XOnlyPubKey key_1{"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"_hex_u8};
-    XOnlyPubKey key_2{"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"_hex_u8};
-    CScript script_1 = CScript() << ToByteVector(key_1) << OP_CHECKSIG;
-    CScript script_2 = CScript() << ToByteVector(key_2) << OP_CHECKSIG;
-    constexpr uint256 hash_3{"31fe7061656bea2a36aa60a2f7ef940578049273746935d296426dc0afd86b68"};
-
-    TaprootBuilder builder;
-    BOOST_CHECK(builder.IsValid() && builder.IsComplete());
-    builder.Add(2, script_2, 0xc0);
-    BOOST_CHECK(builder.IsValid() && !builder.IsComplete());
-    builder.AddOmitted(2, hash_3);
-    BOOST_CHECK(builder.IsValid() && !builder.IsComplete());
-    builder.Add(1, script_1, 0xc0);
-    BOOST_CHECK(builder.IsValid() && builder.IsComplete());
-    builder.Finalize(key_inner);
-    BOOST_CHECK(builder.IsValid() && builder.IsComplete());
-    BOOST_CHECK_EQUAL(EncodeDestination(builder.GetOutput()), "bc1pj6gaw944fy0xpmzzu45ugqde4rz7mqj5kj0tg8kmr5f0pjq8vnaqgynnge");
-}
-
-BOOST_AUTO_TEST_CASE(bip341_spk_test_vectors)
-{
-    using control_set = decltype(TaprootSpendData::scripts)::mapped_type;
-
-    UniValue tests;
-    tests.read(json_tests::bip341_wallet_vectors);
-
-    const auto& vectors = tests["scriptPubKey"];
-
-    for (const auto& vec : vectors.getValues()) {
-        TaprootBuilder spktest;
-        std::map<std::pair<std::vector<unsigned char>, int>, int> scriptposes;
-        std::function<void (const UniValue&, int)> parse_tree = [&](const UniValue& node, int depth) {
-            if (node.isNull()) return;
-            if (node.isObject()) {
-                auto script = ParseHex(node["script"].get_str());
-                int idx = node["id"].getInt<int>();
-                int leaf_version = node["leafVersion"].getInt<int>();
-                scriptposes[{script, leaf_version}] = idx;
-                spktest.Add(depth, script, leaf_version);
-            } else {
-                parse_tree(node[0], depth + 1);
-                parse_tree(node[1], depth + 1);
-            }
-        };
-        parse_tree(vec["given"]["scriptTree"], 0);
-        spktest.Finalize(XOnlyPubKey(ParseHex(vec["given"]["internalPubkey"].get_str())));
-        BOOST_CHECK_EQUAL(HexStr(GetScriptForDestination(spktest.GetOutput())), vec["expected"]["scriptPubKey"].get_str());
-        BOOST_CHECK_EQUAL(EncodeDestination(spktest.GetOutput()), vec["expected"]["bip350Address"].get_str());
-        auto spend_data = spktest.GetSpendData();
-        BOOST_CHECK_EQUAL(vec["intermediary"]["merkleRoot"].isNull(), spend_data.merkle_root.IsNull());
-        if (!spend_data.merkle_root.IsNull()) {
-            BOOST_CHECK_EQUAL(vec["intermediary"]["merkleRoot"].get_str(), HexStr(spend_data.merkle_root));
-        }
-        BOOST_CHECK_EQUAL(spend_data.scripts.size(), scriptposes.size());
-        for (const auto& scriptpos : scriptposes) {
-            BOOST_CHECK(spend_data.scripts[scriptpos.first] == control_set{ParseHex(vec["expected"]["scriptPathControlBlocks"][scriptpos.second].get_str())});
-        }
-    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()
