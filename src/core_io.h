@@ -1,9 +1,20 @@
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_CORE_IO_H
-#define BITCOIN_CORE_IO_H
+#ifndef FREICOIN_CORE_IO_H
+#define FREICOIN_CORE_IO_H
 
 #include <consensus/amount.h>
 #include <util/result.h>
@@ -46,4 +57,4 @@ std::string SighashToStr(unsigned char sighash_type);
 void ScriptToUniv(const CScript& script, UniValue& out, bool include_hex = true, bool include_address = false, const SigningProvider* provider = nullptr);
 void TxToUniv(const CTransaction& tx, const uint256& block_hash, UniValue& entry, bool include_hex = true, const CTxUndo* txundo = nullptr, TxVerbosity verbosity = TxVerbosity::SHOW_DETAILS, std::function<bool(const CTxOut&)> is_change_func = {});
 
-#endif // BITCOIN_CORE_IO_H
+#endif // FREICOIN_CORE_IO_H
