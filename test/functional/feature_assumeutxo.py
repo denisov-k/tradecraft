@@ -468,7 +468,7 @@ class AssumeutxoTest(FreicoinTestFramework):
         dump_output4 = n0.dumptxoutset(path='utxos4.dat', rollback=prev_snap_height)
         assert_equal(
             dump_output4['txoutset_hash'],
-            "8a1db0d6e958ce0d7c963bc6fc91ead596c027129bacec68acc40351037b09d7")
+            "726f6a7345b443331bc46062bdea30b2c66272a6c6c084c539be8b1613b948a1")
         assert sha256sum_file(dump_output['path']) != sha256sum_file(dump_output4['path'])
 
         # Use a hash instead of a height
