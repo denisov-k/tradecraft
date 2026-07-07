@@ -72,13 +72,13 @@ static std::optional<int> WalletAppInit(ArgsManager& args, int argc, char* argv[
     }
     const bool missing_args{argc < 2};
     if (missing_args || HelpRequested(args) || args.IsArgSet("-version")) {
-        std::string strUsage = strprintf("%s freicoin-wallet version", PACKAGE_NAME) + " " + FormatFullVersion() + "\n";
+        std::string strUsage = strprintf("%s freicoin-wallet version", CLIENT_NAME) + " " + FormatFullVersion() + "\n";
 
         if (args.GetBoolArg("-version", false)) {
             strUsage += FormatParagraph(LicenseInfo());
         } else {
             strUsage += "\n"
-                        "freicoin-wallet is an offline tool for creating and interacting with " PACKAGE_NAME " wallet files.\n"
+                        "freicoin-wallet is an offline tool for creating and interacting with " CLIENT_NAME " wallet files.\n"
                         "By default freicoin-wallet will act on wallets in the default mainnet wallet directory in the datadir.\n"
                         "To change the target wallet, use the -datadir, -wallet and -regtest/-signet/-testnet arguments.\n\n"
                         "Usage:\n"

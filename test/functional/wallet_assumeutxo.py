@@ -21,6 +21,8 @@ See feature_assumeutxo.py for background.
 - TODO: test loading a wallet (backup) on a pruned node
 
 """
+from decimal import Decimal
+
 from test_framework.address import address_to_scriptpubkey
 from test_framework.descriptors import descsum_create
 from test_framework.test_framework import FreicoinTestFramework
@@ -224,7 +226,9 @@ class AssumeutxoTest(FreicoinTestFramework):
         self.log.info("Ensuring wallet can be restored from a backup that was created before the snapshot height")
         n1.restorewallet("w2", "backup_w2.dat")
         # Check balance of w2 wallet
-        assert_equal(n1.getbalance(), 340)
+        # Freicoin: balances are time-value adjusted (demurrage), so the
+        # present value of the 340 FRC nominal is slightly lower at this height.
+        assert_equal(n1.getbalance(), Decimal("339.89864886"))
 
         # Check balance of w wallet after node is synced
         n1.loadwallet("w")

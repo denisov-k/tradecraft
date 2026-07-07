@@ -676,7 +676,7 @@ class ImportDescriptorsTest(FreicoinTestFramework):
         w_multisplit = self.nodes[1].get_wallet_rpc("multipath_split")
         timestamp = int(time.time())
 
-        self.test_importdesc({"desc": descsum_create(f"wpkh({xpriv}/<10;20>/0/*)"),
+        self.test_importdesc({"desc": descsum_create(f"wpk({xpriv}/<10;20>/0/*)"),
                               "active": True,
                               "range": 10,
                               "timestamp": "now",
@@ -685,7 +685,7 @@ class ImportDescriptorsTest(FreicoinTestFramework):
                               error_code=-8,
                               error_message="Multipath descriptors should not have a label",
                               wallet=w_multipath)
-        self.test_importdesc({"desc": descsum_create(f"wpkh({xpriv}/<10;20>/0/*)"),
+        self.test_importdesc({"desc": descsum_create(f"wpk({xpriv}/<10;20>/0/*)"),
                               "active": True,
                               "range": 10,
                               "timestamp": timestamp,
@@ -695,20 +695,20 @@ class ImportDescriptorsTest(FreicoinTestFramework):
                               error_message="Cannot have multipath descriptor while also specifying \'internal\'",
                               wallet=w_multipath)
 
-        self.test_importdesc({"desc": descsum_create(f"wpkh({xpriv}/<10;20>/0/*)"),
+        self.test_importdesc({"desc": descsum_create(f"wpk({xpriv}/<10;20>/0/*)"),
                               "active": True,
                               "range": 10,
                               "timestamp": timestamp},
                               success=True,
                               wallet=w_multipath)
 
-        self.test_importdesc({"desc": descsum_create(f"wpkh({xpriv}/10/0/*)"),
+        self.test_importdesc({"desc": descsum_create(f"wpk({xpriv}/10/0/*)"),
                               "active": True,
                               "range": 10,
                               "timestamp": timestamp},
                               success=True,
                               wallet=w_multisplit)
-        self.test_importdesc({"desc": descsum_create(f"wpkh({xpriv}/20/0/*)"),
+        self.test_importdesc({"desc": descsum_create(f"wpk({xpriv}/20/0/*)"),
                               "active": True,
                               "range": 10,
                               "internal": True,
