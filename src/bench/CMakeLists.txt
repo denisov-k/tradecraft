@@ -54,7 +54,7 @@ add_executable(bench_bitcoin
 
 include(TargetDataSources)
 target_raw_data_sources(bench_bitcoin NAMESPACE benchmark::data
-  data/block413567.raw
+  data/block136207.raw
 )
 
 target_link_libraries(bench_bitcoin

@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 #
 # Copyright (c) 2018-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 export LC_ALL=C.UTF-8
 
@@ -85,9 +96,9 @@ fi
 
 # Make sure default datadir does not exist and is never read by creating a dummy file
 if [ "$CI_OS_NAME" == "macos" ]; then
-  echo > "${HOME}/Library/Application Support/Bitcoin"
+  echo > "${HOME}/Library/Application Support/Freicoin"
 else
-  echo > "${HOME}/.bitcoin"
+  echo > "${HOME}/.freicoin"
 fi
 
 if [ -z "$NO_DEPENDS" ]; then
@@ -149,7 +160,7 @@ if [ "$RUN_UNIT_TESTS" = "true" ]; then
 fi
 
 if [ "$RUN_UNIT_TESTS_SEQUENTIAL" = "true" ]; then
-  DIR_UNIT_TEST_DATA="${DIR_UNIT_TEST_DATA}" LD_LIBRARY_PATH="${DEPENDS_DIR}/${HOST}/lib" "${BASE_OUTDIR}"/bin/test_bitcoin --catch_system_errors=no -l test_suite
+  DIR_UNIT_TEST_DATA="${DIR_UNIT_TEST_DATA}" LD_LIBRARY_PATH="${DEPENDS_DIR}/${HOST}/lib" "${BASE_OUTDIR}"/bin/test_freicoin --catch_system_errors=no -l test_suite
 fi
 
 if [ "$RUN_FUNCTIONAL_TESTS" = "true" ]; then
@@ -159,9 +170,9 @@ if [ "$RUN_FUNCTIONAL_TESTS" = "true" ]; then
 fi
 
 if [ "${RUN_TIDY}" = "true" ]; then
-  cmake -B /tidy-build -DLLVM_DIR=/usr/lib/llvm-"${TIDY_LLVM_V}"/cmake -DCMAKE_BUILD_TYPE=Release -S "${BASE_ROOT_DIR}"/contrib/devtools/bitcoin-tidy
+  cmake -B /tidy-build -DLLVM_DIR=/usr/lib/llvm-"${TIDY_LLVM_V}"/cmake -DCMAKE_BUILD_TYPE=Release -S "${BASE_ROOT_DIR}"/contrib/devtools/freicoin-tidy
   cmake --build /tidy-build "$MAKEJOBS"
-  cmake --build /tidy-build --target bitcoin-tidy-tests "$MAKEJOBS"
+  cmake --build /tidy-build --target freicoin-tidy-tests "$MAKEJOBS"
 
   set -eo pipefail
   # Filter out:
