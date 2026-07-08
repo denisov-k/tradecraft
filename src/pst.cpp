@@ -489,7 +489,7 @@ bool DecodeHexPST(PartiallySignedTransaction& pst, const std::string& hex_pst, s
     return DecodeRawPST(pst, MakeByteSpan(ParseHex(hex_pst)), error);
 }
 
-bool DecodeRawPST(PartiallySignedTransaction& pst, Span<const std::byte> tx_data, std::string& error)
+bool DecodeRawPST(PartiallySignedTransaction& pst, std::span<const std::byte> tx_data, std::string& error)
 {
     DataStream ss_data{tx_data};
     try {

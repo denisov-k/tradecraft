@@ -720,7 +720,7 @@ static std::size_t MaxProtocolMessageLength(const Consensus::Params &params, siz
 #endif
 }
 
-bool CNode::ReceiveMsgBytes(Span<const uint8_t> msg_bytes, bool& complete)
+bool CNode::ReceiveMsgBytes(std::span<const uint8_t> msg_bytes, bool& complete)
 {
     complete = false;
     const auto time = GetTime<std::chrono::microseconds>();

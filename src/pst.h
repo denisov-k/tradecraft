@@ -1028,6 +1028,6 @@ bool FinalizeAndExtractPST(PartiallySignedTransaction& pstx, CMutableTransaction
 //! Decode a hex PST into a PartiallySignedTransaction
 [[nodiscard]] bool DecodeHexPST(PartiallySignedTransaction& decoded_pst, const std::string& hex_pst, std::string& error);
 //! Decode a raw (binary blob) PST into a PartiallySignedTransaction
-[[nodiscard]] bool DecodeRawPST(PartiallySignedTransaction& decoded_pst, Span<const std::byte> raw_pst, std::string& error);
+[[nodiscard]] bool DecodeRawPST(PartiallySignedTransaction& decoded_pst, std::span<const std::byte> raw_pst, std::string& error);
 
 #endif // FREICOIN_PST_H

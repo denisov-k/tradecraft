@@ -749,7 +749,7 @@ public:
         };
         // The upward function computes for a node, given its followed-by-OP_VERIFY status
         // and the CScripts of its child nodes, the CScript of the node.
-        auto upfn = [&ctx](bool verify, const Node& node, Span<CScript> subs) -> CScript {
+        auto upfn = [&ctx](bool verify, const Node& node, std::span<CScript> subs) -> CScript {
             switch (node.fragment) {
                 case Fragment::PK_K: return BuildScript(ctx.ToPKBytes(node.keys[0]));
                 case Fragment::PK_H: return BuildScript(OP_DUP, OP_HASH160, ctx.ToPKHBytes(node.keys[0]), OP_EQUALVERIFY);
@@ -817,7 +817,7 @@ public:
         };
         // The upward function computes for a node, given whether its parent is a wrapper,
         // and the string representations of its child nodes, the string representation of the node.
-        auto upfn = [&ctx](bool wrapped, const Node& node, Span<std::string> subs) -> std::optional<std::string> {
+        auto upfn = [&ctx](bool wrapped, const Node& node, std::span<std::string> subs) -> std::optional<std::string> {
             std::string ret = wrapped ? ":" : "";
 
             switch (node.fragment) {
@@ -1755,7 +1755,7 @@ inline NodeRef<Key> Parse(std::span<const char> in, const Ctx& ctx)
     to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
 
     // Parses a multi()() from its string representation. Returns false on parsing error.
-    const auto parse_multi_exp = [&](Span<const char>& in) -> bool {
+    const auto parse_multi_exp = [&](std::span<const char>& in) -> bool {
         const auto max_keys{MAX_PUBKEYS_PER_MULTISIG};
         const auto required_ctx{MiniscriptContext::P2WSH};
         if (ctx.MsContext() != required_ctx) return false;
