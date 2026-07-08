@@ -103,7 +103,7 @@ class TestNode():
     To make things easier for the test writer, any unrecognised messages will
     be dispatched to the RPC connection."""
 
-    def __init__(self, i, datadir_path, *, chain, rpchost, timewait, timeout_factor, freicoind, freicoin_cli, coverage_dir, cwd, extra_conf=None, extra_args=None, use_cli=False, start_perf=False, use_valgrind=False, version=None, descriptors=False, v2transport=False):
+    def __init__(self, i, datadir_path, *, chain, rpchost, timewait, timeout_factor, binaries, coverage_dir, cwd, extra_conf=None, extra_args=None, use_cli=False, start_perf=False, version=None, v2transport=False, uses_wallet=False, ipcbind=False):
         """
         Kwargs:
             start_perf (bool): If True, begin profiling the node with `perf` as soon as
@@ -118,8 +118,9 @@ class TestNode():
         self.stderr_dir = self.datadir_path / "stderr"
         self.chain = chain
         self.rpchost = rpchost
-        self.rpc_timeout = timewait
-        self.binary = freicoind
+        self.rpc_timeout = timewait  # Already multiplied by timeout_factor
+        self.timeout_factor = timeout_factor
+        self.binaries = binaries
         self.coverage_dir = coverage_dir
         self.cwd = cwd
         self.has_explicit_bind = False
@@ -178,7 +179,11 @@ class TestNode():
                 self.args.append("-v2transport=0")
         # if v2transport is requested via global flag but not supported for node version, ignore it
 
-        self.cli = TestNodeCLI(freicoin_cli, self.datadir_path)
+        self.cli = TestNodeCLI(
+            binaries,
+            self.datadir_path,
+            self.rpc_timeout // 2,  # timeout identical to the one used in self._rpc
+        )
         self.use_cli = use_cli
         self.start_perf = start_perf
 
@@ -944,7 +949,7 @@ def arg_to_cli(arg):
 
 class TestNodeCLI():
     """Interface to freicoin-cli for an individual node"""
-    def __init__(self, binary, datadir):
+    def __init__(self, binaries, datadir, rpc_timeout):
         self.options = []
         self.binaries = binaries
         self.datadir = datadir
@@ -954,7 +959,7 @@ class TestNodeCLI():
 
     def __call__(self, *options, input=None):
         # TestNodeCLI is callable with freicoin-cli command-line options
-        cli = TestNodeCLI(self.binary, self.datadir)
+        cli = TestNodeCLI(self.binaries, self.datadir, self.rpc_timeout)
         cli.options = [str(o) for o in options]
         cli.input = input
         return cli
@@ -985,6 +990,21 @@ class TestNodeCLI():
         if clicommand is not None:
             p_args += [clicommand]
         p_args += pos_args + named_args
+
+        # TEST_CLI_MAX_ARG_SIZE is set low enough that checking the string
+        # length is enough and encoding to bytes is not needed before
+        # calculating the sum.
+        sum_arg_size = sum(len(arg) for arg in p_args)
+        stdin_data = self.input
+        if sum_arg_size >= TEST_CLI_MAX_ARG_SIZE:
+            self.log.debug(f"Cli: Command size {sum_arg_size} too large, using stdin")
+            rpc_args = "\n".join([arg for arg in p_args[base_arg_pos:]])
+            if stdin_data is not None:
+                stdin_data += "\n" + rpc_args
+            else:
+                stdin_data = rpc_args
+            p_args = p_args[:base_arg_pos] + ['-stdin']
+
         self.log.debug("Running freicoin-cli {}".format(p_args[2:]))
         process = subprocess.Popen(p_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         cli_stdout, cli_stderr = process.communicate(input=stdin_data)

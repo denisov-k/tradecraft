@@ -236,30 +236,6 @@ class FreicoinTestFramework(metaclass=FreicoinTestMetaClass):
 
         PortSeed.n = self.options.port_seed
 
-    def get_binary_paths(self):
-        """Get paths of all binaries from environment variables or their default values"""
-
-        paths = types.SimpleNamespace()
-        binaries = {
-            "freicoind": ("freicoind", "FREICOIND"),
-            "freicoin-cli": ("freicoincli", "FREICOINCLI"),
-            "freicoin-util": ("freicoinutil", "FREICOINUTIL"),
-            "freicoin-wallet": ("freicoinwallet", "FREICOINWALLET"),
-        }
-        # Set paths to bitcoin core binaries allowing overrides with environment
-        # variables.
-        for binary, env_variable_name in binaries.items():
-            default_filename = os.path.join(
-                self.config["environment"]["BUILDDIR"],
-                "bin",
-                binary + self.config["environment"]["EXEEXT"],
-            )
-            setattr(paths, env_variable_name.lower(), os.getenv(env_variable_name, default=default_filename))
-        # BITCOIN_CMD environment variable can be specified to invoke bitcoin
-        # wrapper binary instead of other executables.
-        paths.bitcoin_cmd = shlex.split(os.getenv("BITCOIN_CMD", "")) or None
-        return paths
-
     def get_binaries(self, bin_dir=None):
         return Binaries(self.binary_paths, bin_dir, use_valgrind=self.options.valgrind)
 
@@ -454,6 +430,22 @@ class FreicoinTestFramework(metaclass=FreicoinTestMetaClass):
 
     # Public helper methods. These can be accessed by the subclass test scripts.
 
+    def add_wallet_options(self, parser, *, descriptors=True, legacy=True):
+        kwargs = {}
+        if descriptors + legacy == 1:
+            # If only one type can be chosen, set it as default
+            kwargs["default"] = descriptors
+        group = parser.add_mutually_exclusive_group(
+            # If only one type is allowed, require it to be set in test_runner.py
+            required=os.getenv("REQUIRE_WALLET_TYPE_SET") == "1" and "default" in kwargs)
+        if descriptors:
+            group.add_argument("--descriptors", action='store_const', const=True, **kwargs,
+                               help="Run test using a descriptor wallet", dest='descriptors')
+        if legacy:
+            group.add_argument("--legacy-wallet", action='store_const', const=False, **kwargs,
+                               help="Run test using legacy wallets", dest='descriptors')
+
+
     def add_nodes(self, num_nodes: int, extra_args=None, *, rpchost=None, versions=None):
         """Instantiate TestNode objects.
 
@@ -493,19 +485,13 @@ class FreicoinTestFramework(metaclass=FreicoinTestMetaClass):
                 extra_args[i] = extra_args[i] + ["-whitelist=noban,in,out@127.0.0.1"]
         if versions is None:
             versions = [None] * num_nodes
-        if binary is None:
-            binary = [get_bin_from_version(v, 'freicoind', self.options.freicoind) for v in versions]
-        if binary_cli is None:
-            binary_cli = [get_bin_from_version(v, 'freicoin-cli', self.options.freicoincli) for v in versions]
-        # Fail test if any of the needed release binaries is missing
-        bins_missing = False
-        for bin_path in binary + binary_cli:
-            if shutil.which(bin_path) is None:
-                self.log.error(f"Binary not found: {bin_path}")
-                bins_missing = True
-        if bins_missing:
-            raise AssertionError("At least one release binary is missing. "
-                                 "Previous releases binaries can be downloaded via `test/get_previous_releases.py -b`.")
+        bin_dirs = []
+        for v in versions:
+            bin_dir = bin_dir_from_version(v)
+            bin_dirs.append(bin_dir)
+
+        extra_init = [{}] * num_nodes if self.extra_init is None else self.extra_init # type: ignore[var-annotated]
+        assert_equal(len(extra_init), num_nodes)
         assert_equal(len(extra_confs), num_nodes)
         assert_equal(len(extra_args), num_nodes)
         assert_equal(len(versions), num_nodes)
@@ -517,8 +503,7 @@ class FreicoinTestFramework(metaclass=FreicoinTestMetaClass):
                 rpchost=rpchost,
                 timewait=self.rpc_timeout,
                 timeout_factor=self.options.timeout_factor,
-                freicoind=binary[i],
-                freicoin_cli=binary_cli[i],
+                binaries=self.get_binaries(bin_dirs[i]),
                 version=versions[i],
                 coverage_dir=self.options.coveragedir,
                 cwd=self.options.tmpdir,
@@ -946,8 +931,7 @@ class FreicoinTestFramework(metaclass=FreicoinTestMetaClass):
                     rpchost=None,
                     timewait=self.rpc_timeout,
                     timeout_factor=self.options.timeout_factor,
-                    freicoind=self.options.freicoind,
-                    freicoin_cli=self.options.freicoincli,
+                    binaries=self.get_binaries(),
                     coverage_dir=None,
                     cwd=self.options.tmpdir,
                     uses_wallet=self.uses_wallet,

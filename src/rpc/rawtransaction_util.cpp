@@ -453,6 +453,7 @@ std::vector<RPCResult> DecodeTxDoc(const std::string& txid_field_doc, bool walle
         {RPCResult::Type::NUM, "weight", "The transaction's weight (between vsize*4-3 and vsize*4)"},
         {RPCResult::Type::NUM, "version", "The version"},
         {RPCResult::Type::NUM_TIME, "locktime", "The lock time"},
+        {RPCResult::Type::NUM, "lockheight", "The reference height, and the minimum height for inclusion in chain."},
         {RPCResult::Type::ARR, "vin", "",
         {
             {RPCResult::Type::OBJ, "", "",

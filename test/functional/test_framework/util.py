@@ -274,33 +274,33 @@ class Binaries:
         ] if use_valgrind else []
 
     def node_argv(self, **kwargs):
-        "Return argv array that should be used to invoke bitcoind"
-        return self._argv("node", self.paths.bitcoind, **kwargs)
+        "Return argv array that should be used to invoke freicoind"
+        return self._argv("node", self.paths.freicoind, **kwargs)
 
     def rpc_argv(self):
-        "Return argv array that should be used to invoke bitcoin-cli"
-        # Add -nonamed because "bitcoin rpc" enables -named by default, but bitcoin-cli doesn't
-        return self._argv("rpc", self.paths.bitcoincli) + ["-nonamed"]
+        "Return argv array that should be used to invoke freicoin-cli"
+        # Add -nonamed because "bitcoin rpc" enables -named by default, but freicoin-cli doesn't
+        return self._argv("rpc", self.paths.freicoincli) + ["-nonamed"]
 
     def bench_argv(self):
         "Return argv array that should be used to invoke bench_bitcoin"
         return self._argv("bench", self.paths.bitcoin_bench)
 
     def tx_argv(self):
-        "Return argv array that should be used to invoke bitcoin-tx"
-        return self._argv("tx", self.paths.bitcointx)
+        "Return argv array that should be used to invoke freicoin-tx"
+        return self._argv("tx", self.paths.freicointx)
 
     def util_argv(self):
-        "Return argv array that should be used to invoke bitcoin-util"
-        return self._argv("util", self.paths.bitcoinutil)
+        "Return argv array that should be used to invoke freicoin-util"
+        return self._argv("util", self.paths.freicoinutil)
 
     def wallet_argv(self):
-        "Return argv array that should be used to invoke bitcoin-wallet"
-        return self._argv("wallet", self.paths.bitcoinwallet)
+        "Return argv array that should be used to invoke freicoin-wallet"
+        return self._argv("wallet", self.paths.freicoinwallet)
 
     def chainstate_argv(self):
-        "Return argv array that should be used to invoke bitcoin-chainstate"
-        return self._argv("chainstate", self.paths.bitcoinchainstate)
+        "Return argv array that should be used to invoke freicoin-chainstate"
+        return self._argv("chainstate", self.paths.freicoinchainstate)
 
     def _argv(self, command, bin_path, need_ipc=False):
         """Return argv array that should be used to invoke the command.
@@ -331,13 +331,13 @@ def get_binary_paths(config):
     paths = types.SimpleNamespace()
     binaries = {
         "bitcoin": "BITCOIN_BIN",
-        "bitcoind": "BITCOIND",
+        "freicoind": "FREICOIND",
         "bench_bitcoin": "BITCOIN_BENCH",
-        "bitcoin-cli": "BITCOINCLI",
-        "bitcoin-util": "BITCOINUTIL",
-        "bitcoin-tx": "BITCOINTX",
-        "bitcoin-chainstate": "BITCOINCHAINSTATE",
-        "bitcoin-wallet": "BITCOINWALLET",
+        "freicoin-cli": "FREICOINCLI",
+        "freicoin-util": "FREICOINUTIL",
+        "freicoin-tx": "FREICOINTX",
+        "freicoin-chainstate": "FREICOINCHAINSTATE",
+        "freicoin-wallet": "FREICOINWALLET",
     }
     # Set paths to bitcoin core binaries allowing overrides with environment
     # variables.
