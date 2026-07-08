@@ -1348,7 +1348,7 @@ BOOST_AUTO_TEST_CASE(merkle_node_vector_serialize)
     {
         auto data = ParseHex("02600239361160903c6695c6804b7157c7bd10013e9ba89b1f954243bc8e3990b08db96632753d6ca30fea890f37fc150eaed8d068acf596acb2251b8fafd72db977d3");
         DataStream ds;
-        ds << Span<unsigned char>(data.data(), data.data() + data.size());
+        ds << std::span<unsigned char>(data.data(), data.data() + data.size());
         MerkleProof proof;
         BOOST_CHECK_MESSAGE(ds[0] == std::byte{0x02}, HexStr(ds).c_str());
         BOOST_CHECK_MESSAGE(ds.size() == 67, HexStr(ds).c_str());
