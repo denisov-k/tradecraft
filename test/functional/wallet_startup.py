@@ -17,6 +17,8 @@
 
 Verify that a freicoind node can maintain list of wallets loading on startup
 """
+import uuid
+
 from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,

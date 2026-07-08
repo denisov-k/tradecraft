@@ -36,6 +36,8 @@ class ListSinceBlockTest(FreicoinTestFramework):
 
     def set_test_params(self):
         self.num_nodes = 4
+        # Freicoin: datacarrier defaults to off; the OP_RETURN sections need it
+        self.extra_args = [["-datacarrier=1"]] * self.num_nodes
         self.setup_clean_chain = True
         # whitelist peers to speed up tx relay / mempool sync
         self.noban_tx_relay = True

@@ -23,15 +23,13 @@ RPCs tested are:
 from collections import defaultdict
 
 from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.descriptors import descsum_create
 from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_equal, assert_raises_rpc_error
 from test_framework.wallet_util import test_address
 
 
 class WalletLabelsTest(FreicoinTestFramework):
-    def add_options(self, parser):
-        self.add_wallet_options(parser)
-
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
@@ -195,35 +193,34 @@ class WalletLabelsTest(FreicoinTestFramework):
         self.invalid_label_name_test()
         self.test_label_named_parameter_handling()
 
-        if self.options.descriptors:
-            # This is a descriptor wallet test because of segwit v1+ addresses
-            self.log.info('Check watchonly labels')
-            node.createwallet(wallet_name='watch_only', disable_private_keys=True)
-            wallet_watch_only = node.get_wallet_rpc('watch_only')
-            BECH32_VALID = {
-                '✔️_VER15_PROG40': 'fcrt10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq42m3z7',
-                '✔️_VER15_PROG41': 'fcrt10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqh0uvv8',
-                '✔️_VER15_PROG48': 'fcrt10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqgkeeg8',
-                '✔️_VER16_PROG03': 'fcrt1sqqqqqpvw8md',
-                '✔️_VER16_PROB02': 'fcrt1sqqqqdr476k',
-            }
-            BECH32_INVALID = {
-                '❌_VER15_PROG49': 'fcrt10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqwp8lc0',
-                '❌_VER16_PROB01': 'fcrt1sqq9y9n2m',
-            }
-            for l in BECH32_VALID:
-                ad = BECH32_VALID[l]
-                wallet_watch_only.importaddress(label=l, rescan=False, address=ad)
-                self.generatetoaddress(node, 1, ad)
-                assert_equal(wallet_watch_only.getaddressesbylabel(label=l), {ad: {'purpose': 'receive'}})
-                assert_equal(wallet_watch_only.getreceivedbylabel(label=l), 0)
-            for l in BECH32_INVALID:
-                ad = BECH32_INVALID[l]
-                assert_raises_rpc_error(
-                    -5,
-                    "Address is not valid" if self.options.descriptors else "Invalid Freicoin address or script",
-                    lambda: wallet_watch_only.importaddress(label=l, rescan=False, address=ad),
-                )
+        # This is a descriptor wallet test because of segwit v1+ addresses
+        self.log.info('Check watchonly labels')
+        node.createwallet(wallet_name='watch_only', disable_private_keys=True)
+        wallet_watch_only = node.get_wallet_rpc('watch_only')
+        BECH32_VALID = {
+            '✔️_VER15_PROG40': 'fcrt10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq42m3z7',
+            '✔️_VER15_PROG41': 'fcrt10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqh0uvv8',
+            '✔️_VER15_PROG48': 'fcrt10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqgkeeg8',
+            '✔️_VER16_PROG03': 'fcrt1sqqqqqpvw8md',
+            '✔️_VER16_PROB02': 'fcrt1sqqqqdr476k',
+        }
+        BECH32_INVALID = {
+            '❌_VER15_PROG49': 'fcrt10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqwp8lc0',
+            '❌_VER16_PROB01': 'fcrt1sqq9y9n2m',
+        }
+        for l in BECH32_VALID:
+            ad = BECH32_VALID[l]
+            import_res = wallet_watch_only.importdescriptors([{"desc": descsum_create(f"addr({ad})"), "timestamp": "now", "label": l}])
+            assert_equal(import_res[0]["success"], True)
+            self.generatetoaddress(node, 1, ad)
+            assert_equal(wallet_watch_only.getaddressesbylabel(label=l), {ad: {'purpose': 'receive'}})
+            assert_equal(wallet_watch_only.getreceivedbylabel(label=l), 0)
+        for l in BECH32_INVALID:
+            ad = BECH32_INVALID[l]
+            import_res = wallet_watch_only.importdescriptors([{"desc": descsum_create(f"addr({ad})"), "timestamp": "now", "label": l}])
+            assert_equal(import_res[0]["success"], False)
+            assert_equal(import_res[0]["error"]["code"], -5)
+            assert_equal(import_res[0]["error"]["message"], "Address is not valid")
 
 
 class Label:

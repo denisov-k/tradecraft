@@ -54,6 +54,7 @@ from test_framework.util import (
     assert_greater_than_or_equal,
     assert_raises_rpc_error,
     find_vout_for_address,
+    wallet_importprivkey,
 )
 from test_framework.wallet_util import (
     calculate_input_weight,
@@ -66,9 +67,6 @@ import os
 
 
 class PSTTest(FreicoinTestFramework):
-    def add_options(self, parser):
-        self.add_wallet_options(parser)
-
     def set_test_params(self):
         self.num_nodes = 3
         self.extra_args = [
@@ -124,7 +122,8 @@ class PSTTest(FreicoinTestFramework):
         # Mine a transaction that credits the offline address
         offline_addr = offline_node.getnewaddress(address_type="bech32")
         online_addr = w2.getnewaddress(address_type="bech32")
-        wonline.importaddress(offline_addr, "", False)
+        import_res = wonline.importdescriptors([{"desc": offline_node.getaddressinfo(offline_addr)["desc"], "timestamp": "now"}])
+        assert_equal(import_res[0]["success"], True)
         mining_wallet = mining_node.get_wallet_rpc(self.default_wallet_name)
         mining_wallet.sendtoaddress(address=offline_addr, amount=1.0)
         self.generate(mining_node, nblocks=1, sync_fun=lambda: self.sync_all([online_node, mining_node]))
@@ -640,7 +639,7 @@ class PSTTest(FreicoinTestFramework):
             self.nodes[2].createwallet(wallet_name="wallet{}".format(i))
             wrpc = self.nodes[2].get_wallet_rpc("wallet{}".format(i))
             for key in signer['privkeys']:
-                wrpc.importprivkey(key)
+                wallet_importprivkey(wrpc, key, "now")
             signed_tx = wrpc.walletprocesspst(signer['pst'], True, "ALL")['pst']
             assert_equal(signed_tx, signer['result'])
 
@@ -668,8 +667,7 @@ class PSTTest(FreicoinTestFramework):
         """
 
         # Disabled with removal of Taproot:
-        #if self.options.descriptors:
-        #    self.test_utxo_conversion()
+        #self.test_utxo_conversion()
         # FIXME: This test is disabled on Freicoin because after the commit
         #        '[Segwit] Change P2WPKH to be a 20-byte short script hash'
         #        the generated PST is not decodable by the test framework.
@@ -802,10 +800,7 @@ class PSTTest(FreicoinTestFramework):
 
         # Make a weird but signable script. wsh(pkh()) descriptor accomplishes this
         desc = descsum_create("wsh(pkh({}))".format(privkey))
-        if self.options.descriptors:
-            res = self.nodes[0].importdescriptors([{"desc": desc, "timestamp": "now"}])
-        else:
-            res = self.nodes[0].importmulti([{"desc": desc, "timestamp": "now"}])
+        res = self.nodes[0].importdescriptors([{"desc": desc, "timestamp": "now"}])
         assert res[0]["success"]
         addr = self.nodes[0].deriveaddresses(desc)[0]
         addr_info = self.nodes[0].getaddressinfo(addr)
@@ -887,10 +882,7 @@ class PSTTest(FreicoinTestFramework):
         assert_equal(pst2["fee"], pst3["fee"])
 
         # Import the external utxo descriptor so that we can sign for it from the test wallet
-        if self.options.descriptors:
-            res = wallet.importdescriptors([{"desc": desc, "timestamp": "now"}])
-        else:
-            res = wallet.importmulti([{"desc": desc, "timestamp": "now"}])
+        res = wallet.importdescriptors([{"desc": desc, "timestamp": "now"}])
         assert res[0]["success"]
         # The provided weight should override the calculated weight for a wallet input
         pst3 = wallet.walletcreatefundedpst(
@@ -907,15 +899,12 @@ class PSTTest(FreicoinTestFramework):
         privkey, pubkey = generate_keypair(wif=True)
 
         desc = descsum_create("wsh(pkh({}))".format(pubkey.hex()))
-        if self.options.descriptors:
-            res = watchonly.importdescriptors([{"desc": desc, "timestamp": "now"}])
-        else:
-            res = watchonly.importmulti([{"desc": desc, "timestamp": "now"}])
+        res = watchonly.importdescriptors([{"desc": desc, "timestamp": "now"}])
         assert res[0]["success"]
         addr = self.nodes[0].deriveaddresses(desc)[0]
         self.nodes[0].sendtoaddress(addr, 10)
         self.generate(self.nodes[0], 1)
-        self.nodes[0].importprivkey(privkey)
+        wallet_importprivkey(self.nodes[0], privkey, "now")
 
         pst = watchonly.sendall([wallet.getnewaddress()])["pst"]
         signed_tx = self.nodes[0].walletprocesspst(pst)
@@ -979,7 +968,7 @@ class PSTTest(FreicoinTestFramework):
             {'hex': '0200000001dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd000000000000000000010000000000000000000000000001000000', 'complete': True})
 
         self.log.info("Test we don't crash when making a 0-value funded transaction at 0 fee without forcing an input selection")
-        assert_raises_rpc_error(-4, "Transaction requires one destination of non-0 value, a non-0 feerate, or a pre-selected input", self.nodes[0].walletcreatefundedpst, [], [{"data": "deadbeef"}], 0, 0, {"fee_rate": "0"})
+        assert_raises_rpc_error(-4, "Transaction requires one destination of non-zero value, a non-zero feerate, or a pre-selected input", self.nodes[0].walletcreatefundedpst, [], [{"data": "deadbeef"}], 0, 0, {"fee_rate": "0"})
 
         self.log.info("Test descriptorprocesspst updates and signs a pst with descriptors")
 

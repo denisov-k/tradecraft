@@ -16,7 +16,6 @@
 """Test createwallet arguments.
 """
 
-from test_framework.address import key_to_p2wpk
 from test_framework.descriptors import descsum_create
 from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
@@ -31,9 +30,6 @@ EMPTY_PASSPHRASE_MSG = "Empty string given as passphrase, wallet will not be enc
 
 
 class CreateWalletTest(FreicoinTestFramework):
-    def add_options(self, parser):
-        self.add_wallet_options(parser)
-
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -64,11 +60,7 @@ class CreateWalletTest(FreicoinTestFramework):
 
         self.log.info('Test that private keys cannot be imported')
         privkey, pubkey = generate_keypair(wif=True)
-        assert_raises_rpc_error(-4, 'Cannot import private keys to a wallet with private keys disabled', w1.importprivkey, privkey)
-        if self.options.descriptors:
-            result = w1.importdescriptors([{'desc': descsum_create('wpk(' + privkey + ')'), 'timestamp': 'now'}])
-        else:
-            result = w1.importmulti([{'scriptPubKey': {'address': key_to_p2wpk(pubkey)}, 'timestamp': 'now', 'keys': [privkey]}])
+        result = w1.importdescriptors([{'desc': descsum_create('wpk(' + privkey + ')'), 'timestamp': 'now'}])
         assert not result[0]['success']
         assert 'warnings' not in result[0]
         assert_equal(result[0]['error']['code'], -4)
@@ -94,20 +86,17 @@ class CreateWalletTest(FreicoinTestFramework):
         assert_equal(w3.getwalletinfo()['keypoolsize'], 0)
         assert_raises_rpc_error(-4, "Error: This wallet has no available keys", w3.getnewaddress)
         # Set the seed
-        if self.options.descriptors:
-            w3.importdescriptors([{
-                'desc': descsum_create('wpk(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/0h/*)'),
-                'timestamp': 'now',
-                'active': True
-            },
-            {
-                'desc': descsum_create('wpk(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/1h/*)'),
-                'timestamp': 'now',
-                'active': True,
-                'internal': True
-            }])
-        else:
-            w3.sethdseed()
+        w3.importdescriptors([{
+            'desc': descsum_create('wpk(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/0h/*)'),
+            'timestamp': 'now',
+            'active': True
+        },
+        {
+            'desc': descsum_create('wpk(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/1h/*)'),
+            'timestamp': 'now',
+            'active': True,
+            'internal': True
+        }])
         assert_equal(w3.getwalletinfo()['keypoolsize'], 1)
         w3.getnewaddress()
         w3.getrawchangeaddress()
@@ -124,20 +113,17 @@ class CreateWalletTest(FreicoinTestFramework):
         assert_raises_rpc_error(-4, "Error: This wallet has no available keys", w4.getrawchangeaddress)
         with WalletUnlock(w4, "pass"):
             # Now set a seed and it should work. Wallet should also be encrypted
-            if self.options.descriptors:
-                w4.importdescriptors([{
-                    'desc': descsum_create('wpk(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/0h/*)'),
-                    'timestamp': 'now',
-                    'active': True
-                },
-                {
-                    'desc': descsum_create('wpk(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/1h/*)'),
-                    'timestamp': 'now',
-                    'active': True,
-                    'internal': True
-                }])
-            else:
-                w4.sethdseed()
+            w4.importdescriptors([{
+                'desc': descsum_create('wpk(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/0h/*)'),
+                'timestamp': 'now',
+                'active': True
+            },
+            {
+                'desc': descsum_create('wpk(tprv8ZgxMBicQKsPcwuZGKp8TeWppSuLMiLe2d9PupB14QpPeQsqoj3LneJLhGHH13xESfvASyd4EFLJvLrG8b7DrLxEuV7hpF9uUc6XruKA1Wq/1h/*)'),
+                'timestamp': 'now',
+                'active': True,
+                'internal': True
+            }])
             w4.getnewaddress()
             w4.getrawchangeaddress()
 
@@ -168,9 +154,9 @@ class CreateWalletTest(FreicoinTestFramework):
         with WalletUnlock(w6, "thisisapassphrase"):
             w6.signmessage(w6.getnewaddress('', 'legacy'), "test")
             w6.keypoolrefill(1)
-            # There should only be 1 key for legacy, 3 for descriptors
+            # There should be one key per active output type (legacy and bech32)
             walletinfo = w6.getwalletinfo()
-            keys = 2 if self.options.descriptors else 1
+            keys = 2
             assert_equal(walletinfo['keypoolsize'], keys)
             assert_equal(walletinfo['keypoolsize_hd_internal'], keys)
         # Allow empty passphrase, but there should be a warning

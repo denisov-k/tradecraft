@@ -181,7 +181,7 @@ class ImportDescriptorsTest(FreicoinTestFramework):
                               error_message='Ranged descriptors should not have a label')
 
         self.log.info("Ranged descriptors cannot have labels - even if range not provided by user and only implied by asterisk (*)")
-        self.test_importdesc({"desc":descsum_create("wpkh(" + xpub + "/100/0/*)"),
+        self.test_importdesc({"desc":descsum_create("wpk(" + xpub + "/100/0/*)"),
                               "timestamp": "now",
                               "label": "test",
                               "active": True},

@@ -299,10 +299,10 @@ class WalletTest(FreicoinTestFramework):
 
         import_key1 = get_generate_key()
         import_key2 = get_generate_key()
-        wallet.importdescriptors([{"desc": descsum_create(f"wpkh({import_key1.privkey})"), "timestamp": "now"}])
+        wallet.importdescriptors([{"desc": descsum_create(f"wpk({import_key1.privkey})"), "timestamp": "now"}])
 
         amount = 15
-        default.send([{import_key1.p2wpkh_addr: amount},{import_key2.p2wpkh_addr: amount}])
+        default.send([{import_key1.p2wpk_addr: amount},{import_key2.p2wpk_addr: amount}])
         self.generate(self.nodes[0], 1)
         # Mock the time forward by 1 day so that "now" will exclude the block we just mined
         self.nodes[0].setmocktime(int(time.time()) + 86400)
@@ -313,7 +313,7 @@ class WalletTest(FreicoinTestFramework):
         assert_equal(balances["mine"]["trusted"], amount)
 
         # Don't rescan to make sure that the import updates the wallet txos
-        wallet.importdescriptors([{"desc": descsum_create(f"wpkh({import_key2.privkey})"), "timestamp": "now"}])
+        wallet.importdescriptors([{"desc": descsum_create(f"wpk({import_key2.privkey})"), "timestamp": "now"}])
         balances = wallet.getbalances()
         assert_equal(balances["mine"]["trusted"], amount * 2)
 

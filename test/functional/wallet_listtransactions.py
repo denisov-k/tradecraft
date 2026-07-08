@@ -45,7 +45,7 @@ class ListTransactionsTest(FreicoinTestFramework):
         self.num_nodes = 3
         # whitelist peers to speed up tx relay / mempool sync
         self.noban_tx_relay = True
-        self.extra_args = [["-walletrbf=0"]] * self.num_nodes
+        self.extra_args = [["-datacarrier=1", "-walletrbf=0"]] * self.num_nodes
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
@@ -335,12 +335,12 @@ class ListTransactionsTest(FreicoinTestFramework):
         # Run twice, once for a transaction in the mempool, again when it confirms
         for confirm in [False, True]:
             key = get_generate_key()
-            descriptor = descsum_create(f"wpkh({key.privkey})")
+            descriptor = descsum_create(f"wpk({key.privkey})")
             default_wallet.importdescriptors([{"desc": descriptor, "timestamp": "now"}])
 
-            send_res = default_wallet.send(outputs=[{key.p2wpkh_addr: 1}, {wallet.getnewaddress(): 1}])
+            send_res = default_wallet.send(outputs=[{key.p2wpk_addr: 1}, {wallet.getnewaddress(): 1}])
             assert_equal(send_res["complete"], True)
-            vout = find_vout_for_address(self.nodes[0], send_res["txid"], key.p2wpkh_addr)
+            vout = find_vout_for_address(self.nodes[0], send_res["txid"], key.p2wpk_addr)
             utxos = [{"txid": send_res["txid"], "vout": vout}]
             self.generate(self.nodes[0], 1, sync_fun=self.no_op)
 

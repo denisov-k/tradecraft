@@ -33,9 +33,6 @@ from test_framework.wallet_util import generate_keypair
 
 
 class ImportPrunedFundsTest(FreicoinTestFramework):
-    def add_options(self, parser):
-        self.add_wallet_options(parser)
-
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
@@ -54,7 +51,7 @@ class ImportPrunedFundsTest(FreicoinTestFramework):
         # privkey
         address3_privkey, address3_pubkey = generate_keypair(wif=True)
         address3 = key_to_p2wpk(address3_pubkey)
-        self.nodes[0].importprivkey(address3_privkey)
+        wallet_importprivkey(self.nodes[0], address3_privkey, "now")
 
         # Check only one address
         address_info = self.nodes[0].getaddressinfo(address1)
