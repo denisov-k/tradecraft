@@ -17,6 +17,7 @@
 
 from decimal import Decimal, getcontext
 
+from test_framework.messages import SEQUENCE_FINAL
 from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,

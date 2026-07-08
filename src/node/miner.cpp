@@ -139,6 +139,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock()
     // getblocktemplate RPC and mining interface consumers must not use it.
     pblock->vtx.emplace_back();
     pblocktemplate->vTxFees.push_back(-1); // updated at end
+    pblocktemplate->vTxSigOpsCost.push_back(-1); // updated at end
 
     LOCK(::cs_main);
     CBlockIndex* pindexPrev = m_chainstate.m_chain.Tip();
@@ -269,6 +270,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock()
         m_chainstate.m_chainman.GenerateCoinbaseCommitment(*pblock, pindexPrev);
     }
     pblocktemplate->vTxFees[0] = -nFees;
+    pblocktemplate->vTxSigOpsCost[0] = WITNESS_SCALE_FACTOR * GetLegacySigOpCount(*pblock->vtx[0]);
 
     // The miner needs to know whether the last transaction is a special
     // transaction, or not.

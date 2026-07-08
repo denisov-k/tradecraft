@@ -127,7 +127,7 @@ class WalletEncryptionTest(FreicoinTestFramework):
 
             def do_wallet_tool(*args):
                 proc = subprocess.Popen(
-                    [self.options.freicoinwallet, f"-datadir={self.nodes[0].datadir_path}", f"-chain={self.chain}"] + list(args),
+                    self.get_binaries().wallet_argv() + [f"-datadir={self.nodes[0].datadir_path}", f"-chain={self.chain}"] + list(args),
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,

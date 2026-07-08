@@ -1826,7 +1826,7 @@ void StopStratumServer()
 
 static RPCHelpMan getstratuminfo() {
     return RPCHelpMan{"getstratuminfo",
-        "\nReturns an object containing various state info regarding the stratum server.\n",
+        "Returns an object containing various state info regarding the stratum server.\n",
         {},
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::BOOL, "enabled", "whether the server is running or not"},

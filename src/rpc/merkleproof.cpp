@@ -76,7 +76,7 @@ void MerkleElem::Rehash()
 static RPCHelpMan createmerkleproof()
 {
     return RPCHelpMan{"createmerkleproof",
-        "\nCreate a fast Merkle-tree from the provided data elements, and return the proof structure and data necessary for validation.\n",
+        "Create a fast Merkle-tree from the provided data elements, and return the proof structure and data necessary for validation.\n",
         {
             {"data", RPCArg::Type::ARR, RPCArg::Optional::NO, "The data elements, either as hex-encoded data or hash values; see prehashed option",
                 {

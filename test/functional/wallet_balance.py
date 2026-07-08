@@ -17,6 +17,7 @@
 from decimal import Decimal
 import time
 
+from test_framework.descriptors import descsum_create
 from test_framework.address import ADDRESS_FCRT1_UNSPENDABLE as ADDRESS_WATCHONLY
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.test_framework import FreicoinTestFramework

@@ -543,7 +543,7 @@ static RPCHelpMan getdifficulty()
 static RPCHelpMan getauxdifficulty()
 {
     return RPCHelpMan{"getauxdifficulty",
-        "\nReturns the auxiliary proof-of-work difficulty as a multiple of the minimum difficulty.\n",
+        "Returns the auxiliary proof-of-work difficulty as a multiple of the minimum difficulty.\n",
         {},
         RPCResult{
             RPCResult::Type::NUM, "", "the auxiliaryproof-of-work difficulty as a multiple of the minimum difficulty."},

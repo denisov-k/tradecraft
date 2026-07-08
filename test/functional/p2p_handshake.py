@@ -29,7 +29,7 @@ from test_framework.messages import (
     msg_verack,
 )
 from test_framework.p2p import P2PInterface
-from test_framework.util import p2p_port
+from test_framework.util import p2p_port, assert_not_equal
 
 
 # Desirable service flags for outbound non-pruned and pruned peers. Note that

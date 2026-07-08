@@ -18,6 +18,7 @@
 
 import time
 
+from test_framework.wallet_util import get_generate_key
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (

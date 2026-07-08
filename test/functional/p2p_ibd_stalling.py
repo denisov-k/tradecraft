@@ -96,7 +96,9 @@ class P2PIBDStallingTest(FreicoinTestFramework):
             block_time += 1
             height += 1
             block_dict[tip] = block
-        stall_block = blocks[0].sha256
+        stall_index = 0
+        second_stall_index = 500
+        stall_blocks = [blocks[stall_index].sha256, blocks[second_stall_index].sha256]
 
         headers_message = msg_headers()
         headers_message.headers = [CBlockHeader(b) for b in blocks[:NUM_BLOCKS-1]]
