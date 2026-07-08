@@ -63,7 +63,7 @@ static std::shared_ptr<CWallet> GetWalletForMiner(const NodeContext& node, bilin
     // The user requested a wallet that is not loaded.  Fall back to the default
     // wallet, but report the error so the user can fix their configuration.
     if (requestedwallet != "" && requestedwallet != "0") {
-        LogPrintf("Requested wallet \"%s\" be used for the stratum mining service, but no such wallet found.\n", requestedwallet);
+        LogInfo("Requested wallet \"%s\" be used for the stratum mining service, but no such wallet found.\n", requestedwallet);
     }
     // The user can disable direct mining to an internal wallet by setting
     // '-stratumwallet' to 0 or false, or or '-nostratumwallet=1'.

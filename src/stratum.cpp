@@ -68,7 +68,7 @@ struct JobId : public std::array<unsigned char, 8> {
     }
     explicit JobId(const uint256& hash) {
         uint64_t siphash = htole64_internal(
-            SipHashUint256(0x779210d350dae066UL, 0x828d056f89a7486aUL, hash)
+            PresaltedSipHasher(0x779210d350dae066UL, 0x828d056f89a7486aUL)(hash)
         );
         const unsigned char* siphash_bytes = reinterpret_cast<const unsigned char*>(&siphash);
         std::copy(siphash_bytes, siphash_bytes + size(), begin());
@@ -408,26 +408,26 @@ static std::string GetExtraNonceRequest(StratumClient& client, const JobId& job_
 void CustomizeWork(const ChainstateManager& chainman, const StratumClient& client, const StratumWork& current_work, const CTxDestination& addr, const std::vector<unsigned char>& extranonce1, const std::vector<unsigned char>& extranonce2, CMutableTransaction& cb, CMutableTransaction& bf, std::vector<uint256>& cb_branch) {
     if (current_work.GetBlock().vtx.empty()) {
         const std::string msg = strprintf("%s: no transactions in block template; unable to submit work", __func__);
-        LogPrint(BCLog::STRATUM, "%s\n", msg);
+        LogDebug(BCLog::STRATUM, "%s\n", msg);
         throw std::runtime_error(msg);
     }
     cb = CMutableTransaction(*current_work.GetBlock().vtx.front());
     if (cb.vin.size() != 1) {
         const std::string msg = strprintf("%s: unexpected number of inputs; is this even a coinbase transaction?", __func__);
-        LogPrint(BCLog::STRATUM, "%s\n", msg);
+        LogDebug(BCLog::STRATUM, "%s\n", msg);
         throw std::runtime_error(msg);
     }
     std::vector<unsigned char> nonce(extranonce1);
     if ((nonce.size() + extranonce2.size()) != 12) {
         const std::string msg = strprintf("%s: unexpected combined nonce length: extranonce1(%d) + extranonce2(%d) != 12; unable to submit work", __func__, nonce.size(), extranonce2.size());
-        LogPrint(BCLog::STRATUM, "%s\n", msg);
+        LogDebug(BCLog::STRATUM, "%s\n", msg);
         throw std::runtime_error(msg);
     }
     nonce.insert(nonce.end(), extranonce2.begin(),
                               extranonce2.end());
     if (cb.vin.empty()) {
         const std::string msg = strprintf("%s: first transaction is missing coinbase input; unable to customize work to miner", __func__);
-        LogPrint(BCLog::STRATUM, "%s\n", msg);
+        LogDebug(BCLog::STRATUM, "%s\n", msg);
         throw std::runtime_error(msg);
     }
     cb.vin.front().scriptSig =
@@ -441,7 +441,7 @@ void CustomizeWork(const ChainstateManager& chainman, const StratumClient& clien
     } else {
         if (cb.vout.empty()) {
             const std::string msg = strprintf("%s: coinbase transaction is missing outputs; unable to customize work to miner", __func__);
-            LogPrint(BCLog::STRATUM, "%s\n", msg);
+            LogDebug(BCLog::STRATUM, "%s\n", msg);
             throw std::runtime_error(msg);
         }
         if (cb.vout.front().scriptPubKey == (CScript() << OP_FALSE)) {
@@ -454,7 +454,7 @@ void CustomizeWork(const ChainstateManager& chainman, const StratumClient& clien
     if (!current_work.m_aux_hash2 && current_work.m_is_witness_enabled) {
         bf = CMutableTransaction(*current_work.GetBlock().vtx.back());
         UpdateSegwitCommitment(chainman, current_work, cb, bf, cb_branch);
-        LogPrint(BCLog::STRATUM, "Updated segwit commitment in coinbase.\n");
+        LogDebug(BCLog::STRATUM, "Updated segwit commitment in coinbase.\n");
     }
 }
 
@@ -568,7 +568,7 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
         work_templates[job_id] = StratumWork(coinbase_dest, *new_work, new_work->block.vtx[0]->HasWitness());
         tip = tip_new;
 
-        LogPrint(BCLog::STRATUM, "New stratum block template (%d total): %s\n", work_templates.size(), HexStr(job_id));
+        LogDebug(BCLog::STRATUM, "New stratum block template (%d total): %s\n", work_templates.size(), HexStr(job_id));
 
         // Remove any old templates
         std::vector<JobId> old_job_ids;
@@ -594,13 +594,13 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
         // Remove all outdated work.
         for (const auto& old_job_id : old_job_ids) {
             work_templates.erase(old_job_id);
-            LogPrint(BCLog::STRATUM, "Removed outdated stratum block template (%d total): %s\n", work_templates.size(), HexStr(old_job_id));
+            LogDebug(BCLog::STRATUM, "Removed outdated stratum block template (%d total): %s\n", work_templates.size(), HexStr(old_job_id));
         }
         // Remove the oldest work unit if we're still over the maximum
         // number of stored work templates.
         if (work_templates.size() > 30 && oldest_job_id) {
             work_templates.erase(*oldest_job_id);
-            LogPrint(BCLog::STRATUM, "Removed oldest stratum block template (%d total): %s\n", work_templates.size(), HexStr(*oldest_job_id));
+            LogDebug(BCLog::STRATUM, "Removed oldest stratum block template (%d total): %s\n", work_templates.size(), HexStr(*oldest_job_id));
         }
     }
 
@@ -763,7 +763,7 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
 
     if (!current_work.m_aux_hash2) {
         int64_t delta = node::UpdateTime(&blkhdr, Params().GetConsensus(), tip);
-        LogPrint(BCLog::STRATUM, "Updated the timestamp of block template by %d seconds\n", delta);
+        LogDebug(BCLog::STRATUM, "Updated the timestamp of block template by %d seconds\n", delta);
     }
 
     params.push_back(HexInt4(blkhdr.nVersion));
@@ -795,12 +795,12 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
     }
     if (extranonce1.size() != 8) {
         std::string msg = strprintf("extranonce1 is wrong length (received %d bytes; expected %d bytes", extranonce1.size(), 8);
-        LogPrint(BCLog::STRATUM, "%s\n", msg);
+        LogDebug(BCLog::STRATUM, "%s\n", msg);
         throw JSONRPCError(RPC_INVALID_PARAMETER, msg);
     }
     if (extranonce2.size() != 4) {
         std::string msg = strprintf("%s: extranonce2 is wrong length (received %d bytes; expected %d bytes", __func__, extranonce2.size(), 4);
-        LogPrint(BCLog::STRATUM, "%s\n", msg);
+        LogDebug(BCLog::STRATUM, "%s\n", msg);
         throw JSONRPCError(RPC_INVALID_PARAMETER, msg);
     }
 
@@ -836,7 +836,7 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
         res = CheckAuxiliaryProofOfWork(blkhdr, params);
         auto aux_hash = blkhdr.GetAuxiliaryHash(params);
         if (res) {
-            LogPrintf("GOT AUXILIARY BLOCK!!! by %s: %s, %s\n", EncodeDestination(client.m_addr), aux_hash.first.ToString(), aux_hash.second.ToString());
+            LogInfo("GOT AUXILIARY BLOCK!!! by %s: %s, %s\n", EncodeDestination(client.m_addr), aux_hash.first.ToString(), aux_hash.second.ToString());
             blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb.GetHash().ToUint256(), cb_branch, 0);
             const uint256 first_stage_hash = blkhdr.GetHash();
             JobId new_job_id(first_stage_hash);
@@ -860,7 +860,7 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
             }
             half_solved_work = new_job_id;
         } else {
-            LogPrintf("NEW AUXILIARY SHARE!!! by %s: %s, %s\n", EncodeDestination(client.m_addr), aux_hash.first.ToString(), aux_hash.second.ToString());
+            LogInfo("NEW AUXILIARY SHARE!!! by %s: %s, %s\n", EncodeDestination(client.m_addr), aux_hash.first.ToString(), aux_hash.second.ToString());
         }
     }
 
@@ -875,7 +875,7 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
         }
 
         if (!current_work.GetBlock().m_aux_pow.IsNull() && nTime != current_work.GetBlock().nTime) {
-            LogPrintf("Error: miner %s returned altered nTime value for native proof-of-work; nTime-rolling is not supported\n", EncodeDestination(client.m_addr));
+            LogInfo("Error: miner %s returned altered nTime value for native proof-of-work; nTime-rolling is not supported\n", EncodeDestination(client.m_addr));
             throw JSONRPCError(RPC_INVALID_PARAMETER, "nTime-rolling is not supported");
         }
 
@@ -891,7 +891,7 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
         res = IsProtocolCleanupActive(params, current_work.GetBlock()) || CheckProofOfWork(blkhdr, params);
         uint256 hash = blkhdr.GetHash();
         if (res) {
-            LogPrintf("GOT BLOCK!!! by %s: %s\n", EncodeDestination(client.m_addr), hash.ToString());
+            LogInfo("GOT BLOCK!!! by %s: %s\n", EncodeDestination(client.m_addr), hash.ToString());
             CBlock block(current_work.GetBlock());
             block.vtx[0] = MakeTransactionRef(std::move(cb));
             if (!current_work.m_aux_hash2 && current_work.m_is_witness_enabled) {
@@ -914,17 +914,17 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
                     }
                 }
                 if (!block_index) {
-                    LogPrintf("Unable to find new block index entry; cannot prioritise block 0x%s\n", hash.ToString());
+                    LogInfo("Unable to find new block index entry; cannot prioritise block 0x%s\n", hash.ToString());
                 } else {
                     BlockValidationState state;
                     pchainstate->PreciousBlock(state, block_index);
                     if (!state.IsValid()) {
-                        LogPrintf("Database error while prioritising new block 0x%s: %s\n", hash.ToString(), state.ToString());
+                        LogInfo("Database error while prioritising new block 0x%s: %s\n", hash.ToString(), state.ToString());
                     }
                 }
             }
         } else {
-            LogPrintf("NEW SHARE!!! by %s: %s\n", EncodeDestination(client.m_addr), hash.ToString());
+            LogInfo("NEW SHARE!!! by %s: %s\n", EncodeDestination(client.m_addr), hash.ToString());
         }
     }
 
@@ -970,11 +970,11 @@ bool SubmitAuxiliaryBlock(StratumClient& client, const CTxDestination& addr, con
     const Consensus::Params& params = Params().GetConsensus();
     auto aux_hash = blkhdr.GetAuxiliaryHash(params);
     if (!CheckAuxiliaryProofOfWork(blkhdr, params)) {
-        LogPrintf("NEW AUXILIARY SHARE!!! by %s: %s, %s\n", EncodeDestination(addr), aux_hash.first.ToString(), aux_hash.second.ToString());
+        LogInfo("NEW AUXILIARY SHARE!!! by %s: %s, %s\n", EncodeDestination(addr), aux_hash.first.ToString(), aux_hash.second.ToString());
         return false;
     }
 
-    LogPrintf("GOT AUXILIARY BLOCK!!! by %s: %s, %s\n", EncodeDestination(addr), aux_hash.first.ToString(), aux_hash.second.ToString());
+    LogInfo("GOT AUXILIARY BLOCK!!! by %s: %s, %s\n", EncodeDestination(addr), aux_hash.first.ToString(), aux_hash.second.ToString());
     blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb.GetHash().ToUint256(), cb_branch, 0);
     const uint256 first_stage_hash = blkhdr.GetHash();
 
@@ -998,7 +998,7 @@ bool SubmitAuxiliaryBlock(StratumClient& client, const CTxDestination& addr, con
     client.m_send_work = true;
 
     if (IsProtocolCleanupActive(params, new_work.GetBlock())) {
-        LogPrint(BCLog::STRATUM, "Protocol cleanup is active; submitting block directly to the network.\n");
+        LogDebug(BCLog::STRATUM, "Protocol cleanup is active; submitting block directly to the network.\n");
         const std::vector<unsigned char> extranonce2(4, 0x00);
         return SubmitBlock(client, new_job_id, new_work, client.ExtraNonce1(new_job_id), extranonce2, new_work.GetBlock().nVersion, new_work.GetBlock().nTime, 0);
     }
@@ -1024,7 +1024,7 @@ UniValue stratum_mining_subscribe(StratumClient& client, const UniValue& params)
 
     if (params.size() >= 1) {
         client.m_client = params[0].get_str();
-        LogPrint(BCLog::STRATUM, "Received subscription from client %s\n", client.m_client);
+        LogDebug(BCLog::STRATUM, "Received subscription from client %s\n", client.m_client);
     }
     client.m_subscribed = true;
 
@@ -1116,7 +1116,7 @@ UniValue stratum_mining_authorize(StratumClient& client, const UniValue& params)
     // Do not wait to send work to the client.
     client.m_send_work = true;
 
-    LogPrintf("Authorized stratum miner %s from %s, mindiff=%f\n", EncodeDestination(addr), client.GetPeer().ToStringAddrPort(), mindiff);
+    LogInfo("Authorized stratum miner %s from %s, mindiff=%f\n", EncodeDestination(addr), client.GetPeer().ToStringAddrPort(), mindiff);
 
     return true;
 }
@@ -1144,14 +1144,14 @@ UniValue stratum_mining_aux_authorize(StratumClient& client, const UniValue& par
         throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Invalid Freicoin address: %s", username));
     }
     if (client.m_aux_addr.count(addr)) {
-        LogPrint(BCLog::STRATUM, "Client with address %s is already registered for stratum miner %s\n", EncodeDestination(addr), client.GetPeer().ToStringAddrPort());
+        LogDebug(BCLog::STRATUM, "Client with address %s is already registered for stratum miner %s\n", EncodeDestination(addr), client.GetPeer().ToStringAddrPort());
         return EncodeDestination(addr);
     }
 
     client.m_aux_addr.insert(addr);
     client.m_send_work = true;
 
-    LogPrintf("Authorized client %s of stratum miner %s\n", EncodeDestination(addr), client.GetPeer().ToStringAddrPort());
+    LogInfo("Authorized client %s of stratum miner %s\n", EncodeDestination(addr), client.GetPeer().ToStringAddrPort());
 
     return EncodeDestination(addr);
 }
@@ -1176,13 +1176,13 @@ UniValue stratum_mining_aux_deauthorize(StratumClient& client, const UniValue& p
         throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Invalid Freicoin address: %s", username));
     }
     if (!client.m_aux_addr.count(addr)) {
-        LogPrint(BCLog::STRATUM, "No client with address %s is currently registered for stratum miner %s\n", EncodeDestination(addr), client.GetPeer().ToStringAddrPort());
+        LogDebug(BCLog::STRATUM, "No client with address %s is currently registered for stratum miner %s\n", EncodeDestination(addr), client.GetPeer().ToStringAddrPort());
         return false;
     }
 
     client.m_aux_addr.erase(addr);
 
-    LogPrintf("Deauthorized client %s of stratum miner %s\n", EncodeDestination(addr), client.GetPeer().ToStringAddrPort());
+    LogInfo("Deauthorized client %s of stratum miner %s\n", EncodeDestination(addr), client.GetPeer().ToStringAddrPort());
 
     return true;
 }
@@ -1205,15 +1205,15 @@ UniValue stratum_mining_configure(StratumClient& client, const UniValue& params)
             client.m_version_rolling_mask = mask & 0x1fffe000;
             size_t bit_count = std::bitset<32>(client.m_version_rolling_mask).count();
             if (bit_count < min_bit_count) {
-                LogPrint(BCLog::STRATUM, "WARNING: version-rolling.min-bit-count (%d) sent by %s is greater than the number of bits availble to the miner (%d), after combining version-rolling masks (%08x); performance will be degraded\n", min_bit_count, client.GetPeer().ToStringAddrPort(), bit_count, client.m_version_rolling_mask);
+                LogDebug(BCLog::STRATUM, "WARNING: version-rolling.min-bit-count (%d) sent by %s is greater than the number of bits availble to the miner (%d), after combining version-rolling masks (%08x); performance will be degraded\n", min_bit_count, client.GetPeer().ToStringAddrPort(), bit_count, client.m_version_rolling_mask);
             }
             res.pushKV("version-rolling", true);
             res.pushKV("version-rolling.mask", HexInt4(client.m_version_rolling_mask));
-            LogPrint(BCLog::STRATUM, "Received version rolling request from %s\n", client.GetPeer().ToStringAddrPort());
+            LogDebug(BCLog::STRATUM, "Received version rolling request from %s\n", client.GetPeer().ToStringAddrPort());
         }
 
         else {
-            LogPrint(BCLog::STRATUM, "Unrecognized stratum extension '%s' sent by %s\n", name, client.GetPeer().ToStringAddrPort());
+            LogDebug(BCLog::STRATUM, "Unrecognized stratum extension '%s' sent by %s\n", name, client.GetPeer().ToStringAddrPort());
         }
     }
 
@@ -1233,7 +1233,7 @@ UniValue stratum_mining_submit(StratumClient& client, const UniValue& params) EX
 
     JobId job_id(params[1].get_str());
     if (!work_templates.count(job_id)) {
-        LogPrint(BCLog::STRATUM, "Received completed share for unknown job_id : %s\n", HexStr(job_id));
+        LogDebug(BCLog::STRATUM, "Received completed share for unknown job_id : %s\n", HexStr(job_id));
         return false;
     }
     StratumWork &current_work = work_templates[job_id];
@@ -1283,12 +1283,12 @@ UniValue stratum_mining_aux_submit(StratumClient& client, const UniValue& params
         throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Invalid Freicoin address: %s", username));
     }
     if (!client.m_aux_addr.count(addr)) {
-        LogPrint(BCLog::STRATUM, "No user with address %s is currently registered\n", EncodeDestination(addr));
+        LogDebug(BCLog::STRATUM, "No user with address %s is currently registered\n", EncodeDestination(addr));
     }
 
     JobId job_id(params[1].get_str());
     if (!work_templates.count(job_id)) {
-        LogPrint(BCLog::STRATUM, "Received completed auxiliary share for unknown job_id : %s\n", HexStr(job_id));
+        LogDebug(BCLog::STRATUM, "Received completed auxiliary share for unknown job_id : %s\n", HexStr(job_id));
         return false;
     }
     StratumWork &current_work = work_templates[job_id];
@@ -1408,7 +1408,7 @@ static void stratum_read_cb(bufferevent *bev, void *ctx)
     LOCK(cs_stratum);
     // Lookup the client record for this connection
     if (!subscriptions.count(bev)) {
-        LogPrint(BCLog::STRATUM, "Received read notification for unknown stratum connection 0x%x\n", (size_t)bev);
+        LogDebug(BCLog::STRATUM, "Received read notification for unknown stratum connection 0x%x\n", (size_t)bev);
         return;
     }
     StratumClient& client = subscriptions[bev];
@@ -1427,7 +1427,7 @@ static void stratum_read_cb(bufferevent *bev, void *ctx)
         free(cstr);
 
         // Log the request.
-        LogPrint(BCLog::STRATUM, "Received stratum request from %s : %s\n", client.GetPeer().ToStringAddrPort(), line);
+        LogDebug(BCLog::STRATUM, "Received stratum request from %s : %s\n", client.GetPeer().ToStringAddrPort(), line);
 
         JSONRPCRequest jreq; // The parsed JSON-RPC request
         std::string reply;   // The reply to send back to the client
@@ -1444,7 +1444,7 @@ static void stratum_read_cb(bufferevent *bev, void *ctx)
             }
             if (valRequest.exists("result")) {
                 // JSON-RPC reply.  Ignore.
-                LogPrint(BCLog::STRATUM, "Ignoring JSON-RPC response\n");
+                LogDebug(BCLog::STRATUM, "Ignoring JSON-RPC response\n");
                 continue;
             }
             jreq.parse(valRequest);
@@ -1470,9 +1470,9 @@ static void stratum_read_cb(bufferevent *bev, void *ctx)
         }
 
         // Send reply
-        LogPrint(BCLog::STRATUM, "Sending stratum response to %s : %s", client.GetPeer().ToStringAddrPort(), reply);
+        LogDebug(BCLog::STRATUM, "Sending stratum response to %s : %s", client.GetPeer().ToStringAddrPort(), reply);
         if (evbuffer_add(output, reply.data(), reply.size())) {
-            LogPrint(BCLog::STRATUM, "Sending stratum response failed. (Reason: %d, '%s')\n", errno, evutil_socket_error_to_string(errno));
+            LogDebug(BCLog::STRATUM, "Sending stratum response failed. (Reason: %d, '%s')\n", errno, evutil_socket_error_to_string(errno));
         }
     }
 
@@ -1499,9 +1499,9 @@ static void stratum_read_cb(bufferevent *bev, void *ctx)
             set_difficulty.pushKV("params", set_difficulty_params);
 
             std::string data = set_difficulty.write() + "\n";
-            LogPrint(BCLog::STRATUM, "Sending stratum difficulty update to %s : %s", client.GetPeer().ToStringAddrPort(), data);
+            LogDebug(BCLog::STRATUM, "Sending stratum difficulty update to %s : %s", client.GetPeer().ToStringAddrPort(), data);
             if (evbuffer_add(output, data.data(), data.size())) {
-                LogPrint(BCLog::STRATUM, "Sending stratum difficulty update failed. (Reason: %d, '%s')\n", errno, evutil_socket_error_to_string(errno));
+                LogDebug(BCLog::STRATUM, "Sending stratum difficulty update failed. (Reason: %d, '%s')\n", errno, evutil_socket_error_to_string(errno));
             }
         } else {
             std::string data;
@@ -1513,9 +1513,9 @@ static void stratum_read_cb(bufferevent *bev, void *ctx)
                 data = JSONRPCReplyObj(NullUniValue, JSONRPCError(RPC_INTERNAL_ERROR, e.what()), NullUniValue, JSONRPCVersion::V1_LEGACY).write() + "\n";
             }
 
-            LogPrint(BCLog::STRATUM, "Sending requested stratum work unit to %s : %s", client.GetPeer().ToStringAddrPort(), data);
+            LogDebug(BCLog::STRATUM, "Sending requested stratum work unit to %s : %s", client.GetPeer().ToStringAddrPort(), data);
             if (evbuffer_add(output, data.data(), data.size())) {
-                LogPrint(BCLog::STRATUM, "Sending stratum work unit failed. (Reason: %d, '%s')\n", errno, evutil_socket_error_to_string(errno));
+                LogDebug(BCLog::STRATUM, "Sending stratum work unit failed. (Reason: %d, '%s')\n", errno, evutil_socket_error_to_string(errno));
             }
         }
 
@@ -1531,22 +1531,22 @@ static void stratum_event_cb(bufferevent *bev, short what, void *ctx)
     // Fetch the return address for this connection, for the debug log.
     std::string from("UNKNOWN");
     if (!subscriptions.count(bev)) {
-        LogPrint(BCLog::STRATUM, "Received event notification for unknown stratum connection 0x%x\n", (size_t)bev);
+        LogDebug(BCLog::STRATUM, "Received event notification for unknown stratum connection 0x%x\n", (size_t)bev);
         return;
     } else {
         from = subscriptions[bev].GetPeer().ToStringAddrPort();
     }
     // Report the reason why we are closing the connection.
     if (what & BEV_EVENT_ERROR) {
-        LogPrint(BCLog::STRATUM, "Error detected on stratum connection from %s\n", from);
+        LogDebug(BCLog::STRATUM, "Error detected on stratum connection from %s\n", from);
     }
     if (what & BEV_EVENT_EOF) {
-        LogPrint(BCLog::STRATUM, "Remote disconnect received on stratum connection from %s\n", from);
+        LogDebug(BCLog::STRATUM, "Remote disconnect received on stratum connection from %s\n", from);
     }
     // Remove the connection from our records, and tell libevent to
     // disconnect and free its resources.
     if (what & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-        LogPrint(BCLog::STRATUM, "Closing stratum connection from %s\n", from);
+        LogDebug(BCLog::STRATUM, "Closing stratum connection from %s\n", from);
         subscriptions.erase(bev);
         if (bev) {
             bufferevent_free(bev);
@@ -1565,7 +1565,7 @@ static void stratum_accept_conn_cb(evconnlistener *listener, evutil_socket_t fd,
     // Early address-based allow check
     if (!ClientAllowed(stratum_allow_subnets, from)) {
         evconnlistener_free(listener);
-        LogPrint(BCLog::STRATUM, "Rejected connection from disallowed subnet: %s\n", from.ToStringAddrPort());
+        LogDebug(BCLog::STRATUM, "Rejected connection from disallowed subnet: %s\n", from.ToStringAddrPort());
         return;
     }
     // Should be the same as EventBase(), but let's get it the
@@ -1586,7 +1586,7 @@ static void stratum_accept_conn_cb(evconnlistener *listener, evutil_socket_t fd,
     // Record the connection state
     subscriptions[bev] = StratumClient(fd, bev, from);
     // Log the connection.
-    LogPrint(BCLog::STRATUM, "Accepted stratum connection from %s\n", from.ToStringAddrPort());
+    LogDebug(BCLog::STRATUM, "Accepted stratum connection from %s\n", from.ToStringAddrPort());
 }
 
 /** Setup the stratum connection listening services */
@@ -1602,7 +1602,7 @@ static bool StratumBindAddresses(event_base* base, node::NodeContext& node) EXCL
 
     // Bind each addresses
     for (const auto& endpoint : endpoints) {
-        LogPrint(BCLog::STRATUM, "Binding stratum on address %s port %i\n", endpoint.first, endpoint.second);
+        LogDebug(BCLog::STRATUM, "Binding stratum on address %s port %i\n", endpoint.first, endpoint.second);
         // Use CService to translate string -> sockaddr
         CService socket(LookupHost(endpoint.first.c_str(), true).value(), endpoint.second);
         union {
@@ -1617,7 +1617,7 @@ static bool StratumBindAddresses(event_base* base, node::NodeContext& node) EXCL
         if (listener) {
             bound_listeners[listener] = socket;
         } else {
-            LogPrintf("Binding stratum on address %s port %i failed. (Reason: %d, '%s')\n", endpoint.first, endpoint.second, errno, evutil_socket_error_to_string(errno));
+            LogInfo("Binding stratum on address %s port %i failed. (Reason: %d, '%s')\n", endpoint.first, endpoint.second, errno, evutil_socket_error_to_string(errno));
         }
     }
 
@@ -1691,13 +1691,13 @@ void BlockWatcher()
             } catch (const std::exception& e) {
                 // Some sort of error.  Ignore.
                 std::string msg = strprintf("Error generating updated work for stratum client: %s", e.what());
-                LogPrint(BCLog::STRATUM, "%s\n", msg);
+                LogDebug(BCLog::STRATUM, "%s\n", msg);
                 data = JSONRPCReplyObj(NullUniValue, JSONRPCError(RPC_INTERNAL_ERROR, msg), NullUniValue, JSONRPCVersion::V1_LEGACY).write() + "\n";
             }
             // Send the new work to the client
-            LogPrint(BCLog::STRATUM, "Sending updated stratum work unit to %s : %s", client.GetPeer().ToStringAddrPort(), data);
+            LogDebug(BCLog::STRATUM, "Sending updated stratum work unit to %s : %s", client.GetPeer().ToStringAddrPort(), data);
             if (evbuffer_add(output, data.data(), data.size())) {
-                LogPrint(BCLog::STRATUM, "Sending stratum work unit failed. (Reason: %d, '%s')\n", errno, evutil_socket_error_to_string(errno));
+                LogDebug(BCLog::STRATUM, "Sending stratum work unit failed. (Reason: %d, '%s')\n", errno, evutil_socket_error_to_string(errno));
             }
         }
     }
@@ -1710,7 +1710,7 @@ bool InitStratumServer(node::NodeContext& node)
 
     // Either -defaultminingaddress or -stratumwallet can be set, but not both.
     if (gArgs.IsArgSet("-defaultminingaddress") && gArgs.IsArgSet("-stratumwallet")) {
-        LogPrintf("Cannot set both -defaultminingaddress and -stratumwallet, as settings conflict.\n");
+        LogInfo("Cannot set both -defaultminingaddress and -stratumwallet, as settings conflict.\n");
         return false;
     }
     std::optional<std::string> defaultminingaddress = gArgs.GetArg("-defaultminingaddress");
@@ -1718,7 +1718,7 @@ bool InitStratumServer(node::NodeContext& node)
         std::string error;
         g_default_mining_address = DecodeDestination(*defaultminingaddress, error);
         if (!IsValidDestination(g_default_mining_address)) {
-            LogPrintf("Invalid -defaultminingaddress=%s: %s\n", *defaultminingaddress, error);
+            LogInfo("Invalid -defaultminingaddress=%s: %s\n", *defaultminingaddress, error);
             return false;
         }
     }
@@ -1727,14 +1727,14 @@ bool InitStratumServer(node::NodeContext& node)
     if (mindiff) {
         double diff = std::stod(*mindiff);
         if (diff < 0.0) {
-            LogPrintf("Invalid -miningmindifficulty=%s: must be non-negative\n", *mindiff);
+            LogInfo("Invalid -miningmindifficulty=%s: must be non-negative\n", *mindiff);
             return false;
         }
         g_min_difficulty = diff;
     }
 
     if (!InitSubnetAllowList("stratum", stratum_allow_subnets)) {
-        LogPrint(BCLog::STRATUM, "Unable to bind stratum server to an endpoint.\n");
+        LogDebug(BCLog::STRATUM, "Unable to bind stratum server to an endpoint.\n");
         return false;
     }
 
@@ -1742,18 +1742,18 @@ bool InitStratumServer(node::NodeContext& node)
     for (const auto& subnet : stratum_allow_subnets) {
         strAllowed += subnet.ToString() + " ";
     }
-    LogPrint(BCLog::STRATUM, "Allowing stratum connections from: %s\n", strAllowed);
+    LogDebug(BCLog::STRATUM, "Allowing stratum connections from: %s\n", strAllowed);
 
     event_base* base = EventBase();
     if (!base) {
-        LogPrint(BCLog::STRATUM, "No event_base object, cannot setup stratum server.\n");
+        LogDebug(BCLog::STRATUM, "No event_base object, cannot setup stratum server.\n");
         return false;
     }
 
     if (!StratumBindAddresses(base, node)) {
-        LogPrintf("Unable to bind any endpoint for stratum server\n");
+        LogInfo("Unable to bind any endpoint for stratum server\n");
     } else {
-        LogPrint(BCLog::STRATUM, "Initialized stratum server\n");
+        LogDebug(BCLog::STRATUM, "Initialized stratum server\n");
     }
 
     g_context = &node;
@@ -1786,7 +1786,7 @@ void InterruptStratumServer()
     LOCK(cs_stratum);
     // Stop listening for connections on stratum sockets
     for (const auto& binding : bound_listeners) {
-        LogPrint(BCLog::STRATUM, "Interrupting stratum service on %s\n", binding.second.ToStringAddrPort());
+        LogDebug(BCLog::STRATUM, "Interrupting stratum service on %s\n", binding.second.ToStringAddrPort());
         evconnlistener_disable(binding.first);
     }
     // Tell the block watching thread to stop
@@ -1810,13 +1810,13 @@ void StopStratumServer()
     wallet::ReleaseMiningDestinations();
     /* Tear-down active connections. */
     for (const auto& subscription : subscriptions) {
-        LogPrint(BCLog::STRATUM, "Closing stratum server connection to %s due to process termination\n", subscription.second.GetPeer().ToStringAddrPort());
+        LogDebug(BCLog::STRATUM, "Closing stratum server connection to %s due to process termination\n", subscription.second.GetPeer().ToStringAddrPort());
         bufferevent_free(subscription.first);
     }
     subscriptions.clear();
     /* Un-bind our listeners from their network interfaces. */
     for (const auto& binding : bound_listeners) {
-        LogPrint(BCLog::STRATUM, "Removing stratum server binding on %s\n", binding.second.ToStringAddrPort());
+        LogDebug(BCLog::STRATUM, "Removing stratum server binding on %s\n", binding.second.ToStringAddrPort());
         evconnlistener_free(binding.first);
     }
     bound_listeners.clear();

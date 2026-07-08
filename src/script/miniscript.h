@@ -527,9 +527,9 @@ class Node
     //! The data bytes in this expression (only for HASH160/HASH256/SHA256/RIPEMD160).
     std::vector<unsigned char> data;
     //! Subexpressions (for WRAP_*/AND_*/OR_*/ANDOR/THRESH)
-    mutable std::vector<NodeRef<Key>> subs;
+    std::vector<Node> subs;
     //! The Script context for this node. P2WSH.
-    const MiniscriptContext m_script_ctx;
+    MiniscriptContext m_script_ctx;
 
 public:
     // Permit 1 level deep recursion since we own instances of our own type.
@@ -873,7 +873,7 @@ public:
         };
         // The upward function computes for a node, given whether its parent is a wrapper,
         // and the string representations of its child nodes, the string representation of the node.
-        auto upfn = [&ctx](bool wrapped, const Node& node, std::span<std::string> subs) -> std::optional<std::string> {
+        auto upfn = [&toString](bool wrapped, const Node& node, std::span<std::string> subs) -> std::optional<std::string> {
             std::string ret = wrapped ? ":" : "";
 
             switch (node.fragment) {
@@ -1839,7 +1839,7 @@ inline std::optional<Node<Key>> Parse(std::span<const char> in, const Ctx& ctx)
         if (keys.size() < 1 || keys.size() > max_keys) return false;
         if (k < 1 || k > (int64_t)keys.size()) return false;
         script_size += 2 + (keys.size() > 16) + (k > 16) + 34 * keys.size();
-        constructed.push_back(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::MULTI, std::move(keys), k));
+        constructed.emplace_back(internal::NoDupCheck{}, ctx.MsContext(), Fragment::MULTI, std::move(keys), k);
         return true;
     };
 
@@ -1911,34 +1911,26 @@ inline std::optional<Node<Key>> Parse(std::span<const char> in, const Ctx& ctx)
             if (Const("0", in)) {
                 constructed.emplace_back(internal::NoDupCheck{}, ctx.MsContext(), Fragment::JUST_0);
             } else if (Const("1", in)) {
-                constructed.push_back(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::JUST_1));
-            } else if (Const("pk(", in)) {
-                auto res = ParseKeyEnd<Key, Ctx>(in, ctx);
-                if (!res) return {};
-                auto& [key, key_size] = *res;
-                constructed.push_back(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::WRAP_C, Vector(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::PK_K, Vector(std::move(key))))));
-                in = in.subspan(key_size + 1);
+                constructed.emplace_back(internal::NoDupCheck{}, ctx.MsContext(), Fragment::JUST_1);
+            } else if (Const("pk(", in, /*skip=*/false)) {
+                std::optional<Key> key = ParseKey<Key, Ctx>("pk", in, ctx);
+                if (!key) return {};
+                constructed.emplace_back(internal::NoDupCheck{}, ctx.MsContext(), Fragment::WRAP_C, Vector(Node<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::PK_K, Vector(std::move(*key)))));
                 script_size += 34;
-            } else if (Const("pkh(", in)) {
-                auto res = ParseKeyEnd<Key>(in, ctx);
-                if (!res) return {};
-                auto& [key, key_size] = *res;
-                constructed.push_back(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::WRAP_C, Vector(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::PK_H, Vector(std::move(key))))));
-                in = in.subspan(key_size + 1);
+            } else if (Const("pkh(", in, /*skip=*/false)) {
+                std::optional<Key> key = ParseKey<Key, Ctx>("pkh", in, ctx);
+                if (!key) return {};
+                constructed.emplace_back(internal::NoDupCheck{}, ctx.MsContext(), Fragment::WRAP_C, Vector(Node<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::PK_H, Vector(std::move(*key)))));
                 script_size += 24;
-            } else if (Const("pk_k(", in)) {
-                auto res = ParseKeyEnd<Key>(in, ctx);
-                if (!res) return {};
-                auto& [key, key_size] = *res;
-                constructed.push_back(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::PK_K, Vector(std::move(key))));
-                in = in.subspan(key_size + 1);
+            } else if (Const("pk_k(", in, /*skip=*/false)) {
+                std::optional<Key> key = ParseKey<Key, Ctx>("pk_k", in, ctx);
+                if (!key) return {};
+                constructed.emplace_back(internal::NoDupCheck{}, ctx.MsContext(), Fragment::PK_K, Vector(std::move(*key)));
                 script_size += 33;
-            } else if (Const("pk_h(", in)) {
-                auto res = ParseKeyEnd<Key>(in, ctx);
-                if (!res) return {};
-                auto& [key, key_size] = *res;
-                constructed.push_back(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::PK_H, Vector(std::move(key))));
-                in = in.subspan(key_size + 1);
+            } else if (Const("pk_h(", in, /*skip=*/false)) {
+                std::optional<Key> key = ParseKey<Key, Ctx>("pk_h", in, ctx);
+                if (!key) return {};
+                constructed.emplace_back(internal::NoDupCheck{}, ctx.MsContext(), Fragment::PK_H, Vector(std::move(*key)));
                 script_size += 23;
             } else if (Const("sha256(", in, /*skip=*/false)) {
                 std::optional<std::vector<unsigned char>> hash = ParseHexStr("sha256", in, 32, ctx);
@@ -2230,8 +2222,8 @@ enum class DecodeContext {
 };
 
 //! Parse a miniscript from a freicoin script
-template<typename Key, typename Ctx, typename I>
-inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
+template <typename Key, typename Ctx, typename I>
+inline std::optional<Node<Key>> DecodeScript(I& in, I last, const Ctx& ctx)
 {
     // The two integers are used to hold state for thresh()
     std::vector<std::tuple<DecodeContext, int64_t, int64_t>> to_parse;

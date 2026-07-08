@@ -520,4 +520,3 @@ private:
 } // namespace common
 
 #endif // FREICOIN_COMMON_ARGS_H
-#endif // FREICOIN_COMMON_ARGS_H

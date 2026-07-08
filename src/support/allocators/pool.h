@@ -1,20 +1,9 @@
-// Copyright (c) 2022 The Bitcoin Core developers
-// Copyright (c) 2011-2024 The Freicoin Developers
-//
-// This program is free software: you can redistribute it and/or modify it under
-// the terms of version 3 of the GNU Affero General Public License as published
-// by the Free Software Foundation.
-//
-// This program is distributed in the hope that it will be useful, but WITHOUT
-// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
-// details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+// Copyright (c) 2022-present The Bitcoin Core developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef FREICOIN_SUPPORT_ALLOCATORS_POOL_H
-#define FREICOIN_SUPPORT_ALLOCATORS_POOL_H
+#ifndef BITCOIN_SUPPORT_ALLOCATORS_POOL_H
+#define BITCOIN_SUPPORT_ALLOCATORS_POOL_H
 
 #include <array>
 #include <cassert>
@@ -363,12 +352,4 @@ bool operator==(const PoolAllocator<T1, MAX_BLOCK_SIZE_BYTES, ALIGN_BYTES>& a,
     return a.resource() == b.resource();
 }
 
-template <class T1, class T2, std::size_t MAX_BLOCK_SIZE_BYTES, std::size_t ALIGN_BYTES>
-bool operator!=(const PoolAllocator<T1, MAX_BLOCK_SIZE_BYTES, ALIGN_BYTES>& a,
-                const PoolAllocator<T2, MAX_BLOCK_SIZE_BYTES, ALIGN_BYTES>& b) noexcept
-{
-    return !(a == b);
-}
-
-#endif // FREICOIN_SUPPORT_ALLOCATORS_POOL_H
-#endif // FREICOIN_SUPPORT_ALLOCATORS_POOL_H
+#endif // BITCOIN_SUPPORT_ALLOCATORS_POOL_H

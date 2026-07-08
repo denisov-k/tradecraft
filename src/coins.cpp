@@ -211,10 +211,9 @@ bool CCoinsViewCache::HaveCoinInCache(const COutPoint &outpoint) const {
 }
 
 uint256 CCoinsViewCache::GetBestBlock() const {
-    if (!hashBlock) {
+    if (hashBlock.IsNull())
         hashBlock = base->GetBestBlock();
-    }
-    return *hashBlock;
+    return hashBlock;
 }
 
 void CCoinsViewCache::SetBestBlock(const uint256 &hashBlockIn) {
@@ -333,6 +332,9 @@ void CCoinsViewCache::Reset() noexcept
     cachedCoinsUsage = 0;
     m_dirty_count = 0;
     SetBestBlock(uint256::ZERO);
+    // Freicoin: drop the cached block-final entry so the next GetFinalTx()
+    // lazily refetches from the base view (mirrors the null best-block).
+    finalTxEntry.reset();
 }
 
 void CCoinsViewCache::Uncache(const COutPoint& hash)

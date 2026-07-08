@@ -104,7 +104,6 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager, TestChain100Setup)
         for (const auto& cs : manager.m_chainstates) {
             cs->ClearBlockIndexCandidates();
         }
-        c2.setBlockIndexCandidates.insert(manager.m_blockman.LookupBlockIndex(active_tip->GetBlockHash()));
         c2.LoadChainTip();
         for (const auto& cs : manager.m_chainstates) {
             cs->PopulateBlockIndexCandidates();

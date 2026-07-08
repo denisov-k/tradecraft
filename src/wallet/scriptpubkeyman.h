@@ -321,7 +321,6 @@ private:
      * The session id is an arbitrary value set by the signer in order for the signing logic
      * to find ongoing signing sessions. It is the SHA256 of aggregate xonly key, + participant pubkey + sighash.
      */
-    mutable std::map<uint256, MuSig2SecNonce> m_musig2_secnonces;
 
     bool AddDescriptorKeyWithDB(WalletBatch& batch, const CKey& key, const CPubKey &pubkey) EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
 

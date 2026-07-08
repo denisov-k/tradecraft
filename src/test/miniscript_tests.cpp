@@ -359,7 +359,7 @@ void TestSatisfy(const KeyConverter& converter, const Node& node)
             if (nonmal_success) {
                 // Non-malleable satisfactions are bounded by the satisfaction size plus:
                 // - For P2WSH spends, the witness script and the path two it
-                const size_t max_stack_size{*node->GetStackSize() + 2};
+                const size_t max_stack_size{*node.GetStackSize() + 2};
                 BOOST_CHECK(witness_nonmal.stack.size() <= max_stack_size);
                 // If a non-malleable satisfaction exists, the malleable one must also exist, and be identical to it.
                 BOOST_CHECK(mal_success);

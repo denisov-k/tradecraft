@@ -2,6 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#define FREICOIN_TEST 1
+
 #include <coins.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>

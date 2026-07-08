@@ -97,7 +97,6 @@ CreateAndActivateUTXOSnapshot(
             chain.InitCoinsCache(1 << 20);
             chain.CoinsTip().SetBestBlock(gen_hash);
             chain.CoinsTip().SetFinalTx(finaltx);
-            chain.setBlockIndexCandidates.insert(node.chainman->m_blockman.LookupBlockIndex(gen_hash));
             chain.LoadChainTip();
             node.chainman->MaybeRebalanceCaches();
 

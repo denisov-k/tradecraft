@@ -28,6 +28,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <map>
 #include <vector>
 
 class CPubKey;
@@ -117,7 +118,7 @@ enum class script_verify_flag_name : uint8_t {
     //
     // Like bitcoin's NULLDUMMY, this also serves as a malleability fix
     // since the bitmask value is provided by the witness.
-    SCRIPT_VERIFY_MULTISIG_HINT = (1U << 4),
+    SCRIPT_VERIFY_MULTISIG_HINT,
 
     // Using a non-push operator in the scriptSig causes script failure (BIP62 rule 2).
     SCRIPT_VERIFY_SIGPUSHONLY,
@@ -194,7 +195,7 @@ enum class script_verify_flag_name : uint8_t {
     // script execution. Before activation they will be given less
     // dangerous semantics, but until then they are treated as
     // discouraged as well.
-    SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS = (1U << 19),
+    SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS,
 
     // Making unknown public key versions (in BIP 342 scripts) non-standard
     SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE,
@@ -204,14 +205,14 @@ enum class script_verify_flag_name : uint8_t {
     // main.h for further description. This flag is a bit unlike the
     // other script verification flags, but it is the easiest way to
     // pass this parameter around the script validation code.
-    SCRIPT_VERIFY_SIZE_EXPANSION = (1U << 28),
+    SCRIPT_VERIFY_SIZE_EXPANSION,
 
     // Set if we are relaxing some of the overly restrictive protocol
     // rules as part of the "protocol cleanup" fork. See commet in
     // main.h for further description. This flag is a bit unlike the
     // other script verification flags, but it is the easiest way to
     // pass this parameter around the script validation code.
-    SCRIPT_VERIFY_PROTOCOL_CLEANUP = (1U << 29),
+    SCRIPT_VERIFY_PROTOCOL_CLEANUP,
 
     // If set, do not serialize CTransaction::lock_height in SignatureHash
     //
@@ -222,7 +223,7 @@ enum class script_verify_flag_name : uint8_t {
     // verification ensures that the lock heights are not serialized
     // during signature verification, and therefore do not invalidate
     // the original bitcoin signatures.
-    SCRIPT_VERIFY_LOCK_HEIGHT_NOT_UNDER_SIGNATURE = (1U << 30),
+    SCRIPT_VERIFY_LOCK_HEIGHT_NOT_UNDER_SIGNATURE,
 
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
@@ -463,5 +464,9 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const CScriptWitness* witness, script_verify_flags flags, const BaseSignatureChecker& checker, ScriptError* serror = nullptr);
 
 int FindAndDelete(CScript& script, const CScript& b);
+
+const std::map<std::string, script_verify_flag_name>& ScriptFlagNamesToEnum();
+
+std::vector<std::string> GetScriptFlagNames(script_verify_flags flags);
 
 #endif // FREICOIN_SCRIPT_INTERPRETER_H

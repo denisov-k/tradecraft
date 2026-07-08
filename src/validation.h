@@ -508,8 +508,8 @@ PackageMempoolAcceptResult ProcessNewPackage(Chainstate& active_chainstate, CTxM
  * Check whether the specified output of the coin/transaction can be spent with
  * an empty scriptSig.
  */
-bool IsTriviallySpendable(const Coin& from, const COutPoint& prevout, unsigned int flags);
-bool IsTriviallySpendable(const CTransaction& txFrom, uint32_t n, unsigned int flags);
+bool IsTriviallySpendable(const Coin& from, const COutPoint& prevout, script_verify_flags flags);
+bool IsTriviallySpendable(const CTransaction& txFrom, uint32_t n, script_verify_flags flags);
 
 /**
  * Check if transaction will be final in the next block to be created.

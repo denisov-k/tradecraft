@@ -20,7 +20,6 @@
 #include <addresstype.h>
 #include <attributes.h>
 #include <key.h>
-#include <musig.h>
 #include <pubkey.h>
 #include <script/keyorigin.h>
 #include <script/script.h>

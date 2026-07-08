@@ -323,10 +323,10 @@ protected:
 arith_uint256 GetBitsProof(uint32_t bits);
 
 /** Compute how much work a block index entry corresponds to. */
-inline arith_uint256 GetBlockProof(const CBlockIndex& block) { return GetBitsProof(block.nBits); }
+arith_uint256 GetBlockProof(const CBlockIndex& block);
 
 /** Compute how much work a block header corresponds to. */
-inline arith_uint256 GetBlockProof(const CBlockHeader& header) { return GetBitsProof(header.nBits); }
+arith_uint256 GetBlockProof(const CBlockHeader& header);
 
 /** Return the time it would take to redo the work difference between from and to, assuming the current hashrate corresponds to the difficulty at tip, in seconds. */
 int64_t GetBlockProofEquivalentTime(const CBlockIndex& to, const CBlockIndex& from, const CBlockIndex& tip, const Consensus::Params&);

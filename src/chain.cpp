@@ -141,18 +141,33 @@ arith_uint256 GetBitsProof(uint32_t bits)
     // as it's too large for an arith_uint256. However, as 2**256 is at least as large
     // as bnTarget+1, it is equal to ((2**256 - bnTarget - 1) / (bnTarget+1)) + 1,
     // or ~bnTarget / (bnTarget+1) + 1.
-    arith_uint256 work = (~bnTarget / (bnTarget + 1)) + 1;
+    return (~bnTarget / (bnTarget + 1)) + 1;
+}
+
+arith_uint256 GetBlockProof(const CBlockIndex& block)
+{
+    arith_uint256 work = GetBitsProof(block.nBits);
+    // Freicoin: merge-mined blocks carry additional work committed via the
+    // auxiliary proof-of-work header.
     if (!block.m_aux_pow.IsNull()) {
-        bnTarget.SetCompact(block.m_aux_pow.m_commit_bits, &fNegative, &fOverflow);
-        if (fNegative || fOverflow || bnTarget == 0) {
-            return work;
+        const arith_uint256 aux = GetBitsProof(block.m_aux_pow.m_commit_bits);
+        const arith_uint256 both = work + aux;
+        if (both >= work) { // guard against overflow
+            work = both;
         }
-        arith_uint256 aux = (~bnTarget / (bnTarget + 1)) + 1;
-        arith_uint256 both = work + aux;
-        if (both < work) { // Overflow
-            return work;
+    }
+    return work;
+}
+
+arith_uint256 GetBlockProof(const CBlockHeader& header)
+{
+    arith_uint256 work = GetBitsProof(header.nBits);
+    if (!header.m_aux_pow.IsNull()) {
+        const arith_uint256 aux = GetBitsProof(header.m_aux_pow.m_commit_bits);
+        const arith_uint256 both = work + aux;
+        if (both >= work) { // guard against overflow
+            work = both;
         }
-        work = both;
     }
     return work;
 }

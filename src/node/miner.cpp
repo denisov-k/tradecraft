@@ -202,6 +202,9 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock()
         }
     }
 
+    // Create the block-final transaction (with its vTxFees / vTxSigOpsCost
+    // slots) before any transactions are selected, so that AddToBlock() can
+    // keep it as the last transaction in the block.
     if (m_block_final_state == HAS_BLOCK_FINAL_TX)
         initFinalTx(final_tx);
 
@@ -226,17 +229,41 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock()
 
     coinbaseTx.vin.resize(1);
     coinbaseTx.vin[0].prevout.SetNull();
+    coinbase_tx.sequence = coinbaseTx.vin[0].nSequence;
+
+    // Add an output that spends the full coinbase reward.
     coinbaseTx.vout.resize(1);
     coinbaseTx.vout[0].scriptPubKey = m_options.coinbase_output_script;
-    coinbaseTx.vout[0].SetReferenceValue(nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus()));
+    // Block subsidy + fees
+    const CAmount block_reward{nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus())};
+    coinbaseTx.vout[0].SetReferenceValue(block_reward);
+    coinbase_tx.block_reward_remaining = block_reward;
+
+    // If this is the first block for which the block-final rules are
+    // enforced, add the initial anyone-can-spend block-final output.
     if (m_block_final_state == INITIAL_BLOCK_FINAL_TXOUT) {
         CTxOut txout(0, CScript() << OP_TRUE);
         coinbaseTx.vout.insert(coinbaseTx.vout.begin(), txout);
     }
-    coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
+
+    // Start the coinbase scriptSig with the block height as required by BIP34.
+    // Mining clients are expected to append extra data to this prefix, so
+    // increasing its length would reduce the space they can use and may break
+    // existing clients.
+    coinbaseTx.vin[0].scriptSig = CScript() << nHeight;
+    if (m_options.include_dummy_extranonce) {
+        // For blocks at heights <= 16, the BIP34-encoded height alone is only
+        // one byte. Consensus requires coinbase scriptSigs to be at least two
+        // bytes long (bad-cb-length), so tests and regtest include a dummy
+        // extraNonce (OP_0)
+        coinbaseTx.vin[0].scriptSig << OP_0;
+    }
+    coinbase_tx.script_sig_prefix = coinbaseTx.vin[0].scriptSig;
     // Consensus rule: lock-time of coinbase MUST be median-time-past
     coinbaseTx.nLockTime = static_cast<uint32_t>(m_median_time_past);
     coinbaseTx.lock_height = nHeight;
+    coinbase_tx.lock_time = coinbaseTx.nLockTime;
+
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
     if (m_block_final_state == HAS_BLOCK_FINAL_TX) {
         m_chainstate.m_chainman.GenerateCoinbaseCommitment(*pblock, pindexPrev);
@@ -250,7 +277,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock()
         pblocktemplate->block_final_tx_coin_map[item.first] = item.second;
     }
 
-    LogPrintf("CreateNewBlock(): block weight: %u txs: %u fees: %ld sigops %d\n", GetBlockWeight(*pblock), nBlockTx, (m_block_final_state == HAS_BLOCK_FINAL_TX) ? nFees - pblocktemplate->vTxFees.back() : nFees, nBlockSigOpsCost);
+    LogInfo("CreateNewBlock(): block weight: %u txs: %u fees: %ld sigops %d\n", GetBlockWeight(*pblock), nBlockTx, (m_block_final_state == HAS_BLOCK_FINAL_TX) ? nFees - pblocktemplate->vTxFees.back() : nFees, nBlockSigOpsCost);
 
     // Fill in header
     pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
@@ -273,7 +300,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock()
 
         // Set difficulty for the auxiliary proof-of-work.
         pblock->SetFilteredTime(GetFilteredTimeAux(pindexPrev, chainparams.GetConsensus()));
-        pblock->m_aux_pow.m_commit_bits = GetNextWorkRequiredAux(pindexPrev, *pblock, chainparams.GetConsensus());;
+        pblock->m_aux_pow.m_commit_bits = GetNextWorkRequiredAux(pindexPrev, *pblock, chainparams.GetConsensus());
 
         // Setup the auxiliary header fields to have reasonable values.
         pblock->m_aux_pow.m_aux_version = VERSIONBITS_TOP_BITS;
@@ -323,14 +350,15 @@ void BlockAssembler::AddToBlock(const CTxMemPoolEntry& entry)
 {
     // If we have a block-final transaction, insert just
     // before the end, so the block-final tx remains last.
-    pblocktemplate->block.vtx.insert(pblocktemplate->block.vtx.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), iter->GetSharedTx());
-    pblocktemplate->vTxFees.insert(pblocktemplate->vTxFees.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), iter->GetFee());
-    pblocktemplate->vTxSigOpsCost.insert(pblocktemplate->vTxSigOpsCost.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), iter->GetSigOpCost());
-    nBlockWeight += iter->GetTxWeight();
+    pblocktemplate->block.vtx.insert(pblocktemplate->block.vtx.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), entry.GetSharedTx());
+    pblocktemplate->vTxFees.insert(pblocktemplate->vTxFees.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), entry.GetFee());
+    pblocktemplate->vTxSigOpsCost.insert(pblocktemplate->vTxSigOpsCost.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), entry.GetSigOpCost());
+    nBlockWeight += entry.GetTxWeight();
     ++nBlockTx;
-    nBlockSigOpsCost += iter->GetSigOpCost();
-    nFees += GetTimeAdjustedValue(iter->GetFee(), nHeight - iter->GetReferenceHeight());
-    inBlock.insert(iter->GetSharedTx()->GetHash());
+    nBlockSigOpsCost += entry.GetSigOpCost();
+    // Freicoin: the fees credited to the coinbase are demurrage-adjusted from
+    // the transaction's reference height to the height of this block.
+    nFees += GetTimeAdjustedValue(entry.GetFee(), nHeight - entry.GetReferenceHeight());
 
     if (m_options.print_modified_fee) {
         LogInfo("fee rate %s txid %s\n",
@@ -341,127 +369,6 @@ void BlockAssembler::AddToBlock(const CTxMemPoolEntry& entry)
 
 void BlockAssembler::addChunks()
 {
-    AssertLockHeld(mempool.cs);
-
-    int nDescendantsUpdated = 0;
-    for (CTxMemPool::txiter it : alreadyAdded) {
-        CTxMemPool::setEntries descendants;
-        mempool.CalculateDescendants(it, descendants);
-        // Insert all descendants (not yet in block) into the modified set
-        for (CTxMemPool::txiter desc : descendants) {
-            if (alreadyAdded.count(desc)) {
-                continue;
-            }
-            ++nDescendantsUpdated;
-            modtxiter mit = mapModifiedTx.find(desc);
-            if (mit == mapModifiedTx.end()) {
-                CTxMemPoolModifiedEntry modEntry(desc);
-                mit = mapModifiedTx.insert(modEntry).first;
-            }
-            mapModifiedTx.modify(mit, update_for_parent_inclusion(it));
-        }
-    }
-    return nDescendantsUpdated;
-}
-
-void BlockAssembler::SortForBlock(const CTxMemPool::setEntries& package, std::vector<CTxMemPool::txiter>& sortedEntries)
-{
-    // Sort package by ancestor count
-    // If a transaction A depends on transaction B, then A's ancestor count
-    // must be greater than B's.  So this is sufficient to validly order the
-    // transactions for block inclusion.
-    sortedEntries.clear();
-    sortedEntries.insert(sortedEntries.begin(), package.begin(), package.end());
-    std::sort(sortedEntries.begin(), sortedEntries.end(), CompareTxIterByAncestorCount());
-}
-
-void BlockAssembler::initFinalTx(const BlockFinalTxEntry& final_tx)
-{
-    // Block-final transactions are only created after we have reached the final
-    // state of activation.
-    if (m_block_final_state != HAS_BLOCK_FINAL_TX) {
-        return;
-    }
-
-    LOCK(cs_main); // for m_chainstate.CoinsTip()
-    CCoinsViewCache &coins_view = m_chainstate.CoinsTip();
-
-    // Create block-final tx
-    CMutableTransaction txFinal;
-    txFinal.version = 2;
-    txFinal.vout.resize(1);
-    txFinal.vout[0].SetReferenceValue(0);
-    txFinal.vout[0].scriptPubKey = EMPTY_SEGWIT_COMMITMENT;
-    txFinal.nLockTime = static_cast<uint32_t>(m_median_time_past);
-    txFinal.lock_height = nHeight;
-
-    // Add all outputs from the prior block-final transaction.  We do nothing
-    // here to prevent selected transactions from spending these same outputs
-    // out from underneath us; we depend insted on mempool protections that
-    // prevent such transactions from being considered in the first place.
-    m_block_final_tx_coin_map.clear();
-    for (uint32_t n = 0; n < final_tx.size; ++n) {
-        COutPoint prevout(final_tx.hash, n);
-        const Coin& coin = coins_view.AccessCoin(prevout);
-        if (IsTriviallySpendable(coin, prevout, MANDATORY_SCRIPT_VERIFY_FLAGS|SCRIPT_VERIFY_WITNESS|SCRIPT_VERIFY_CLEANSTACK)) {
-            m_block_final_tx_coin_map[prevout] = coin;
-            txFinal.vin.push_back(CTxIn(prevout, CScript(), CTxIn::SEQUENCE_FINAL));
-        } else {
-            LogPrintf("WARNING: non-trivial output in block-final transaction record; this should never happen (%s:%n)\n", prevout.hash.ToString(), prevout.n);
-        }
-    }
-
-    // We should have input(s) for the block-final transaction from the prior
-    // block-final transaction, so this should never happen...
-    if (txFinal.vin.empty()) {
-        LogPrintf("Unable to create block-final transaction due to lack of inputs.\n");
-        return;
-    }
-
-    // Add block-final transaction to block template.
-    pblocktemplate->block.vtx.emplace_back(MakeTransactionRef(std::move(txFinal)));
-
-    // Record the fees forwarded by the block-final transaction to the coinbase.
-    CAmount nTxFees = coins_view.GetValueIn(*pblocktemplate->block.vtx.back())
-                    - pblocktemplate->block.vtx.back()->GetValueOut();
-    nTxFees = GetTimeAdjustedValue(nTxFees, nHeight - txFinal.lock_height);
-    pblocktemplate->vTxFees.push_back(nTxFees);
-    nFees += nTxFees;
-
-    // The block-final transaction contributes to aggregate limits:
-    // the number of sigops is tracked...
-    int64_t nTxSigOpsCost = GetTransactionSigOpCost(*pblocktemplate->block.vtx.back(), coins_view, STANDARD_SCRIPT_VERIFY_FLAGS);
-    pblocktemplate->vTxSigOpsCost.push_back(nTxSigOpsCost);
-    nBlockSigOpsCost += nTxSigOpsCost;
-
-    // ...the size is not:
-    nBlockWeight += GetTransactionWeight(*pblocktemplate->block.vtx.back());
-}
-
-// This transaction selection algorithm orders the mempool based
-// on feerate of a transaction including all unconfirmed ancestors.
-// Since we don't remove transactions from the mempool as we select them
-// for block inclusion, we need an alternate method of updating the feerate
-// of a transaction with its not-yet-selected ancestors as we go.
-// This is accomplished by walking the in-mempool descendants of selected
-// transactions and storing a temporary modified state in mapModifiedTxs.
-// Each time through the loop, we compare the best transaction in
-// mapModifiedTxs with the next transaction in the mempool to decide what
-// transaction package to work on next.
-void BlockAssembler::addPackageTxs(int& nPackagesSelected, int& nDescendantsUpdated)
-{
-    const auto& mempool{*Assert(m_mempool)};
-    LOCK(mempool.cs);
-
-    // mapModifiedTx will store sorted packages after they are modified
-    // because some of their txs are already in the block
-    indexed_modified_transaction_set mapModifiedTx;
-    // Keep track of entries that failed inclusion, to avoid duplicate work
-    std::set<Txid> failedTx;
-
-    CTxMemPool::indexed_transaction_set::index<ancestor_score>::type::iterator mi = mempool.mapTx.get<ancestor_score>().begin();
-    CTxMemPool::txiter iter;
-
     // Limit the number of attempts to add transactions to the block when it is
     // close to full; this is just a simple heuristic to finish quickly if the
     // mempool has a lot of entries.
@@ -477,49 +384,13 @@ void BlockAssembler::addPackageTxs(int& nPackagesSelected, int& nDescendantsUpda
     chunk_feerate = m_mempool->GetBlockBuilderChunk(selected_transactions);
     FeePerVSize chunk_feerate_vsize = ToFeePerVSize(chunk_feerate);
 
-        modtxscoreiter modit = mapModifiedTx.get<ancestor_score>().begin();
-        if (mi == mempool.mapTx.get<ancestor_score>().end()) {
-            // We're out of entries in mapTx; use the entry from mapModifiedTx
-            iter = modit->iter;
-            fUsingModified = true;
-        } else {
-            // Try to compare the mapTx entry to the mapModifiedTx entry
-            iter = mempool.mapTx.project<0>(mi);
-            if (modit != mapModifiedTx.get<ancestor_score>().end() &&
-                    CompareTxMemPoolEntryByAncestorFee()(*modit, CTxMemPoolModifiedEntry(iter))) {
-                // The best entry in mapModifiedTx has higher score
-                // than the one from mapTx.
-                // Switch which transaction (package) to consider
-                iter = modit->iter;
-                fUsingModified = true;
-            } else {
-                // Either no entry in mapModifiedTx, or it's worse than mapTx.
-                // Increment mi for the next loop iteration.
-                ++mi;
-            }
-        }
-
-        // We skip mapTx entries that are inBlock, and mapModifiedTx shouldn't
-        // contain anything that is inBlock.
-        assert(!inBlock.count(iter->GetSharedTx()->GetHash()));
-
-        uint64_t packageSize = iter->GetSizeWithAncestors();
-        CAmount packageFees = iter->GetModFeesWithAncestors();
-        int64_t packageSigOpsCost = iter->GetSigOpCostWithAncestors();
-        if (fUsingModified) {
-            packageSize = modit->nSizeWithAncestors;
-            packageFees = modit->nModFeesWithAncestors;
-            packageSigOpsCost = modit->nSigOpCostWithAncestors;
-        }
-        // Ignore demurrage calculations if the refheight age is less than
-        // 1008 blocks (1.5 weeks), to speed up block template construction.
-        // This heuristic has an error of less than 0.1%.
-        if ((iter->GetReferenceHeight() + 1008) < nHeight) {
-            packageFees = GetTimeAdjustedValue(packageFees, nHeight - iter->GetReferenceHeight());
-        }
-
-        if (packageFees < m_options.blockMinFeeRate.GetFee(packageSize)) {
-            // Everything else we might consider has a lower fee rate
+    while (selected_transactions.size() > 0) {
+        // Check to see if min fee rate is still respected.  Note that chunk
+        // fee rates are in un-adjusted (reference height) units; demurrage of
+        // the fees actually credited to the coinbase is applied per-tx in
+        // AddToBlock().
+        if (chunk_feerate_vsize << m_options.blockMinFeeRate.GetFeePerVSize()) {
+            // Everything else we might consider has a lower feerate
             return;
         }
 
@@ -554,6 +425,69 @@ void BlockAssembler::addPackageTxs(int& nPackagesSelected, int& nDescendantsUpda
         chunk_feerate = m_mempool->GetBlockBuilderChunk(selected_transactions);
         chunk_feerate_vsize = ToFeePerVSize(chunk_feerate);
     }
+}
+
+void BlockAssembler::initFinalTx(const BlockFinalTxEntry& final_tx)
+{
+    // Block-final transactions are only created after we have reached the final
+    // state of activation.
+    if (m_block_final_state != HAS_BLOCK_FINAL_TX) {
+        return;
+    }
+
+    LOCK(cs_main); // for m_chainstate.CoinsTip()
+    CCoinsViewCache &coins_view = m_chainstate.CoinsTip();
+
+    // Create block-final tx
+    CMutableTransaction txFinal;
+    txFinal.version = 2;
+    txFinal.vout.resize(1);
+    txFinal.vout[0].SetReferenceValue(0);
+    txFinal.vout[0].scriptPubKey = EMPTY_SEGWIT_COMMITMENT;
+    txFinal.nLockTime = static_cast<uint32_t>(m_median_time_past);
+    txFinal.lock_height = nHeight;
+
+    // Add all outputs from the prior block-final transaction.  We do nothing
+    // here to prevent selected transactions from spending these same outputs
+    // out from underneath us; we depend insted on mempool protections that
+    // prevent such transactions from being considered in the first place.
+    m_block_final_tx_coin_map.clear();
+    for (uint32_t n = 0; n < final_tx.size; ++n) {
+        COutPoint prevout(final_tx.hash, n);
+        const Coin& coin = coins_view.AccessCoin(prevout);
+        if (IsTriviallySpendable(coin, prevout, MANDATORY_SCRIPT_VERIFY_FLAGS|SCRIPT_VERIFY_WITNESS|SCRIPT_VERIFY_CLEANSTACK)) {
+            m_block_final_tx_coin_map[prevout] = coin;
+            txFinal.vin.push_back(CTxIn(prevout, CScript(), CTxIn::SEQUENCE_FINAL));
+        } else {
+            LogWarning("non-trivial output in block-final transaction record; this should never happen (%s:%n)\n", prevout.hash.ToString(), prevout.n);
+        }
+    }
+
+    // We should have input(s) for the block-final transaction from the prior
+    // block-final transaction, so this should never happen...
+    if (txFinal.vin.empty()) {
+        LogInfo("Unable to create block-final transaction due to lack of inputs.\n");
+        return;
+    }
+
+    // Add block-final transaction to block template.
+    pblocktemplate->block.vtx.emplace_back(MakeTransactionRef(std::move(txFinal)));
+
+    // Record the fees forwarded by the block-final transaction to the coinbase.
+    CAmount nTxFees = coins_view.GetValueIn(*pblocktemplate->block.vtx.back())
+                    - pblocktemplate->block.vtx.back()->GetValueOut();
+    nTxFees = GetTimeAdjustedValue(nTxFees, nHeight - txFinal.lock_height);
+    pblocktemplate->vTxFees.push_back(nTxFees);
+    nFees += nTxFees;
+
+    // The block-final transaction contributes to aggregate limits:
+    // the number of sigops is tracked...
+    int64_t nTxSigOpsCost = GetTransactionSigOpCost(*pblocktemplate->block.vtx.back(), coins_view, STANDARD_SCRIPT_VERIFY_FLAGS);
+    pblocktemplate->vTxSigOpsCost.push_back(nTxSigOpsCost);
+    nBlockSigOpsCost += nTxSigOpsCost;
+
+    // ...the size is not:
+    nBlockWeight += GetTransactionWeight(*pblocktemplate->block.vtx.back());
 }
 
 void AddMerkleRootAndCoinbase(CBlock& block, CTransactionRef coinbase, uint32_t version, uint32_t timestamp, uint32_t nonce)
@@ -667,6 +601,7 @@ std::unique_ptr<CBlockTemplate> WaitAndCreateNewBlock(ChainstateManager& chainma
                 current_fees = template_fees(*block_template);
             }
 
+            // Check if fees increased enough to return the new template
             Assume(options.fee_threshold != MAX_MONEY);
             if (template_fees(*new_tmpl) >= current_fees + options.fee_threshold) return new_tmpl;
         }

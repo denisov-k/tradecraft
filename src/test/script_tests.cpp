@@ -41,6 +41,7 @@
 #include <util/string.h>
 
 #include <cstdint>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -65,6 +66,16 @@ struct ScriptErrorDesc
 
 static ScriptErrorDesc script_errors[]={
     {SCRIPT_ERR_OK, "OK"},
+    {SCRIPT_ERR_UNKNOWN_ERROR, "UNKNOWN_ERROR"},
+    {SCRIPT_ERR_DISCOURAGE_UPGRADABLE_PUBKEYTYPE, "DISCOURAGE_UPGRADABLE_PUBKEYTYPE"},
+    {SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION, "DISCOURAGE_UPGRADABLE_TAPROOT_VERSION"},
+    {SCRIPT_ERR_SCHNORR_SIG, "SCHNORR_SIG"},
+    {SCRIPT_ERR_SCHNORR_SIG_HASHTYPE, "SCHNORR_SIG_HASHTYPE"},
+    {SCRIPT_ERR_SCHNORR_SIG_SIZE, "SCHNORR_SIG_SIZE"},
+    {SCRIPT_ERR_TAPROOT_WRONG_CONTROL_SIZE, "TAPROOT_WRONG_CONTROL_SIZE"},
+    {SCRIPT_ERR_TAPSCRIPT_CHECKMULTISIG, "TAPSCRIPT_CHECKMULTISIG"},
+    {SCRIPT_ERR_TAPSCRIPT_MINIMALIF, "TAPSCRIPT_MINIMALIF"},
+    {SCRIPT_ERR_TAPSCRIPT_VALIDATION_WEIGHT, "TAPSCRIPT_VALIDATION_WEIGHT"},
     {SCRIPT_ERR_EVAL_FALSE, "EVAL_FALSE"},
     {SCRIPT_ERR_OP_RETURN, "OP_RETURN"},
     {SCRIPT_ERR_SCRIPT_SIZE, "SCRIPT_SIZE"},
@@ -155,6 +166,10 @@ void DoTest(const CScript& scriptPubKey, const CScript& scriptSig, const CScript
     // Verify that removing flags from a passing test or adding flags to a failing test does not change the result.
     for (int i = 0; i < 256; ++i) {
         script_verify_flags extra_flags = script_verify_flags::from_int(m_rng.randbits(MAX_SCRIPT_VERIFY_FLAGS_BITS));
+        // Exclude flags that invert semantics (rule-relaxing hard-fork flags
+        // and the sighash-changing lock-height flag): adding them to a failing
+        // test can legitimately make it pass.
+        extra_flags &= ~(SCRIPT_VERIFY_PROTOCOL_CLEANUP | SCRIPT_VERIFY_SIZE_EXPANSION | SCRIPT_VERIFY_LOCK_HEIGHT_NOT_UNDER_SIGNATURE);
         script_verify_flags combined_flags{expect ? (flags & ~extra_flags) : (flags | extra_flags)};
         // Weed out some invalid flag combinations.
         if (combined_flags & SCRIPT_VERIFY_CLEANSTACK && ~combined_flags & (SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS)) continue;
@@ -942,7 +957,7 @@ BOOST_AUTO_TEST_CASE(script_json_test)
         CScript scriptSig = ParseScript(scriptSigString);
         std::string scriptPubKeyString = test[pos++].get_str();
         CScript scriptPubKey = ParseScript(scriptPubKeyString);
-        unsigned int scriptflags = ParseScriptFlags(test[pos++].get_str());
+        script_verify_flags scriptflags = ParseScriptFlags(test[pos++].get_str());
         int scriptError = ParseScriptError(test[pos++].get_str());
 
         DoTest(scriptPubKey, scriptSig, witness, scriptflags, strTest, scriptError, nValue);
@@ -1610,12 +1625,12 @@ static CScriptWitness ScriptWitnessFromJSON(const UniValue& univalue)
     return scriptwitness;
 }
 
-static std::vector<unsigned int> AllConsensusFlags()
+static std::vector<script_verify_flags> AllConsensusFlags()
 {
-    std::vector<unsigned int> ret;
+    std::vector<script_verify_flags> ret;
 
     for (unsigned int i = 0; i < 16; ++i) {
-        unsigned int flag = 0;
+        script_verify_flags flag = 0;
         if (i & 1) flag |= SCRIPT_VERIFY_P2SH;
         if (i & 2) flag |= SCRIPT_VERIFY_DERSIG;
         if (i & 4) flag |= SCRIPT_VERIFY_WITNESS;
@@ -1633,7 +1648,7 @@ static std::vector<unsigned int> AllConsensusFlags()
 }
 
 /** Precomputed list of all valid combinations of consensus-relevant script validation flags. */
-static const std::vector<unsigned int> ALL_CONSENSUS_FLAGS = AllConsensusFlags();
+static const std::vector<script_verify_flags> ALL_CONSENSUS_FLAGS = AllConsensusFlags();
 
 static void AssetTest(const UniValue& test, SignatureCache& signature_cache)
 {
@@ -1643,7 +1658,7 @@ static void AssetTest(const UniValue& test, SignatureCache& signature_cache)
     const std::vector<SpentOutput> prevouts = TxOutsFromJSON(test["prevouts"]);
     BOOST_CHECK(prevouts.size() == mtx.vin.size());
     size_t idx = test["index"].getInt<int64_t>();
-    uint32_t test_flags{ParseScriptFlags(test["flags"].get_str())};
+    script_verify_flags test_flags{ParseScriptFlags(test["flags"].get_str())};
     bool fin = test.exists("final") && test["final"].get_bool();
 
     if (test.exists("success")) {
@@ -1695,7 +1710,7 @@ BOOST_AUTO_TEST_CASE(script_assets_test)
     bool exists = fs::exists(path);
     BOOST_WARN_MESSAGE(exists, "File $DIR_UNIT_TEST_DATA/script_assets_test.json not found, skipping script_assets_test");
     if (!exists) return;
-    std::ifstream file{path};
+    std::ifstream file{path.std_path()};
     BOOST_CHECK(file.is_open());
     file.seekg(0, std::ios::end);
     size_t length = file.tellg();

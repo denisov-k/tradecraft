@@ -248,7 +248,7 @@ bool InitSubnetAllowList(const std::string which, std::vector<CSubNet>& allowed_
         if (!subnet.IsValid()) {
             uiInterface.ThreadSafeMessageBox(
                 Untranslated(strprintf("Invalid %s subnet specification: %s. Valid values are a single IP (e.g. 1.2.3.4), a network/netmask (e.g. 1.2.3.4/255.255.255.0), a network/CIDR (e.g. 1.2.3.4/24), all ipv4 (0.0.0.0/0), or all ipv6 (::/0). RFC4193 is allowed only if -cjdnsreachable=0.", opt_allowip, strAllow)),
-                "", CClientUIInterface::MSG_ERROR);
+                CClientUIInterface::MSG_ERROR);
             return false;
         }
         allowed_subnets.push_back(subnet);
@@ -304,7 +304,7 @@ static void http_request_cb(struct evhttp_request* req, void* arg)
 
     // Early address-based allow check
     if (!ClientAllowed(rpc_allow_subnets, hreq->GetPeer())) {
-        LogPrint(BCLog::HTTP, "HTTP request from %s rejected: Client network is not allowed RPC access\n",
+        LogDebug(BCLog::HTTP, "HTTP request from %s rejected: Client network is not allowed RPC access\n",
                  hreq->GetPeer().ToStringAddrPort());
         hreq->WriteReply(HTTP_FORBIDDEN);
         return;
@@ -406,10 +406,10 @@ bool InitEndpointList(const std::string& which, uint16_t default_port, std::vect
         endpoints.emplace_back("::1", default_port);
         endpoints.emplace_back("127.0.0.1", default_port);
         if (gArgs.IsArgSet(opt_allowip)) {
-            LogPrintf("WARNING: option %s was specified without %s; this doesn't usually make sense\n", opt_allowip, opt_bind);
+            LogInfo("WARNING: option %s was specified without %s; this doesn't usually make sense\n", opt_allowip, opt_bind);
         }
         if (gArgs.IsArgSet(opt_bind)) {
-            LogPrintf("WARNING: option %s was ignored because %s was not specified, refusing to allow everyone to connect\n", opt_bind, opt_allowip);
+            LogInfo("WARNING: option %s was ignored because %s was not specified, refusing to allow everyone to connect\n", opt_bind, opt_allowip);
         }
     } else if (gArgs.IsArgSet(opt_bind)) { // Specific bind address
         for (const std::string& strRPCBind : gArgs.GetArgs(opt_bind)) {
@@ -493,7 +493,7 @@ bool InitHTTPServer(const util::SignalInterrupt& interrupt)
     std::string strAllowed;
     for (const CSubNet& subnet : rpc_allow_subnets)
         strAllowed += subnet.ToString() + " ";
-    LogPrint(BCLog::HTTP, "Allowing HTTP connections from: %s\n", strAllowed);
+    LogDebug(BCLog::HTTP, "Allowing HTTP connections from: %s\n", strAllowed);
 
     // Redirect libevent's logging to our own log
     event_set_log_callback(&libevent_log_cb);
@@ -530,7 +530,7 @@ bool InitHTTPServer(const util::SignalInterrupt& interrupt)
     g_max_queue_depth = std::max(gArgs.GetArg("-rpcworkqueue", DEFAULT_HTTP_WORKQUEUE), 1);
     LogDebug(BCLog::HTTP, "set work queue of depth %d", g_max_queue_depth);
 
-    g_work_queue = std::make_unique<WorkQueue<NetEventClosure>>(workQueueDepth);
+    g_work_queue = std::make_unique<WorkQueue<NetEventClosure>>(g_max_queue_depth);
     // transfer ownership to eventBase/HTTP via .release()
     eventBase = base_ctr.release();
     eventHTTP = http_ctr.release();

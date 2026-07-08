@@ -16,6 +16,7 @@
 #include <consensus/merkle.h>
 #include <consensus/merkleproof.h>
 #include <test/util/random.h>
+#include <test/util/common.h>
 #include <test/util/setup_common.h>
 
 #include <streams.h>
@@ -160,9 +161,10 @@ BOOST_AUTO_TEST_CASE(merkle_test_empty_block)
     BOOST_CHECK_EQUAL(root.IsNull(), true);
     BOOST_CHECK_EQUAL(mutated, false);
 
-    // Verify TransactionMerklePath handles empty block correctly
-    // This tests the early-return path in MerkleComputation
-    std::vector<uint256> merkle_path = TransactionMerklePath(block, 0);
+    // Verify merkle-branch computation handles an empty block correctly
+    std::vector<uint256> leaves;
+    for (const auto& tx : block.vtx) leaves.push_back(tx->GetHash().ToUint256());
+    std::vector<uint256> merkle_path = ComputeMerkleBranch(leaves, 0);
     BOOST_CHECK(merkle_path.empty());
 }
 

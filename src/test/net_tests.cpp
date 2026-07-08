@@ -1588,6 +1588,7 @@ BOOST_AUTO_TEST_CASE(private_broadcast_version_does_not_update_addrman_services)
     const CAddress addr{Lookup("1.2.3.4", 8333, /*fAllowLookup=*/false).value(), NODE_NONE};
     BOOST_REQUIRE(m_node.addrman->Add({addr}, source));
     CNode node{/*id=*/0,
+               /*max_untrusted_peers=*/DEFAULT_MAX_PEER_CONNECTIONS,
                /*sock=*/nullptr,
                /*addrIn=*/addr,
                /*nKeyedNetGroupIn=*/0,

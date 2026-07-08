@@ -2,6 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#define FREICOIN_TEST 1
+
 #include <index/txospenderindex.h>
 #include <test/util/common.h>
 #include <test/util/setup_common.h>
@@ -34,10 +36,13 @@ BOOST_FIXTURE_TEST_CASE(txospenderindex_initial_sync, TestChain100Setup)
         spender[i].vout.resize(1);
         spender[i].vout[0].nValue = coinbase_tx->GetValueOut();
         spender[i].vout[0].scriptPubKey = coinbase_script;
+        // Freicoin: lock_height must be no less than the spent coin's refheight
+        // and is committed to by the signature.
+        spender[i].lock_height = coinbase_tx->lock_height;
 
         // Sign
         std::vector<unsigned char> vchSig;
-        const uint256 hash = SignatureHash(coinbase_script, spender[i], 0, SIGHASH_ALL, 0, SigVersion::BASE);
+        const uint256 hash = SignatureHash(coinbase_script, spender[i], 0, SIGHASH_ALL, /*amount=*/0, /*refheight=*/0, SigVersion::BASE);
         BOOST_REQUIRE(coinbaseKey.Sign(hash, vchSig));
         vchSig.push_back((unsigned char)SIGHASH_ALL);
         spender[i].vin[0].scriptSig << vchSig;

@@ -90,6 +90,8 @@ uint256 MerkleHash_Sha256Midstate(const uint256& left, const uint256& right) {
 static void MerkleComputation(const std::vector<uint256>& leaves, uint256* proot, bool* pmutated, uint32_t branchpos, std::vector<uint256>* pbranch, merklecomputationopts flags) {
     if (pbranch) pbranch->clear();
     if (leaves.size() == 0) {
+        if (pmutated) *pmutated = false;
+        if (proot) *proot = uint256();
         return;
     }
     bool is_mutable = (flags & MERKLE_COMPUTATION_MUTABLE) != 0;
@@ -175,6 +177,9 @@ static void MerkleComputation(const std::vector<uint256>& leaves, uint256* proot
             level++;
         }
     }
+    // Return result.
+    if (pmutated) *pmutated = mutated;
+    if (proot) *proot = h;
 }
 
 uint256 ComputeMerkleRoot(std::vector<uint256> hashes, bool* mutated) {

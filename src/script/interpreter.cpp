@@ -15,6 +15,9 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <script/interpreter.h>
+#include <tinyformat.h>
+#include <map>
+#include <string>
 
 #include <consensus/merkle.h>
 #include <consensus/merkleproof.h>
@@ -382,7 +385,7 @@ static bool EvalChecksigTapscript(const valtype& sig, const valtype& pubkey, Scr
         }
     }
     if (pubkey.size() == 0) {
-        return set_error(serror, SCRIPT_ERR_TAPSCRIPT_EMPTY_PUBKEY);
+        return set_error(serror, SCRIPT_ERR_PUBKEYTYPE);
     } else if (pubkey.size() == 32) {
         if (success && !checker.CheckSchnorrSignature(sig, pubkey, sigversion, execdata, serror)) {
             return false; // serror is set
@@ -816,7 +819,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     if (fExec)
                     {
                         if (stack.size() < 1)
-                            return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+                            return set_error(serror, SCRIPT_ERR_UNBALANCED_CONDITIONAL);
                         valtype& vch = stacktop(-1);
                         // Tapscript requires minimal IF/NOTIF inputs as a consensus rule.
                         if (sigversion == SigVersion::TAPSCRIPT) {
@@ -1557,10 +1560,6 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
             }
         }
     }
-    catch (const scriptnum_error&)
-    {
-        return set_error(serror, SCRIPT_ERR_SCRIPTNUM);
-    }
     catch (...)
     {
         return set_error(serror, SCRIPT_ERR_UNKNOWN_ERROR);
@@ -2235,7 +2234,7 @@ uint256 ComputeTaprootMerkleRoot(std::span<const unsigned char> control, const u
     return k;
 }
 
-static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, const std::vector<unsigned char>& program, unsigned int flags, const BaseSignatureChecker& checker, ScriptError* serror)
+static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, const std::vector<unsigned char>& program, script_verify_flags flags, const BaseSignatureChecker& checker, ScriptError* serror)
 {
     CScript exec_script; //!< Actually executed script (second to last stack item in P2WSH or P2WPK; leaf script in P2TR)
     std::span stack{witness.stack};
@@ -2420,4 +2419,54 @@ bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const C
     }
 
     return set_success(serror);
+}
+
+const std::map<std::string, script_verify_flag_name>& ScriptFlagNamesToEnum()
+{
+#define FLAG_NAME(flag) {std::string(#flag), SCRIPT_VERIFY_##flag}
+    static const std::map<std::string, script_verify_flag_name> g_names_to_enum{
+        FLAG_NAME(P2SH),
+        FLAG_NAME(STRICTENC),
+        FLAG_NAME(DERSIG),
+        FLAG_NAME(LOW_S),
+        FLAG_NAME(MULTISIG_HINT),
+        FLAG_NAME(SIGPUSHONLY),
+        FLAG_NAME(MINIMALDATA),
+        FLAG_NAME(DISCOURAGE_UPGRADABLE_NOPS),
+        FLAG_NAME(CLEANSTACK),
+        FLAG_NAME(WITNESS),
+        FLAG_NAME(DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM),
+        FLAG_NAME(MINIMALIF),
+        FLAG_NAME(NULLFAIL),
+        FLAG_NAME(WITNESS_PUBKEYTYPE),
+        FLAG_NAME(CONST_SCRIPTCODE),
+        FLAG_NAME(TAPROOT),
+        FLAG_NAME(DISCOURAGE_UPGRADABLE_TAPROOT_VERSION),
+        FLAG_NAME(DISCOURAGE_OP_SUCCESS),
+        FLAG_NAME(DISCOURAGE_UPGRADABLE_PUBKEYTYPE),
+        FLAG_NAME(SIZE_EXPANSION),
+        FLAG_NAME(PROTOCOL_CLEANUP),
+        FLAG_NAME(LOCK_HEIGHT_NOT_UNDER_SIGNATURE),
+    };
+#undef FLAG_NAME
+    return g_names_to_enum;
+}
+
+std::vector<std::string> GetScriptFlagNames(script_verify_flags flags)
+{
+    std::vector<std::string> res;
+    if (flags == SCRIPT_VERIFY_NONE) {
+        return res;
+    }
+    script_verify_flags leftover = flags;
+    for (const auto& [name, flag] : ScriptFlagNamesToEnum()) {
+        if ((flags & flag) != 0) {
+            res.push_back(name);
+            leftover &= ~flag;
+        }
+    }
+    if (leftover != 0) {
+        res.push_back(strprintf("0x%08x", leftover.as_int()));
+    }
+    return res;
 }

@@ -904,24 +904,9 @@ public:
     {
         return m_block_template->vTxSigOpsCost;
     }
-
-    CoinbaseTx getCoinbaseTx() override
+    node::CoinbaseTx getCoinbaseTx() override
     {
-        return m_block_template->block.vtx[0];
-    }
-
-    std::vector<unsigned char> getCoinbaseCommitment() override
-    {
-        return m_block_template->vchCoinbaseCommitment;
-    }
-
-    int getWitnessCommitmentIndex() override
-    {
-        // Freicoin: the upstream segwit coinbase witness commitment (0xaa21a9ed
-        // marker) does not exist; the commitment scheme differs (block-final /
-        // aux-pow commitments). This Mining-IPC interface is upstream Stratum-v2
-        // plumbing which Freicoin's built-in stratum server does not use.
-        return -1;
+        return m_block_template->m_coinbase_tx;
     }
 
     bool hasBlockFinalTx() override

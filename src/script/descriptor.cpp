@@ -1587,6 +1587,7 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkeyInner(uint32_t& key_exp_
                 CPubKey pubkey = key.GetPubKey();
                 out.keys.emplace(pubkey.GetID(), key);
                 ret.emplace_back(std::make_unique<ConstPubkeyProvider>(key_exp_index, pubkey, false));
+                ++key_exp_index;
                 return ret;
             } else {
                 error = "Uncompressed keys are not allowed";
@@ -2129,7 +2130,8 @@ std::unique_ptr<DescriptorImpl> InferScript(const CScript& script, ParseScriptCo
 
     if (ctx == ParseScriptContext::P2WSH) {
         const auto script_ctx{miniscript::MiniscriptContext::P2WSH};
-        KeyParser parser(/* out = */nullptr, /* in = */&provider, /* ctx = */script_ctx);
+        uint32_t key_exp_index_dummy{0};
+        KeyParser parser(/* out = */nullptr, /* in = */&provider, /* ctx = */script_ctx, key_exp_index_dummy);
         auto node = miniscript::FromScript(script, parser);
         if (node && node->IsSane()) {
             std::vector<std::unique_ptr<PubkeyProvider>> keys;

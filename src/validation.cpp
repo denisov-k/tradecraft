@@ -2220,7 +2220,7 @@ int ApplyTxInUndo(Coin&& undo, CCoinsViewCache& view, const COutPoint& out)
     return fClean ? DISCONNECT_OK : DISCONNECT_UNCLEAN;
 }
 
-bool IsTriviallySpendable(const Coin& from, const COutPoint& prevout, unsigned int flags)
+bool IsTriviallySpendable(const Coin& from, const COutPoint& prevout, script_verify_flags flags)
 {
     // Build a transaction attempting to spend the output.
     CMutableTransaction txTo;
@@ -2246,7 +2246,7 @@ bool IsTriviallySpendable(const Coin& from, const COutPoint& prevout, unsigned i
     return !check().has_value();
 }
 
-bool IsTriviallySpendable(const CTransaction& txFrom, uint32_t n, unsigned int flags)
+bool IsTriviallySpendable(const CTransaction& txFrom, uint32_t n, script_verify_flags flags)
 {
     // Build the coin object from which we will attempt to spend the output:
     Coin from(txFrom.vout[0], txFrom.lock_height, 0, false);
@@ -2546,7 +2546,6 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         // enforced later.
         enforce_block_final = false;
     }
-
     BlockFinalTxEntry entry;
     bool any_prev_final_utxos = false;
     if (enforce_block_final) {
@@ -2590,7 +2589,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         // be called, normal tip validation in init.cpp will halt on this error
         // and notify that the user that their block database is corrupted,
         // which is fixed by starting with -reindex=1.
-        LogPrintf("ERROR: %s: prior block-final tx hash %s not found; corruption likely!\n", __func__, entry.hash.GetHex());
+        LogInfo("ERROR: %s: prior block-final tx hash %s not found; corruption likely!\n", __func__, entry.hash.GetHex());
         return FatalError(m_chainman.GetNotifications(), state, _("Database corruption likely.  Try restarting with `-reindex=1`."));
     }
 
@@ -2637,7 +2636,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         const Coin& coin = view.AccessCoin(prevout);
         if (coin.IsSpent()) {
             // Should never happen.
-            LogPrintf("ERROR: %s: unspent output of prior block-final tx outpoint %s:0 not found; corruption likely!\n", __func__, entry.hash.GetHex());
+            LogInfo("ERROR: %s: unspent output of prior block-final tx outpoint %s:0 not found; corruption likely!\n", __func__, entry.hash.GetHex());
             return FatalError(m_chainman.GetNotifications(), state, _("Database corruption likely.  Try restarting with `-reindex=1`."));
         }
         // Block-final transactions are chained together, and must spend every
@@ -2721,7 +2720,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         // * p2sh (when P2SH enabled in flags and excludes coinbase)
         nSigOpsCost += GetTransactionSigOpCost(tx, view, flags);
         if (!(rules & Consensus::PROTOCOL_CLEANUP) && nSigOpsCost > MAX_BLOCK_SIGOPS_COST) {
-            LogPrintf("ERROR: ConnectBlock(): too many sigops\n");
+            LogInfo("ERROR: ConnectBlock(): too many sigops\n");
             return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-sigops");
         }
 
@@ -2762,7 +2761,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
              Ticks<MillisecondsDouble>(m_chainman.time_connect) / m_chainman.num_blocks_total);
 
     if (static_cast<int64_t>(block.vtx[0]->lock_height) != static_cast<int64_t>(pindex->nHeight)) {
-        LogPrintf("ERROR: coinbase lock_height != block height (%d != %d)\n", block.vtx[0]->lock_height, pindex->nHeight);
+        LogInfo("ERROR: coinbase lock_height != block height (%d != %d)\n", block.vtx[0]->lock_height, pindex->nHeight);
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-lock-height");
     }
 
@@ -4343,7 +4342,7 @@ void ChainstateManager::GenerateCoinbaseCommitment(CBlock& block, const CBlockIn
 
 bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams)
 {
-    return std::all_of(headers.cbegin(), headers.cend(),
+    return std::all_of(headers.begin(), headers.end(),
             [&](const auto& header) { return CheckAuxiliaryProofOfWork(header, consensusParams) && (IsProtocolCleanupActive(consensusParams, std::chrono::seconds(header.nTime)) || CheckProofOfWork(header, consensusParams));});
 }
 
