@@ -1940,25 +1940,6 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
 {
     assert(nIn < txTo.vin.size());
 
-    if (sigversion != SigVersion::WITNESS_V0) {
-        // Check for invalid use of SIGHASH_SINGLE
-        if ((nHashType & 0x1f) == SIGHASH_SINGLE) {
-            if (nIn >= txTo.vout.size()) {
-                //  nOut out of range
-                return uint256::ONE;
-            }
-        }
-    }
-
-    HashWriter ss{};
-
-    // Try to compute using cached SHA256 midstate.
-    if (sighash_cache && sighash_cache->Load(nHashType, scriptCode, ss)) {
-        // Add sighash type and hash.
-        ss << nHashType;
-        return ss.GetHash();
-    }
-
     if (sigversion == SigVersion::WITNESS_V0) {
         uint256 hashPrevouts;
         uint256 hashSequence;
@@ -1973,14 +1954,16 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
             hashSequence = cacheready ? cache->hashSequence : SHA256Uint256(GetSequencesSHA256(txTo));
         }
 
+
         if ((nHashType & 0x1f) != SIGHASH_SINGLE && (nHashType & 0x1f) != SIGHASH_NONE) {
             hashOutputs = cacheready ? cache->hashOutputs : SHA256Uint256(GetOutputsSHA256(txTo));
         } else if ((nHashType & 0x1f) == SIGHASH_SINGLE && nIn < txTo.vout.size()) {
-            HashWriter inner_ss{};
-            inner_ss << txTo.vout[nIn];
-            hashOutputs = inner_ss.GetHash();
+            HashWriter ss{};
+            ss << txTo.vout[nIn];
+            hashOutputs = ss.GetHash();
         }
 
+        HashWriter ss{};
         // Version
         ss << txTo.version;
         // Input prevouts/nSequence (none/all, depending on flags)
@@ -2007,13 +1990,15 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
         // Sighash type
         ss << (nHashType & ~SIGHASH_NO_LOCK_HEIGHT);
 
-        // Serialize
-        ss << txTmp;
+        return ss.GetHash();
     }
 
-    // If a cache object was provided, store the midstate there.
-    if (sighash_cache != nullptr) {
-        sighash_cache->Store(nHashType, scriptCode, ss);
+    // Check for invalid use of SIGHASH_SINGLE
+    if ((nHashType & 0x1f) == SIGHASH_SINGLE) {
+        if (nIn >= txTo.vout.size()) {
+            //  nOut out of range
+            return uint256::ONE;
+        }
     }
 
     // Wrapper to serialize only the necessary parts of the transaction being signed
@@ -2249,7 +2234,7 @@ uint256 ComputeTaprootMerkleRoot(std::span<const unsigned char> control, const u
 static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, const std::vector<unsigned char>& program, unsigned int flags, const BaseSignatureChecker& checker, ScriptError* serror)
 {
     CScript exec_script; //!< Actually executed script (second to last stack item in P2WSH or P2WPK; leaf script in P2TR)
-    Span stack{witness.stack};
+    std::span stack{witness.stack};
     ScriptExecutionData execdata;
 
     if (witversion == 0) {

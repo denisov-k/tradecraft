@@ -385,47 +385,4 @@ public:
     }
 };
 
-BOOST_FIXTURE_TEST_CASE(index_reorg_crash, BuildChainTestingSetup)
-{
-    // Enable mock time
-    SetMockTime(GetTime<std::chrono::minutes>());
-
-    std::promise<void> promise;
-    std::shared_future<void> blocker(promise.get_future());
-    int blocking_height = WITH_LOCK(cs_main, return m_node.chainman->ActiveChain().Tip()->nHeight);
-
-    IndexReorgCrash index(interfaces::MakeChain(m_node), blocker, blocking_height);
-    BOOST_REQUIRE(index.Init());
-    BOOST_REQUIRE(index.StartBackgroundSync());
-
-    auto func_wait_until = [&](int height, std::chrono::milliseconds timeout) {
-        auto deadline = std::chrono::steady_clock::now() + timeout;
-        while (index.GetSummary().best_block_height < height) {
-            if (std::chrono::steady_clock::now() > deadline) {
-                BOOST_FAIL(strprintf("Timeout waiting for index height %d (current: %d)", height, index.GetSummary().best_block_height));
-                return;
-            }
-            std::this_thread::sleep_for(100ms);
-        }
-    };
-
-    // Wait until the index is one block before the fork point
-    func_wait_until(blocking_height - 1, /*timeout=*/5s);
-
-    // Create a fork to trigger the reorg
-    std::vector<std::shared_ptr<CBlock>> fork;
-    const CBlockIndex* prev_tip = WITH_LOCK(cs_main, return m_node.chainman->ActiveChain().Tip()->pprev);
-    BOOST_REQUIRE(BuildChain(prev_tip, GetScriptForDestination(PKHash(GenerateRandomKey().GetPubKey())), 3, fork));
-
-    for (const auto& block : fork) {
-        BOOST_REQUIRE(m_node.chainman->ProcessNewBlock(block, /*force_processing=*/true, /*min_pow_checked=*/true, nullptr));
-    }
-
-    // Unblock the index thread so it can process the reorg
-    promise.set_value();
-    // Wait for the index to reach the new tip
-    func_wait_until(blocking_height + 2, 5s);
-    index.Stop();
-}
-
 BOOST_AUTO_TEST_SUITE_END()

@@ -228,7 +228,7 @@ ReadStatus PartiallyDownloadedBlock::FillBlock(CBlock& block, const std::vector<
         return READ_STATUS_INVALID;
 
     // Check for possible mutations early now that we have a seemingly good block
-    IsBlockMutatedFn check_mutated{m_check_block_mutated_mock ? m_check_block_mutated_mock : IsBlockMutated};
+    IsBlockMutatedFn check_mutated{m_check_block_mutated_mock ? m_check_block_mutated_mock : IsBlockMutatedFn{[](const CBlock& b, bool witness_root) { return IsBlockMutated(b, Params().GetConsensus(), witness_root); }}};
     if (check_mutated(/*block=*/block,
                        /*check_witness_root=*/segwit_active)) {
         return READ_STATUS_FAILED; // Possible Short ID collision

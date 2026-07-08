@@ -136,6 +136,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock()
     // Add dummy coinbase tx as first transaction. It is skipped by the
     // getblocktemplate RPC and mining interface consumers must not use it.
     pblock->vtx.emplace_back();
+    pblocktemplate->vTxFees.push_back(-1); // updated at end
 
     LOCK(::cs_main);
     CBlockIndex* pindexPrev = m_chainstate.m_chain.Tip();
@@ -217,7 +218,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock()
     CMutableTransaction coinbaseTx;
     coinbaseTx.vin.resize(1);
     coinbaseTx.vin[0].prevout.SetNull();
-    coinbaseTx.vin[0].nSequence = CTxIn::MAX_SEQUENCE_NONFINAL; // Make sure timelock is enforced.
     coinbaseTx.vout.resize(1);
     coinbaseTx.vout[0].scriptPubKey = m_options.coinbase_output_script;
     coinbaseTx.vout[0].SetReferenceValue(nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus()));
@@ -634,7 +634,7 @@ std::unique_ptr<CBlockTemplate> WaitAndCreateNewBlock(ChainstateManager& chainma
     auto now{NodeClock::now()};
     const auto deadline = now + options.timeout;
     const MillisecondsDouble tick{1000};
-    const bool allow_min_difficulty{chainman.GetParams().GetConsensus().fPowAllowMinDifficultyBlocks};
+    const bool allow_min_difficulty{false}; // Freicoin: no min-difficulty blocks
 
     do {
         bool tip_changed{false};
@@ -685,20 +685,22 @@ std::unique_ptr<CBlockTemplate> WaitAndCreateNewBlock(ChainstateManager& chainma
             // If the tip changed, return the new template regardless of its fees.
             if (tip_changed) return new_tmpl;
 
+            // Freicoin: vTxFees[0] holds -total_fees (coinbase slot), and when a
+            // block-final transaction is present its slot must be excluded too.
+            const auto template_fees = [](const CBlockTemplate& t) {
+                CAmount fees{0};
+                if (!t.vTxFees.empty()) fees = -t.vTxFees[0];
+                if (t.has_block_final_tx && !t.vTxFees.empty()) fees -= t.vTxFees.back();
+                return fees;
+            };
+
             // Calculate the original template total fees if we haven't already
             if (current_fees == -1) {
-                current_fees = 0;
-                for (CAmount fee : block_template->vTxFees) {
-                    current_fees += fee;
-                }
+                current_fees = template_fees(*block_template);
             }
 
-            CAmount new_fees = 0;
-            for (CAmount fee : new_tmpl->vTxFees) {
-                new_fees += fee;
-                Assume(options.fee_threshold != MAX_MONEY);
-                if (new_fees >= current_fees + options.fee_threshold) return new_tmpl;
-            }
+            Assume(options.fee_threshold != MAX_MONEY);
+            if (template_fees(*new_tmpl) >= current_fees + options.fee_threshold) return new_tmpl;
         }
 
         now = NodeClock::now();

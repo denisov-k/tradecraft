@@ -17,6 +17,7 @@
 #define FREICOIN_INTERFACES_MINING_H
 
 #include <consensus/amount.h>
+#include <coins.h>
 #include <interfaces/types.h>
 #include <node/types.h>
 #include <primitives/block.h>

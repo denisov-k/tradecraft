@@ -84,7 +84,7 @@ public:
         m_feerate = FeePerVSize(GetFeePerK() + a.GetFeePerK(), 1000);
         return *this;
     }
-    std::string ToString(const FeeEstimateMode& fee_estimate_mode = FeeEstimateMode::BTC_KVB) const;
+    std::string ToString(const FeeEstimateMode& fee_estimate_mode = FeeEstimateMode::FRC_KVB) const;
     friend CFeeRate operator*(const CFeeRate& f, int a) { return CFeeRate(a * f.m_feerate.fee, f.m_feerate.size); }
     friend CFeeRate operator*(int a, const CFeeRate& f) { return CFeeRate(a * f.m_feerate.fee, f.m_feerate.size); }
 

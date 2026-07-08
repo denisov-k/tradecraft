@@ -43,6 +43,20 @@
 #include <functional>
 #include <memory>
 
+// Local shims: v30 removed the Parse* helpers in favor of ToIntegral.
+namespace {
+template <typename T>
+bool ParseIntegralShim(std::string_view str, T* out) {
+    auto v = ToIntegral<T>(str);
+    if (!v) return false;
+    if (out) *out = *v;
+    return true;
+}
+inline bool ParseUInt8(std::string_view str, uint8_t* out) { return ParseIntegralShim<uint8_t>(str, out); }
+inline bool ParseUInt32(std::string_view str, uint32_t* out) { return ParseIntegralShim<uint32_t>(str, out); }
+inline bool ParseInt64(std::string_view str, int64_t* out) { return ParseIntegralShim<int64_t>(str, out); }
+} // namespace
+
 using util::SplitString;
 using util::ToString;
 using util::TrimString;

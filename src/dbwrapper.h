@@ -186,7 +186,7 @@ public:
     template<typename V, typename T> bool GetValue(V& value, const T params) {
         try {
             DataStream ssValue{GetValueImpl()};
-            ssValue.Xor(dbwrapper_private::GetObfuscateKey(parent));
+            dbwrapper_private::GetObfuscation(parent)(ssValue);
             ssValue >> params(value);
         } catch (const std::exception&) {
             return false;

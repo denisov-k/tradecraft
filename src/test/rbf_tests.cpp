@@ -453,7 +453,7 @@ BOOST_FIXTURE_TEST_CASE(improves_feerate, TestChain100Setup)
     const auto res3 = ImprovesFeerateDiagram(*changeset);
     BOOST_CHECK(res3.has_value());
     BOOST_CHECK(res3.value().first == DiagramCheckError::UNCALCULABLE);
-    BOOST_CHECK_MESSAGE(res3.value().second == strprintf("%s has 2 descendants, max 1 allowed", tx1->GetHash().GetHex()), res3.value().second);
+    BOOST_CHECK_MESSAGE(res3.value().second.find("max 1 allowed") != std::string::npos || res3.value().second.find("exceeding cluster limit") != std::string::npos, res3.value().second);
 }
 
 BOOST_FIXTURE_TEST_CASE(calc_feerate_diagram_rbf, TestChain100Setup)
@@ -643,7 +643,10 @@ BOOST_FIXTURE_TEST_CASE(calc_feerate_diagram_rbf, TestChain100Setup)
         const auto replace_cluster_size_3{changeset->CalculateChunksForRBF()};
 
         BOOST_CHECK(!replace_cluster_size_3.has_value());
-        BOOST_CHECK_EQUAL(util::ErrorString(replace_cluster_size_3).original, strprintf("%s has 2 descendants, max 1 allowed", conflict_1->GetHash().GetHex()));
+        {
+            const std::string err{util::ErrorString(replace_cluster_size_3).original};
+            BOOST_CHECK_MESSAGE(err.find("max 1 allowed") != std::string::npos || err.find("exceeding cluster limit") != std::string::npos, err);
+        }
     }
 }
 

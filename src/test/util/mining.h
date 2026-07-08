@@ -46,7 +46,7 @@ std::pair<COutPoint, uint32_t> MineBlock(const node::NodeContext&, std::shared_p
 /**
  * Returns the generated coin (or Null if the block was invalid).
  */
-COutPoint ProcessBlock(const node::NodeContext&, const std::shared_ptr<CBlock>& block);
+std::pair<COutPoint, uint32_t> ProcessBlock(const node::NodeContext&, const std::shared_ptr<CBlock>& block);
 
 /** Prepare a block to be mined */
 std::shared_ptr<CBlock> PrepareBlock(const node::NodeContext&, const CScript& coinbase_scriptPubKey);
