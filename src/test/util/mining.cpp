@@ -115,7 +115,7 @@ std::pair<COutPoint, uint32_t> MineBlock(const NodeContext& node, std::shared_pt
     return ProcessBlock(node, block);
 }
 
-COutPoint ProcessBlock(const NodeContext& node, const std::shared_ptr<CBlock>& block)
+std::pair<COutPoint, uint32_t> ProcessBlock(const NodeContext& node, const std::shared_ptr<CBlock>& block)
 {
     auto& chainman{*Assert(node.chainman)};
     const auto old_height = WITH_LOCK(chainman.GetMutex(), return chainman.ActiveHeight());

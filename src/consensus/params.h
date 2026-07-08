@@ -154,8 +154,8 @@ struct Params {
      * (nPowTargetTimespan / nPowTargetSpacing) which is also used for BIP9 deployments.
      * Examples: 1916 for 95%, 1512 for testchains.
      */
-    uint32_t nRuleChangeActivationThreshold;
-    uint32_t nMinerConfirmationWindow;
+    uint32_t nRuleChangeActivationThreshold{1916};
+    uint32_t nMinerConfirmationWindow{2016};
     std::array<BIP9Deployment,MAX_VERSION_BITS_DEPLOYMENTS> vDeployments;
     /** Scheduled protocol cleanup rule change */
     int64_t protocol_cleanup_activation_time;

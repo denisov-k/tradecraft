@@ -654,6 +654,9 @@ public:
         consensus.aux_pow_target_spacing = 15 * 60;
         consensus.fPowNoRetargeting = true;
 
+        consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
+        consensus.nMinerConfirmationWindow = 144; // Faster than normal for regtest (144 instead of 2016)
+
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 0;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -665,15 +668,15 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].min_activation_height = 0; // No activation delay
-        consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].threshold = 1916;
-        consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].period = 2016;
+        consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].threshold = 108;
+        consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].period = 144;
 
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].bit = 3;
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].min_activation_height = 0; // No activation delay
-        consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].threshold = 1916;
-        consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].period = 2016;
+        consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].threshold = 108;
+        consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].period = 144;
 
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};

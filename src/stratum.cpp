@@ -216,8 +216,8 @@ StratumWork::StratumWork(const CTxDestination& coinbase_dest, const node::CBlock
 {
     // Generate the block-witholding secret for the work unit.
     if (!m_block_template.block.m_aux_pow.IsNull()) {
-        GetRandBytes(Span{(unsigned char*)&m_block_template.block.m_aux_pow.m_secret_lo, 8});
-        GetRandBytes(Span{(unsigned char*)&m_block_template.block.m_aux_pow.m_secret_hi, 8});
+        GetRandBytes(std::span{(unsigned char*)&m_block_template.block.m_aux_pow.m_secret_lo, 8});
+        GetRandBytes(std::span{(unsigned char*)&m_block_template.block.m_aux_pow.m_secret_hi, 8});
     }
     // How we use the various branch fields depends on whether segregated
     // witness is active.  If segwit is not active, m_cb_branch contains the
@@ -225,7 +225,7 @@ StratumWork::StratumWork(const CTxDestination& coinbase_dest, const node::CBlock
     // field in a different way, so we compute it in both branches.
     std::vector<uint256> leaves;
     for (const auto& tx : m_block_template.block.vtx) {
-        leaves.push_back(tx->GetHash());
+        leaves.push_back(tx->GetHash().ToUint256());
     }
     m_cb_branch = ComputeMerkleBranch(leaves, 0);
     // If segwit is not active, we're done.  Otherwise...
@@ -245,7 +245,7 @@ StratumWork::StratumWork(const CTxDestination& coinbase_dest, const node::CBlock
         // we use a proof from the coinbase's position of the witness
         // Merkle tree.
         for (size_t i = 1; i < m_block_template.block.vtx.size()-1; ++i) {
-            leaves[i] = m_block_template.block.vtx[i]->GetWitnessHash();
+            leaves[i] = m_block_template.block.vtx[i]->GetWitnessHash().ToUint256();
         }
         CMutableTransaction bf(*m_block_template.block.vtx.back());
         CScript& scriptPubKey = bf.vout.back().scriptPubKey;
@@ -253,7 +253,7 @@ StratumWork::StratumWork(const CTxDestination& coinbase_dest, const node::CBlock
             throw std::runtime_error("Expected last output of block-final transaction to have enough room for segwit commitment, but alas.");
         }
         std::fill_n(&scriptPubKey[scriptPubKey.size()-37], 33, 0x00);
-        leaves.back() = bf.GetHash();
+        leaves.back() = bf.GetHash().ToUint256();
         m_cb_wit_branch = ComputeFastMerkleBranch(leaves, 0).first;
     }
 };
@@ -264,7 +264,7 @@ void UpdateSegwitCommitment(const ChainstateManager& chainman, const StratumWork
     CMutableTransaction cb2(cb);
     cb2.vin[0].scriptSig = CScript();
     cb2.vin[0].nSequence = 0;
-    auto witnessroot = ComputeFastMerkleRootFromBranch(cb2.GetHash(), current_work.m_cb_wit_branch, 0, nullptr);
+    auto witnessroot = ComputeFastMerkleRootFromBranch(cb2.GetHash().ToUint256(), current_work.m_cb_wit_branch, 0, nullptr);
 
     // Build block-final tx
     CScript& scriptPubKey = bf.vout.back().scriptPubKey;
@@ -275,7 +275,7 @@ void UpdateSegwitCommitment(const ChainstateManager& chainman, const StratumWork
 
     // Calculate right-branch
     auto pathmask = ComputeMerklePathAndMask(current_work.m_bf_branch.size() + 1, current_work.GetBlock().vtx.size() - 1);
-    cb_branch.push_back(ComputeStableMerkleRootFromBranch(bf.GetHash(), current_work.m_bf_branch, pathmask.first, pathmask.second, nullptr));
+    cb_branch.push_back(ComputeStableMerkleRootFromBranch(bf.GetHash().ToUint256(), current_work.m_bf_branch, pathmask.first, pathmask.second, nullptr));
 }
 
 //! The default address to use for mining rewards if no address is provided.
@@ -474,7 +474,7 @@ uint256 CustomizeCommitHash(const ChainstateManager& chainman, const StratumClie
     CBlockHeader blkhdr;
     blkhdr.nVersion = aux_pow.m_commit_version;
     blkhdr.hashPrevBlock = current_work.GetBlock().hashPrevBlock;
-    blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb2.GetHash(), cb_branch, 0);
+    blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb2.GetHash().ToUint256(), cb_branch, 0);
     blkhdr.nTime = aux_pow.m_commit_time;
     blkhdr.nBits = aux_pow.m_commit_bits;
     blkhdr.nNonce = aux_pow.m_commit_nonce;
@@ -678,7 +678,7 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
 
         blkhdr.nVersion = aux_pow.m_commit_version;
         blkhdr.hashPrevBlock = current_work.GetBlock().hashPrevBlock;
-        blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb2.GetHash(), cb_branch, 0);
+        blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb2.GetHash().ToUint256(), cb_branch, 0);
         blkhdr.nTime = aux_pow.m_commit_time;
         blkhdr.nBits = aux_pow.m_commit_bits;
         blkhdr.nNonce = aux_pow.m_commit_nonce;
@@ -824,9 +824,9 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
         cb2.vin[0].nSequence = 0;
 
         CBlockHeader blkhdr(current_work.GetBlock());
-        blkhdr.m_aux_pow.m_commit_hash_merkle_root = ComputeMerkleRootFromBranch(cb2.GetHash(), cb_branch, 0);
+        blkhdr.m_aux_pow.m_commit_hash_merkle_root = ComputeMerkleRootFromBranch(cb2.GetHash().ToUint256(), cb_branch, 0);
         blkhdr.m_aux_pow.m_aux_branch.resize(1);
-        blkhdr.m_aux_pow.m_aux_branch[0] = cb.GetHash();
+        blkhdr.m_aux_pow.m_aux_branch[0] = cb.GetHash().ToUint256();
         blkhdr.m_aux_pow.m_aux_num_txns = 2;
         blkhdr.nTime = nTime;
         blkhdr.m_aux_pow.m_aux_nonce = nNonce;
@@ -837,7 +837,7 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
         auto aux_hash = blkhdr.GetAuxiliaryHash(params);
         if (res) {
             LogPrintf("GOT AUXILIARY BLOCK!!! by %s: %s, %s\n", EncodeDestination(client.m_addr), aux_hash.first.ToString(), aux_hash.second.ToString());
-            blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb.GetHash(), cb_branch, 0);
+            blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb.GetHash().ToUint256(), cb_branch, 0);
             const uint256 first_stage_hash = blkhdr.GetHash();
             JobId new_job_id(first_stage_hash);
             work_templates[new_job_id] = current_work;
@@ -882,7 +882,7 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
         CBlockHeader blkhdr;
         blkhdr.nVersion = version;
         blkhdr.hashPrevBlock = current_work.GetBlock().hashPrevBlock;
-        blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb.GetHash(), cb_branch, 0);
+        blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb.GetHash().ToUint256(), cb_branch, 0);
         blkhdr.nTime = nTime;
         blkhdr.nBits = current_work.GetBlock().nBits;
         blkhdr.nNonce = nNonce;
@@ -965,7 +965,7 @@ bool SubmitAuxiliaryBlock(StratumClient& client, const CTxDestination& addr, con
     cb2.vin[0].scriptSig = CScript();
     cb2.vin[0].nSequence = 0;
 
-    blkhdr.m_aux_pow.m_commit_hash_merkle_root = ComputeMerkleRootFromBranch(cb2.GetHash(), cb_branch, 0);
+    blkhdr.m_aux_pow.m_commit_hash_merkle_root = ComputeMerkleRootFromBranch(cb2.GetHash().ToUint256(), cb_branch, 0);
 
     const Consensus::Params& params = Params().GetConsensus();
     auto aux_hash = blkhdr.GetAuxiliaryHash(params);
@@ -975,7 +975,7 @@ bool SubmitAuxiliaryBlock(StratumClient& client, const CTxDestination& addr, con
     }
 
     LogPrintf("GOT AUXILIARY BLOCK!!! by %s: %s, %s\n", EncodeDestination(addr), aux_hash.first.ToString(), aux_hash.second.ToString());
-    blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb.GetHash(), cb_branch, 0);
+    blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb.GetHash().ToUint256(), cb_branch, 0);
     const uint256 first_stage_hash = blkhdr.GetHash();
 
     JobId new_job_id(first_stage_hash);

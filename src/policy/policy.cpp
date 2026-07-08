@@ -319,7 +319,7 @@ bool SpendsNonAnchorWitnessProg(const CTransaction& tx, const CCoinsViewCache& p
         const auto& prev_spk{prevouts.AccessCoin(txin.prevout).out.scriptPubKey};
 
         // Note this includes not-yet-defined witness programs.
-        if (prev_spk.IsWitnessProgram(version, program) && !prev_spk.IsPayToAnchor(version, program)) {
+        if (prev_spk.IsWitnessProgram(&version, &program) && !CScript::IsPayToAnchor(version, program)) {
             return true;
         }
 
@@ -334,7 +334,7 @@ bool SpendsNonAnchorWitnessProg(const CTransaction& tx, const CCoinsViewCache& p
                 continue;
             }
             const CScript redeem_script{stack.back().begin(), stack.back().end()};
-            if (redeem_script.IsWitnessProgram(version, program)) {
+            if (redeem_script.IsWitnessProgram(&version, &program)) {
                 return true;
             }
         }

@@ -1092,7 +1092,7 @@ bool BlockManager::ReadBlock(CBlock& block, const CBlockIndex& index) const
 {
     const FlatFilePos block_pos{WITH_LOCK(cs_main, return index.GetBlockPos())};
 
-    if (!ReadBlock(block, block_pos)) {
+    if (!ReadBlock(block, block_pos, /*expected_hash=*/std::nullopt)) {
         return false;
     }
 

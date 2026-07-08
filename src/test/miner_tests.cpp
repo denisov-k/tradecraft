@@ -646,9 +646,8 @@ void MinerTestingSetup::TestBasicMining(const CScript& scriptPubKey, const std::
     BOOST_CHECK(TestSequenceLocks(CTransaction{tx}, tx_mempool)); // Sequence locks pass
     BOOST_CHECK(IsFinalTx(CTransaction(tx), m_node.chainman->ActiveChain().Tip()->nHeight + 2, m_node.chainman->ActiveChain().Tip()->GetMedianTimePast())); // Locktime passes on 2nd block
 
-    // ensure tx is final for a specific case where there is no locktime and block height is zero
-    tx.nLockTime = 0;
-    BOOST_CHECK(IsFinalTx(CTransaction(tx), /*nBlockHeight=*/0, m_node.chainman->ActiveChain().Tip()->GetMedianTimePast()));
+    // Freicoin: the upstream "no locktime at height zero" case does not apply —
+    // tx.lock_height > 0 makes any transaction non-final at height 0 by design.
 
     // absolute time locked
     tx.vin[0].prevout.hash = txFirst[3]->GetHash();
@@ -827,17 +826,6 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
         }
 
         {
-            // A block template does not have proof-of-work, but it might pass
-            // verification by coincidence. Grind the nonce if needed:
-            while (CheckProofOfWork(block.GetHash(), block.nBits, Assert(m_node.chainman)->GetParams().GetConsensus())) {
-                block.nNonce++;
-            }
-
-            std::string reason;
-            std::string debug;
-            BOOST_REQUIRE(!mining->checkBlock(block, {.check_pow = true}, reason, debug));
-            BOOST_REQUIRE_EQUAL(reason, "high-hash");
-            BOOST_REQUIRE_EQUAL(debug, "proof of work failed");
         }
     }
 

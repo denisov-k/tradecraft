@@ -190,7 +190,7 @@ void SerializeHDKeypaths(Stream& s, const std::map<CPubKey, KeyOriginInfo>& hd_k
         if (!keypath_pair.first.IsValid()) {
             throw std::ios_base::failure("Invalid CPubKey being serialized");
         }
-        SerializeToVector(s, type, Span{keypath_pair.first});
+        SerializeToVector(s, type, std::span{keypath_pair.first});
         SerializeHDKeypath(s, keypath_pair.second);
     }
 }
@@ -237,7 +237,7 @@ struct PSTInput
         if (final_script_sig.empty() && final_script_witness.IsNull()) {
             // Write any partial signatures
             for (const auto& sig_pair : partial_sigs) {
-                SerializeToVector(s, CompactSizeWriter(PST_IN_PARTIAL_SIG), Span{sig_pair.second.first});
+                SerializeToVector(s, CompactSizeWriter(PST_IN_PARTIAL_SIG), std::span{sig_pair.second.first});
                 s << sig_pair.second.second;
             }
 
@@ -264,25 +264,25 @@ struct PSTInput
 
             // Write any ripemd160 preimage
             for (const auto& [hash, preimage] : ripemd160_preimages) {
-                SerializeToVector(s, CompactSizeWriter(PST_IN_RIPEMD160), Span{hash});
+                SerializeToVector(s, CompactSizeWriter(PST_IN_RIPEMD160), std::span{hash});
                 s << preimage;
             }
 
             // Write any sha256 preimage
             for (const auto& [hash, preimage] : sha256_preimages) {
-                SerializeToVector(s, CompactSizeWriter(PST_IN_SHA256), Span{hash});
+                SerializeToVector(s, CompactSizeWriter(PST_IN_SHA256), std::span{hash});
                 s << preimage;
             }
 
             // Write any hash160 preimage
             for (const auto& [hash, preimage] : hash160_preimages) {
-                SerializeToVector(s, CompactSizeWriter(PST_IN_HASH160), Span{hash});
+                SerializeToVector(s, CompactSizeWriter(PST_IN_HASH160), std::span{hash});
                 s << preimage;
             }
 
             // Write any hash256 preimage
             for (const auto& [hash, preimage] : hash256_preimages) {
-                SerializeToVector(s, CompactSizeWriter(PST_IN_HASH256), Span{hash});
+                SerializeToVector(s, CompactSizeWriter(PST_IN_HASH256), std::span{hash});
                 s << preimage;
             }
         }

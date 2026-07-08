@@ -118,7 +118,7 @@ BOOST_AUTO_TEST_CASE(bloom_match)
         ParseHex("01000000010b26e9b7735eb6aabdf358bab62f9816a21ba9ebdb719d5299e88607d722c190000000008b4830450220070aca44506c5cef3a16ed519d7c3c39f8aab192c4e1c90d065f37b8a4af6141022100a8e160b856c2d43d27d8fba71e5aef6405b8643ac4cb7cb3c462aced7f14711a0141046d11fee51b0e60666d5049a9101a72741df480b96ee26488a4d3466b95c9a40ac5eeef87e10a5cd336c19a84565f80fa6c547957b7700ff4dfbdefe76036c339ffffffff021bff3d11000000001976a91404943fdd508053c75000106d3bc6e2754dbcff1988ac2f15de00000000001976a914a266436d2965547608b9e15d9032a7b9d64fa43188ac0000000001000000"),
     };
     CTransaction tx(deserialize, TX_WITH_WITNESS, stream);
-    BOOST_CHECK(tx.GetHash() == uint256{"b7dc2a06b12d0e55ff30260691c2507d26552aefaeee215e2ee38e612af8ae38"});
+    BOOST_CHECK(tx.GetHash().ToUint256() == uint256{"b7dc2a06b12d0e55ff30260691c2507d26552aefaeee215e2ee38e612af8ae38"});
 
     // and one which spends it (e2769b09e784f32f62ef849763d4f45b98e07ba658647343b915ff832b110436)
     // Modified to add CTransaction::lock_height=1, and to correct the prevout to point to tx's new hash
@@ -126,7 +126,7 @@ BOOST_AUTO_TEST_CASE(bloom_match)
     std::vector<unsigned char> vch(ch, ch + sizeof(ch) -1);
     SpanReader spendStream{vch};
     CTransaction spendingTx(deserialize, TX_WITH_WITNESS, spendStream);
-    BOOST_CHECK(spendingTx.GetHash() == uint256{"35fb32a035852fd3260557e74e5f161539ffcee1f42fe4876d532bf09a3e388f"});
+    BOOST_CHECK(spendingTx.GetHash().ToUint256() == uint256{"35fb32a035852fd3260557e74e5f161539ffcee1f42fe4876d532bf09a3e388f"});
 
     CBloomFilter filter(10, 0.000001, 0, BLOOM_UPDATE_ALL);
     filter.insert(uint256{"b7dc2a06b12d0e55ff30260691c2507d26552aefaeee215e2ee38e612af8ae38"});

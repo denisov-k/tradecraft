@@ -84,12 +84,6 @@ bool FlatSigningProvider::HaveKey(const CKeyID &keyid) const
 }
 bool FlatSigningProvider::GetKey(const CKeyID& keyid, CKey& key) const { return LookupHelper(keys, keyid, key); }
 
-std::vector<CPubKey> FlatSigningProvider::GetMuSig2ParticipantPubkeys(const CPubKey& pubkey) const
-{
-    std::vector<CPubKey> participant_pubkeys;
-    LookupHelper(aggregate_pubkeys, pubkey, participant_pubkeys);
-    return participant_pubkeys;
-}
 
 std::map<CPubKey, std::vector<CPubKey>> FlatSigningProvider::GetAllMuSig2ParticipantPubkeys() const
 {

@@ -941,7 +941,7 @@ public:
         std::vector<uint256> leaves;
         leaves.resize(m_block_template->block.vtx.size());
         for (size_t s = 0; s < m_block_template->block.vtx.size(); s++) {
-            leaves[s] = m_block_template->block.vtx[s]->GetHash();
+            leaves[s] = m_block_template->block.vtx[s]->GetHash().ToUint256();
         }
         return ComputeMerkleBranch(leaves, 0);
     }

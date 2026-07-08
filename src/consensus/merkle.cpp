@@ -507,9 +507,9 @@ uint256 BlockTemplateMerkleRoot(const CBlock& block, bool* mutated)
     cb.vin[0].nSequence = 0;
     std::vector<uint256> leaves;
     leaves.resize(block.vtx.size());
-    leaves[0] = cb.GetHash();
+    leaves[0] = cb.GetHash().ToUint256();
     for (size_t s = 1; s < block.vtx.size(); s++) {
-        leaves[s] = block.vtx[s]->GetHash();
+        leaves[s] = block.vtx[s]->GetHash().ToUint256();
     }
     return ComputeMerkleRoot(leaves, mutated);
 }
@@ -539,7 +539,7 @@ uint256 BlockWitnessMerkleRoot(const CBlock& block)
     }
     // The coinbase's witness contains the witness nonce, which cannot
     // be included under the witness Merkle root.
-    leaves.front() = cb.GetHash();
+    leaves.front() = cb.GetHash().ToUint256();
 
     // The witness Merkle root is placed in the block-final
     // transaction, but it is a Merkle tree of all transactions,
@@ -564,7 +564,7 @@ uint256 BlockWitnessMerkleRoot(const CBlock& block)
         .Finalize(leaves.back());
 
     for (size_t s = 1; s < block.vtx.size()-1; s++) {
-        leaves[s] = block.vtx[s]->GetWitnessHash();
+        leaves[s] = block.vtx[s]->GetWitnessHash().ToUint256();
     }
 
     return ComputeFastMerkleRoot(leaves);
@@ -575,7 +575,7 @@ std::vector<uint256> BlockMerkleBranch(const CBlock& block, uint32_t position)
     std::vector<uint256> leaves;
     leaves.resize(block.vtx.size());
     for (size_t s = 0; s < block.vtx.size(); s++) {
-        leaves[s] = block.vtx[s]->GetHash();
+        leaves[s] = block.vtx[s]->GetHash().ToUint256();
     }
     return ComputeMerkleBranch(leaves, position);
 }
