@@ -38,6 +38,7 @@ from .messages import (
     ser_uint256,
     tx_from_hex,
     uint256_from_compact,
+    uint256_from_str,
     WITNESS_SCALE_FACTOR,
     MAX_SEQUENCE_NONFINAL,
 )
@@ -67,6 +68,8 @@ MAX_STANDARD_TX_WEIGHT = 400000
 
 # Genesis block time (regtest)
 TIME_GENESIS_BLOCK = 1356123600
+
+NULL_OUTPOINT = COutPoint(0, 0xffffffff)
 
 MAX_FUTURE_BLOCK_TIME = 2 * 60 * 60
 

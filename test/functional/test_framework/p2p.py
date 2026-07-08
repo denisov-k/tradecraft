@@ -598,7 +598,7 @@ class P2PInterface(P2PConnection):
             self.send_version()
             self.reconnect = False
         if message.nVersion >= 70017 and self.wtxidrelay:
-            self.send_message(msg_wtxidrelay())
+            self.send_without_ping(msg_wtxidrelay())
         if self.support_addrv2:
             self.send_without_ping(msg_sendaddrv2())
         self.send_without_ping(msg_verack())

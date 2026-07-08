@@ -42,7 +42,7 @@ class PeerNoVerack(P2PInterface):
         # comment in add_p2p_connection).
         self.send_version()
         if message.nVersion >= 70017 and self.wtxidrelay:
-            self.send_message(msg_wtxidrelay())
+            self.send_without_ping(msg_wtxidrelay())
 
 class SendTxrcnclReceiver(P2PInterface):
     def __init__(self):

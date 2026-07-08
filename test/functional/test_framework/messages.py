@@ -766,6 +766,22 @@ class CTransaction:
         """Return txid (transaction hash without witness) as integer."""
         return uint256_from_str(hash256(self.serialize_without_witness()))
 
+    # Legacy (pre-31) interface kept for the Freicoin tests carried over from
+    # earlier rebases: populates the sha256/hash cache slots.
+    def calc_sha256(self, with_witness=False):
+        if with_witness:
+            # Don't cache the result, just return it
+            return self.wtxid_int
+
+        if self.sha256 is None:
+            self.sha256 = self.txid_int
+        self.hash = self.txid_hex
+
+    def rehash(self):
+        self.sha256 = None
+        self.calc_sha256()
+        return self.sha256
+
     def is_valid(self):
         for tout in self.vout:
             if tout.nValue < 0 or tout.nValue > MAX_MONEY:
@@ -1062,6 +1078,28 @@ class CBlockHeader:
         self.sha256 = None
         self.calc_sha256()
         return self.sha256
+
+    def _basic_header_bytes(self):
+        # The block hash covers only the basic 80-byte header; the aux-pow
+        # extension (when present) does not contribute to it.
+        r = b""
+        r += self.nVersion.to_bytes(4, "little", signed=True)
+        r += ser_uint256(self.hashPrevBlock)
+        r += ser_uint256(self.hashMerkleRoot)
+        r += self.nTime.to_bytes(4, "little")
+        r += self.nBits.to_bytes(4, "little")
+        r += self.nNonce.to_bytes(4, "little")
+        return r
+
+    @property
+    def hash_hex(self):
+        """Return block header hash as hex string."""
+        return hash256(self._basic_header_bytes())[::-1].hex()
+
+    @property
+    def hash_int(self):
+        """Return block header hash as integer."""
+        return uint256_from_str(hash256(self._basic_header_bytes()))
 
     def __repr__(self):
         aux_pow = ""

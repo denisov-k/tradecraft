@@ -531,7 +531,7 @@ class CompactBlocksTest(FreicoinTestFramework):
         block = self.build_block_with_transactions(node, utxo, 10)
         self.utxos.append([block.vtx[10].sha256, 0, block.vtx[10].vout[0].nValue])
         for tx in block.vtx[1:(1+10)]:
-            test_node.send_message(msg_tx(tx))
+            test_node.send_without_ping(msg_tx(tx))
         test_node.sync_with_ping()
         # Make sure all transactions were accepted.
         mempool = node.getrawmempool()
@@ -865,7 +865,7 @@ class CompactBlocksTest(FreicoinTestFramework):
         block, cmpct_block = announce_cmpct_block(node, stalling_peer)
 
         for tx in block.vtx[1:-1]:
-            delivery_peer.send_message(msg_tx(tx))
+            delivery_peer.send_without_ping(msg_tx(tx))
         delivery_peer.sync_with_ping()
         mempool = node.getrawmempool()
         for tx in block.vtx[1:-1]:
@@ -880,7 +880,7 @@ class CompactBlocksTest(FreicoinTestFramework):
 
         block, cmpct_block = announce_cmpct_block(node, stalling_peer)
         for tx in block.vtx[1:-1]:
-            delivery_peer.send_message(msg_tx(tx))
+            delivery_peer.send_without_ping(msg_tx(tx))
         delivery_peer.sync_with_ping()
 
         cmpct_block.prefilled_txn[0].tx.wit.vtxinwit = [CTxInWitness()]
