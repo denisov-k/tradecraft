@@ -1,6 +1,17 @@
-// Copyright (c) 2018-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2018-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <addrdb.h>
 #include <banman.h>
@@ -893,15 +904,31 @@ public:
     {
         return m_block_template->vTxSigOpsCost;
     }
-
-    CoinbaseTx getCoinbaseTx() override
+    node::CoinbaseTx getCoinbaseTx() override
     {
         return m_block_template->m_coinbase_tx;
     }
 
+    bool hasBlockFinalTx() override
+    {
+        return m_block_template->has_block_final_tx;
+    }
+
+    std::map<COutPoint, Coin> getBlockFinalTxCoinMap() override
+    {
+        return m_block_template->block_final_tx_coin_map;
+    }
+
     std::vector<uint256> getCoinbaseMerklePath() override
     {
-        return TransactionMerklePath(m_block_template->block, 0);
+        // Freicoin: same computation as upstream TransactionMerklePath, using
+        // the retained ComputeMerkleBranch API.
+        std::vector<uint256> leaves;
+        leaves.resize(m_block_template->block.vtx.size());
+        for (size_t s = 0; s < m_block_template->block.vtx.size(); s++) {
+            leaves[s] = m_block_template->block.vtx[s]->GetHash().ToUint256();
+        }
+        return ComputeMerkleBranch(leaves, 0);
     }
 
     bool submitSolution(uint32_t version, uint32_t timestamp, uint32_t nonce, CTransactionRef coinbase) override

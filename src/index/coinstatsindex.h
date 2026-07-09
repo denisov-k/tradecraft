@@ -1,9 +1,20 @@
-// Copyright (c) 2020-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2020-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_INDEX_COINSTATSINDEX_H
-#define BITCOIN_INDEX_COINSTATSINDEX_H
+#ifndef FREICOIN_INDEX_COINSTATSINDEX_H
+#define FREICOIN_INDEX_COINSTATSINDEX_H
 
 #include <arith_uint256.h>
 #include <consensus/amount.h>
@@ -35,8 +46,11 @@ private:
     MuHash3072 m_muhash;
     uint64_t m_transaction_output_count{0};
     uint64_t m_bogo_size{0};
+    CAmount m_total_value{0};
     CAmount m_total_amount{0};
     CAmount m_total_subsidy{0};
+    CAmount m_block_demurrage{0};
+    arith_uint256 m_total_unspendable_value{0};
     arith_uint256 m_total_prevout_spent_amount{0};
     arith_uint256 m_total_new_outputs_ex_coinbase_amount{0};
     arith_uint256 m_total_coinbase_amount{0};
@@ -75,4 +89,4 @@ public:
 /// The global UTXO set hash object.
 extern std::unique_ptr<CoinStatsIndex> g_coin_stats_index;
 
-#endif // BITCOIN_INDEX_COINSTATSINDEX_H
+#endif // FREICOIN_INDEX_COINSTATSINDEX_H

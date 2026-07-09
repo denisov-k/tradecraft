@@ -1,13 +1,25 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_TXMEMPOOL_H
-#define BITCOIN_TXMEMPOOL_H
+#ifndef FREICOIN_TXMEMPOOL_H
+#define FREICOIN_TXMEMPOOL_H
 
 #include <coins.h>
 #include <consensus/amount.h>
+#include <consensus/params.h>
 #include <indirectmap.h>
 #include <kernel/cs_main.h>
 #include <kernel/mempool_entry.h>          // IWYU pragma: export
@@ -313,7 +325,7 @@ public:
      * all inputs are in the mapNextTx array). If sanity-checking is turned off,
      * check does nothing.
      */
-    void check(const CCoinsViewCache& active_coins_tip, int64_t spendheight) const EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
+    void check(const CCoinsViewCache& active_coins_tip, int64_t spendheight, const Consensus::Params& params) const EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
     /**
      * Remove a transaction from the mempool along with any descendants.
@@ -776,4 +788,4 @@ public:
     /** Clear m_temp_added and m_non_base_coins. */
     void Reset();
 };
-#endif // BITCOIN_TXMEMPOOL_H
+#endif // FREICOIN_TXMEMPOOL_H
