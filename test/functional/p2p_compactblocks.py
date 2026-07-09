@@ -452,6 +452,8 @@ class CompactBlocksTest(FreicoinTestFramework):
 
         for _ in range(num_transactions):
             tx = CTransaction()
+            # Freicoin: hand-built txs need a valid lock_height (>= input refheight)
+            tx.lock_height = block.vtx[0].lock_height
             tx.vin.append(CTxIn(COutPoint(utxo[0], utxo[1]), b''))
             tx.vout.append(CTxOut(utxo[2] - 1000, CScript([OP_TRUE, OP_DROP] * 15 + [OP_TRUE])))
             utxo = [tx.txid_int, 0, tx.vout[0].nValue]
@@ -489,7 +491,7 @@ class CompactBlocksTest(FreicoinTestFramework):
         utxo = self.utxos.pop(0)
 
         block = self.build_block_with_transactions(node, utxo, 5)
-        self.utxos.append([block.vtx[5].sha256, 0, block.vtx[5].vout[0].nValue])
+        self.utxos.append([block.vtx[5].txid_int, 0, block.vtx[5].vout[0].nValue])
         comp_block = HeaderAndShortIDs()
         comp_block.initialize_from_block(block, use_witness=True)
 
@@ -502,7 +504,7 @@ class CompactBlocksTest(FreicoinTestFramework):
 
         utxo = self.utxos.pop(0)
         block = self.build_block_with_transactions(node, utxo, 5)
-        self.utxos.append([block.vtx[5].sha256, 0, block.vtx[5].vout[0].nValue])
+        self.utxos.append([block.vtx[5].txid_int, 0, block.vtx[5].vout[0].nValue])
 
         # Now try interspersing the prefilled transactions
         comp_block.initialize_from_block(block, prefill_list=[0, 1, 5], use_witness=True)
@@ -513,7 +515,7 @@ class CompactBlocksTest(FreicoinTestFramework):
         # Now try giving one transaction ahead of time.
         utxo = self.utxos.pop(0)
         block = self.build_block_with_transactions(node, utxo, 5)
-        self.utxos.append([block.vtx[5].sha256, 0, block.vtx[5].vout[0].nValue])
+        self.utxos.append([block.vtx[5].txid_int, 0, block.vtx[5].vout[0].nValue])
         test_node.send_and_ping(msg_tx(block.vtx[1]))
         assert block.vtx[1].txid_hex in node.getrawmempool()
 
@@ -529,14 +531,14 @@ class CompactBlocksTest(FreicoinTestFramework):
         # announced and verify reconstruction happens immediately.
         utxo = self.utxos.pop(0)
         block = self.build_block_with_transactions(node, utxo, 10)
-        self.utxos.append([block.vtx[10].sha256, 0, block.vtx[10].vout[0].nValue])
+        self.utxos.append([block.vtx[10].txid_int, 0, block.vtx[10].vout[0].nValue])
         for tx in block.vtx[1:(1+10)]:
             test_node.send_without_ping(msg_tx(tx))
         test_node.sync_with_ping()
         # Make sure all transactions were accepted.
         mempool = node.getrawmempool()
         for tx in block.vtx[1:(1+10)]:
-            assert tx.hash in mempool
+            assert tx.txid_hex in mempool
 
         # Clear out last request.
         with p2p_lock:
@@ -556,7 +558,7 @@ class CompactBlocksTest(FreicoinTestFramework):
         utxo = self.utxos.pop(0)
 
         block = self.build_block_with_transactions(node, utxo, 10)
-        self.utxos.append([block.vtx[10].sha256, 0, block.vtx[10].vout[0].nValue])
+        self.utxos.append([block.vtx[10].txid_int, 0, block.vtx[10].vout[0].nValue])
         # Relay the first 5 transactions from the block in advance
         for tx in block.vtx[1:6]:
             test_node.send_without_ping(msg_tx(tx))
@@ -615,7 +617,8 @@ class CompactBlocksTest(FreicoinTestFramework):
         with p2p_lock:
             assert "getblocktxn" in test_node.last_message
             absolute_indexes = test_node.last_message["getblocktxn"].block_txn_request.to_absolute()
-        assert_equal(absolute_indexes, [1, 2])
+        # Freicoin: index 3 is the block-final tx, also requested
+        assert_equal(absolute_indexes, [1, 2, 3])
 
         # Send a blocktxn that does not succeed in reconstruction, triggering
         # getdata fallback.
@@ -869,12 +872,12 @@ class CompactBlocksTest(FreicoinTestFramework):
         delivery_peer.sync_with_ping()
         mempool = node.getrawmempool()
         for tx in block.vtx[1:-1]:
-            assert tx.hash in mempool
+            assert tx.txid_hex in mempool
 
         delivery_peer.send_and_ping(msg_cmpctblock(cmpct_block.to_p2p()))
         assert_equal(node.getbestblockhash(), block.hash_hex)
 
-        self.utxos.append([block.vtx[-2].sha256, 0, block.vtx[-2].vout[0].nValue])
+        self.utxos.append([block.vtx[-2].txid_int, 0, block.vtx[-2].vout[0].nValue])
 
         # Now test that delivering an invalid compact block won't break relay
 
