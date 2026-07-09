@@ -367,6 +367,9 @@ bool CoinStatsIndex::RevertBlock(const interfaces::BlockInfo& block)
 {
     std::pair<uint256, DBVal> read_out;
 
+    const CAmount block_subsidy{GetBlockSubsidy(block.height, Params().GetConsensus())};
+    m_total_subsidy -= block_subsidy;
+
     // Ignore genesis block
     if (block.height > 0) {
         if (!m_db->Read(index_util::DBHeightKey(block.height - 1), read_out)) {
@@ -477,6 +480,8 @@ bool CoinStatsIndex::RevertBlock(const interfaces::BlockInfo& block)
     Assert(m_total_unspendables_bip30 == read_out.second.total_unspendables_bip30);
     Assert(m_total_unspendables_scripts == read_out.second.total_unspendables_scripts);
     Assert(m_total_unspendables_unclaimed_rewards == read_out.second.total_unspendables_unclaimed_rewards);
+
+    m_current_block_hash = *block.prev_hash;
 
     return true;
 }

@@ -310,6 +310,12 @@ public:
             .tx_count = 1249564,
             .dTxRate  = 0.001680734703331907,
         };
+
+        // Copied from upstream v31.1 mainnet.
+        m_headers_sync_params = HeadersSyncParams{
+            .commitment_period = 641,
+            .redownload_buffer_size = 15218, // 15218/641 = ~23.7 commitments
+        };
     }
 };
 
@@ -793,6 +799,12 @@ public:
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
 
         bech32_hrp = "fcrt";
+
+        // Copied from upstream v31.1 regtest.
+        m_headers_sync_params = HeadersSyncParams{
+            .commitment_period = 275,
+            .redownload_buffer_size = 7017, // 7017/275 = ~25.5 commitments
+        };
     }
 };
 
