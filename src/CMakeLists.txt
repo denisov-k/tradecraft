@@ -60,7 +60,9 @@ endif()
 
 add_library(bitcoin_consensus STATIC EXCLUDE_FROM_ALL
   arith_uint256.cpp
+  consensus/amount.cpp
   consensus/merkle.cpp
+  consensus/merkleproof.cpp
   consensus/tx_check.cpp
   hash.cpp
   primitives/block.cpp
@@ -124,7 +126,7 @@ add_library(bitcoin_common STATIC EXCLUDE_FROM_ALL
   policy/policy.cpp
   pow.cpp
   protocol.cpp
-  psbt.cpp
+  pst.cpp
   rpc/rawtransaction_util.cpp
   rpc/request.cpp
   rpc/util.cpp
@@ -155,12 +157,13 @@ if(ENABLE_WALLET)
 
   if(BUILD_WALLET_TOOL)
     add_executable(bitcoin-wallet
-      bitcoin-wallet.cpp
-      init/bitcoin-wallet.cpp
+      freicoin-wallet.cpp
+      init/freicoin-wallet.cpp
       wallet/wallettool.cpp
     )
-    add_windows_resources(bitcoin-wallet bitcoin-wallet-res.rc)
+    add_windows_resources(bitcoin-wallet freicoin-wallet-res.rc)
     add_windows_application_manifest(bitcoin-wallet)
+    set_target_properties(bitcoin-wallet PROPERTIES OUTPUT_NAME freicoin-wallet)
     target_link_libraries(bitcoin-wallet
       core_interface
       bitcoin_wallet
@@ -175,6 +178,13 @@ endif()
 
 # P2P and RPC server functionality used by `bitcoind` and `bitcoin-qt` executables.
 add_library(bitcoin_node STATIC EXCLUDE_FROM_ALL
+  # Freicoin: built-in stratum mining server, MAST merkle-proof RPC, and the
+  # PST (partially-signed transaction) module. NB: node/pst.cpp is Freicoin's
+  # rename of upstream node/psbt.cpp; whether the rebase keeps the PST rename or
+  # reverts to upstream PSBT is a maintainer decision (as with BIP94).
+  stratum.cpp
+  rpc/merkleproof.cpp
+  node/pst.cpp
   addrdb.cpp
   addrman.cpp
   banman.cpp
@@ -228,7 +238,7 @@ add_library(bitcoin_node STATIC EXCLUDE_FROM_ALL
   node/mini_miner.cpp
   node/minisketchwrapper.cpp
   node/peerman_args.cpp
-  node/psbt.cpp
+  # node/psbt.cpp renamed to node/pst.cpp by Freicoin (added above).
   node/timeoffsets.cpp
   node/transaction.cpp
   node/txdownloadman_impl.cpp
@@ -277,6 +287,9 @@ target_link_libraries(bitcoin_node
     core_interface
     bitcoin_common
     bitcoin_util
+    # stratum.cpp calls the wallet mining-destination management
+    # (tradecraftio/tradecraft#104), so node must precede wallet at link time
+    $<TARGET_NAME_IF_EXISTS:bitcoin_wallet>
     $<TARGET_NAME_IF_EXISTS:bitcoin_zmq>
     leveldb
     minisketch
@@ -298,6 +311,7 @@ endif()
 # Bitcoin wrapper executable that can call other executables.
 if(BUILD_BITCOIN_BIN)
   add_executable(bitcoin bitcoin.cpp)
+  set_target_properties(bitcoin PROPERTIES OUTPUT_NAME freicoin)
   add_windows_resources(bitcoin bitcoin-res.rc)
   add_windows_application_manifest(bitcoin)
   target_link_libraries(bitcoin core_interface bitcoin_common bitcoin_util)
@@ -307,11 +321,12 @@ endif()
 # Bitcoin Core bitcoind.
 if(BUILD_DAEMON)
   add_executable(bitcoind
-    bitcoind.cpp
-    init/bitcoind.cpp
+    freicoind.cpp
+    init/freicoind.cpp
   )
-  add_windows_resources(bitcoind bitcoind-res.rc)
+  add_windows_resources(bitcoind freicoind-res.rc)
   add_windows_application_manifest(bitcoind)
+  set_target_properties(bitcoind PROPERTIES OUTPUT_NAME freicoind)
   target_link_libraries(bitcoind
     core_interface
     bitcoin_node
@@ -321,8 +336,8 @@ if(BUILD_DAEMON)
 endif()
 if(ENABLE_IPC AND BUILD_DAEMON)
   add_executable(bitcoin-node
-    bitcoind.cpp
-    init/bitcoin-node.cpp
+    freicoind.cpp
+    init/freicoin-node.cpp
   )
   target_link_libraries(bitcoin-node
     core_interface
@@ -347,9 +362,10 @@ target_link_libraries(bitcoin_cli
 
 # Bitcoin Core RPC client
 if(BUILD_CLI)
-  add_executable(bitcoin-cli bitcoin-cli.cpp)
-  add_windows_resources(bitcoin-cli bitcoin-cli-res.rc)
+  add_executable(bitcoin-cli freicoin-cli.cpp)
+  add_windows_resources(bitcoin-cli freicoin-cli-res.rc)
   add_windows_application_manifest(bitcoin-cli)
+  set_target_properties(bitcoin-cli PROPERTIES OUTPUT_NAME freicoin-cli)
   target_link_libraries(bitcoin-cli
     core_interface
     bitcoin_cli
@@ -363,9 +379,10 @@ endif()
 
 
 if(BUILD_TX)
-  add_executable(bitcoin-tx bitcoin-tx.cpp)
-  add_windows_resources(bitcoin-tx bitcoin-tx-res.rc)
+  add_executable(bitcoin-tx freicoin-tx.cpp)
+  add_windows_resources(bitcoin-tx freicoin-tx-res.rc)
   add_windows_application_manifest(bitcoin-tx)
+  set_target_properties(bitcoin-tx PROPERTIES OUTPUT_NAME freicoin-tx)
   target_link_libraries(bitcoin-tx
     core_interface
     bitcoin_common
@@ -377,9 +394,10 @@ endif()
 
 
 if(BUILD_UTIL)
-  add_executable(bitcoin-util bitcoin-util.cpp)
-  add_windows_resources(bitcoin-util bitcoin-util-res.rc)
+  add_executable(bitcoin-util freicoin-util.cpp)
+  add_windows_resources(bitcoin-util freicoin-util-res.rc)
   add_windows_application_manifest(bitcoin-util)
+  set_target_properties(bitcoin-util PROPERTIES OUTPUT_NAME freicoin-util)
   target_link_libraries(bitcoin-util
     core_interface
     bitcoin_common
