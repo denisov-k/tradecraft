@@ -66,7 +66,8 @@ class AssumeutxoTest(FreicoinTestFramework):
         return wrpc.importdescriptors(import_request)
 
     def validate_snapshot_import(self, node, loaded, base_hash):
-        assert_equal(loaded['coins_loaded'], SNAPSHOT_BASE_HEIGHT)
+        # Freicoin: snapshot carries the block-final anyone-can-spend output too
+        assert_equal(loaded['coins_loaded'], SNAPSHOT_BASE_HEIGHT + 1)
         assert_equal(loaded['base_height'], SNAPSHOT_BASE_HEIGHT)
 
         normal, snapshot = node.getchainstates()["chainstates"]
@@ -118,7 +119,8 @@ class AssumeutxoTest(FreicoinTestFramework):
         n3.restorewallet("w_alt", "backup_w.dat")
         # Check balance of w_alt wallet
         w_alt = n3.get_wallet_rpc("w_alt")
-        assert_equal(w_alt.getbalance(), 34)
+        # Freicoin: demurrage-adjusted present value of the 34 FRC nominal.
+        assert_equal(w_alt.getbalance(), Decimal("33.98341184"))
 
     def run_test(self):
         """
