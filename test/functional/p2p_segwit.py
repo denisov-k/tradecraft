@@ -1287,8 +1287,12 @@ class SegWitTest(FreicoinTestFramework):
 
         block.vtx = [block.vtx[0], block.vtx[-1]]
         self.update_witness_block_with_transactions(block, [tx2])
+        # Freicoin: the extra witness makes tx2's wtxid diverge, so the block-final
+        # witness commitment mismatches and the block is rejected at the witness-merkle
+        # check before script verification (bitcoin reaches the script 'Operation not
+        # valid with the current stack size' error).
         test_witness_block(self.nodes[0], self.test_node, block, accepted=False,
-                           reason='block-script-verify-flag-failed (Operation not valid with the current stack size)')
+                           reason='bad-witness-merkle-match')
 
         # Fix the broken witness and the block should be accepted.
         tx2.wit.vtxinwit[5].scriptWitness.stack = [b'a', script_to_witness(witness_script), b'']
