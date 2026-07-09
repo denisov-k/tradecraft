@@ -623,7 +623,9 @@ class CompactBlocksTest(FreicoinTestFramework):
         # Send a blocktxn that does not succeed in reconstruction, triggering
         # getdata fallback.
         msg = msg_blocktxn()
-        msg.block_transactions = BlockTransactions(block.hash_int, [block.vtx[2]] + [block.vtx[1]])
+        # Freicoin: node also requested the block-final tx (index 3); include it so the
+        # blocktxn count matches (contents still wrong -> getdata fallback, not a short-msg disconnect)
+        msg.block_transactions = BlockTransactions(block.hash_int, [block.vtx[2]] + [block.vtx[1]] + [block.vtx[-1]])
         test_node.send_and_ping(msg)
 
         # Tip should not have updated
