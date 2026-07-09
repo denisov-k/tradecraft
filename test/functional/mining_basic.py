@@ -178,18 +178,20 @@ class MiningTest(FreicoinTestFramework):
                 blockmintxfee_parameter = f"-blockmintxfee={blockmintxfee_frc_kvb:.8f}"
                 self.log.info(f"-> Test {blockmintxfee_parameter} ({blockmintxfee_sat_kvb} sat/kvB)...")
                 self.restart_node(0, extra_args=[blockmintxfee_parameter, '-minrelaytxfee=0', '-persistmempool=0'])
-            assert_equal(node.getmininginfo()['blockmintxfee'], blockmintxfee_btc_kvb)
+            assert_equal(node.getmininginfo()['blockmintxfee'], blockmintxfee_frc_kvb)
 
             # submit one tx with exactly the blockmintxfee rate, and one slightly below
-            tx_with_min_feerate = self.wallet.send_self_transfer(from_node=node, fee_rate=blockmintxfee_frc_kvb)
+            tx_with_min_feerate = self.wallet.send_self_transfer(from_node=node, fee_rate=blockmintxfee_frc_kvb, confirmed_only=True)
             assert_equal(tx_with_min_feerate["fee"], get_fee(tx_with_min_feerate["tx"].get_vsize(), blockmintxfee_frc_kvb))
-            if blockmintxfee_frc_kvb > 0:
+            if blockmintxfee_sat_kvb >= 10:
                 lowerfee_frc_kvb = blockmintxfee_frc_kvb - Decimal(10)/COIN  # 0.01 sat/vbyte lower
-                tx_below_min_feerate = self.wallet.send_self_transfer(from_node=node, fee_rate=lowerfee_frc_kvb)
+                assert_greater_than(blockmintxfee_frc_kvb, lowerfee_frc_kvb)
+                assert_greater_than_or_equal(lowerfee_frc_kvb, 0)
+                tx_below_min_feerate = self.wallet.send_self_transfer(from_node=node, fee_rate=lowerfee_frc_kvb, confirmed_only=True)
                 assert_equal(tx_below_min_feerate["fee"], get_fee(tx_below_min_feerate["tx"].get_vsize(), lowerfee_frc_kvb))
             else:  # go below zero fee by using modified fees
-                tx_below_min_feerate = self.wallet.send_self_transfer(from_node=node, fee_rate=blockmintxfee_frc_kvb)
-                node.prioritisetransaction(tx_below_min_feerate["txid"], 0, -1)
+                tx_below_min_feerate = self.wallet.send_self_transfer(from_node=node, fee_rate=blockmintxfee_frc_kvb, confirmed_only=True)
+                node.prioritisetransaction(tx_below_min_feerate["txid"], 0, -11)
 
             # check that tx below specified fee-rate is neither in template nor in the actual block
             block_template = node.getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)
@@ -197,7 +199,7 @@ class MiningTest(FreicoinTestFramework):
 
             # Unless blockmintxfee is 0, the template shouldn't contain free transactions.
             # Note that the real block assembler uses package feerates, but we didn't create dependent transactions so it's ok to use base feerate.
-            if blockmintxfee_btc_kvb > 0:
+            if blockmintxfee_frc_kvb > 0:
                 for txid in block_template_txids:
                     tx = node.getmempoolentry(txid)
                     assert_greater_than(tx['fees']['base'], 0)
@@ -359,6 +361,12 @@ class MiningTest(FreicoinTestFramework):
         node = self.nodes[0]
         self.wallet = MiniWallet(node)
         self.mine_chain()
+
+        def assert_submitblock(block, result_str_1, result_str_2=None):
+            block.solve()
+            result_str_2 = result_str_2 or 'duplicate-invalid'
+            assert_equal(result_str_1, node.submitblock(hexdata=block.serialize().hex()))
+            assert_equal(result_str_2, node.submitblock(hexdata=block.serialize().hex()))
 
         self.log.info('getmininginfo')
         mining_info = node.getmininginfo()
