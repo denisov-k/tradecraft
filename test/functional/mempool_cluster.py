@@ -255,6 +255,18 @@ class MempoolClusterTest(FreicoinTestFramework):
             utxos_to_merge.append(singleton["new_utxo"])
             vsize_remaining -= singleton["tx"].get_vsize()
 
+        # Freicoin: the merger tx is (vsize_remaining + 4) vB and must stay a valid
+        # standard tx (< MAX_STANDARD_TX_WEIGHT/4 = 100000 vB). Freicoin's compact
+        # MAST OP_TRUE spends are smaller than bitcoin's, so for the 101 kvB default
+        # cluster the 10 singletons above leave vsize_remaining > 100000; add more
+        # singletons until the merger fits.
+        while vsize_remaining + 4 >= 100000:
+            confirmed_utxo = self.wallet.get_utxo(confirmed_only=True)
+            singleton = self.wallet.send_self_transfer(from_node=node, utxo_to_spend=confirmed_utxo)
+            assert singleton["txid"] in node.getrawmempool()
+            utxos_to_merge.append(singleton["new_utxo"])
+            vsize_remaining -= singleton["tx"].get_vsize()
+
         assert_greater_than_or_equal(vsize_remaining, 500)
 
         # Create a transaction spending from all clusters that exceeds the cluster size limit.
