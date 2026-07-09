@@ -729,6 +729,7 @@ def sign_input_segwitv0(tx, input_index, input_scriptpubkey, input_amount, input
 # Note that this corresponds to sigversion == 1 in EvalScript, which is used
 # for version 0 witnesses.
 def SegwitV0SignatureMsg(script, txTo, inIdx, hashtype, amount, refheight):
+    ZERO_HASH = bytes([0]*32)
 
     hashPrevouts = ZERO_HASH
     hashSequence = ZERO_HASH

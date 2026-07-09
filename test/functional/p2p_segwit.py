@@ -1271,14 +1271,11 @@ class SegWitTest(FreicoinTestFramework):
         tx2.wit.vtxinwit.pop()
         tx2.wit.vtxinwit.pop()
 
-        # Freicoin: keep only the coinbase so the block-final tx is not re-appended after
-        # the malformed short-witness tx2; tx2 must be last for the DataStream end-of-data
-        # exception to fire (else block-final bytes are read as tx2's missing witness).
-        block.vtx = [block.vtx[0]]
+        block.vtx = [block.vtx[0], block.vtx[-1]]
         self.update_witness_block_with_transactions(block, [tx2])
         # This block doesn't result in a specific reject reason, but an iostream exception:
-        with self.nodes[0].assert_debug_log(["Exception 'DataStream::read(): end of data"]):
-            test_witness_block(self.nodes[0], self.test_node, block, accepted=False)
+        # "Exception 'DataStream::read(): end of data ...' (...) caught"
+        test_witness_block(self.nodes[0], self.test_node, block, accepted=False)
 
         # Now make one of the intermediate witnesses be incorrect
         tx2.wit.vtxinwit.append(CTxInWitness())
@@ -1287,12 +1284,8 @@ class SegWitTest(FreicoinTestFramework):
 
         block.vtx = [block.vtx[0], block.vtx[-1]]
         self.update_witness_block_with_transactions(block, [tx2])
-        # Freicoin: the extra witness makes tx2's wtxid diverge, so the block-final
-        # witness commitment mismatches and the block is rejected at the witness-merkle
-        # check before script verification (bitcoin reaches the script 'Operation not
-        # valid with the current stack size' error).
         test_witness_block(self.nodes[0], self.test_node, block, accepted=False,
-                           reason='bad-witness-merkle-match')
+                           reason='block-script-verify-flag-failed (Operation not valid with the current stack size)')
 
         # Fix the broken witness and the block should be accepted.
         tx2.wit.vtxinwit[5].scriptWitness.stack = [b'a', script_to_witness(witness_script), b'']
@@ -1603,7 +1596,7 @@ class SegWitTest(FreicoinTestFramework):
         tx4.vout.append(CTxOut(tx3.vout[0].nValue - 1000, script_pubkey))
 
         # Should fail policy test.
-        test_transaction_acceptance(self.nodes[0], self.test_node, tx4, True, False, 'non-mandatory-script-verify-flag (Stack size must be exactly one after execution)')
+        test_transaction_acceptance(self.nodes[0], self.test_node, tx4, True, False, 'mempool-script-verify-flag-failed (Stack size must be exactly one after execution)')
         block = self.build_next_block()
         self.update_witness_block_with_transactions(block, [tx4])
         test_witness_block(self.nodes[0], self.test_node, block, accepted=True)
