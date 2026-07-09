@@ -1,7 +1,18 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2020 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <script/script_error.h>
 
@@ -53,6 +64,12 @@ std::string ScriptErrorString(const ScriptError serror)
             return "Negative locktime";
         case SCRIPT_ERR_UNSATISFIED_LOCKTIME:
             return "Locktime requirement not satisfied";
+        case SCRIPT_ERR_INVALID_HASH_LENGTH:
+            return "Unexpected length of hash value";
+        case SCRIPT_ERR_INVALID_MERKLE_PROOF:
+            return "Malformed or dirty Merkle proof";
+        case SCRIPT_ERR_MERKLEBRANCHVERIFY:
+            return "Script failed an OP_MERKLEBRANCHVERIFY operation";
         case SCRIPT_ERR_SIG_HASHTYPE:
             return "Signature hash type missing or not understood";
         case SCRIPT_ERR_SIG_DER:
@@ -63,12 +80,14 @@ std::string ScriptErrorString(const ScriptError serror)
             return "Only push operators allowed in signatures";
         case SCRIPT_ERR_SIG_HIGH_S:
             return "Non-canonical signature: S value is unnecessarily high";
-        case SCRIPT_ERR_SIG_NULLDUMMY:
-            return "Dummy CHECKMULTISIG argument must be zero";
         case SCRIPT_ERR_MINIMALIF:
             return "OP_IF/NOTIF argument must be minimal";
-        case SCRIPT_ERR_SIG_NULLFAIL:
+        case SCRIPT_ERR_NULLFAIL:
             return "Signature must be zero for failed CHECK(MULTI)SIG operation";
+        case SCRIPT_ERR_MULTISIG_HINT:
+            return "Incorrect or invalid hint provided in CHECKMULTISIG's last argument";
+        case SCRIPT_ERR_FAILED_SIGNATURE_CHECK:
+            return "Failed signature check with non-empty signature argument";
         case SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS:
             return "NOPx reserved for soft-fork upgrades";
         case SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM:
@@ -83,16 +102,14 @@ std::string ScriptErrorString(const ScriptError serror)
             return "Public key is neither compressed or uncompressed";
         case SCRIPT_ERR_CLEANSTACK:
             return "Stack size must be exactly one after execution";
-        case SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH:
-            return "Witness program has incorrect length";
         case SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY:
             return "Witness program was passed an empty witness";
+        case SCRIPT_ERR_WITNESS_PROGRAM_INVALID_PROOF:
+            return "Witness program invalid Merkle proof";
         case SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH:
             return "Witness program hash mismatch";
         case SCRIPT_ERR_WITNESS_MALLEATED:
             return "Witness requires empty scriptSig";
-        case SCRIPT_ERR_WITNESS_MALLEATED_P2SH:
-            return "Witness requires only-redeemscript scriptSig";
         case SCRIPT_ERR_WITNESS_UNEXPECTED:
             return "Witness provided for non-witness script";
         case SCRIPT_ERR_WITNESS_PUBKEYTYPE:

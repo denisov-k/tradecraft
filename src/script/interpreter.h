@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_SCRIPT_INTERPRETER_H
-#define BITCOIN_SCRIPT_INTERPRETER_H
+#ifndef FREICOIN_SCRIPT_INTERPRETER_H
+#define FREICOIN_SCRIPT_INTERPRETER_H
 
 #include <consensus/amount.h>
 #include <hash.h>
@@ -17,6 +28,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <map>
 #include <vector>
 
 class CPubKey;
@@ -36,6 +48,14 @@ enum
     SIGHASH_DEFAULT = 0, //!< Taproot only; implied when sighash byte is missing, and equivalent to SIGHASH_ALL
     SIGHASH_OUTPUT_MASK = 3,
     SIGHASH_INPUT_MASK = 0x80,
+
+    // Only set within unit tests ported over from bitcoin and
+    // retained, this flag (which exceeds a byte and therefore cannot
+    // be set within a serialized signature) indicates that the
+    // lock_height field of CTransaction is not to be serialized
+    // during signature checks, thereby preventing the invalidation of
+    // bitcoin signatures contained within the unit test transaction.
+    SIGHASH_NO_LOCK_HEIGHT = 0x100,
 };
 
 /** Script verification flags.
@@ -62,8 +82,43 @@ enum class script_verify_flag_name : uint8_t {
     // (BIP62 rule 5).
     SCRIPT_VERIFY_LOW_S,
 
-    // verify dummy stack item consumed by CHECKMULTISIG is of zero-length (BIP62 rule 7).
-    SCRIPT_VERIFY_NULLDUMMY,
+    // Requires the presence of a bitfield specifying which keys are
+    // skipped during signature validation of a CHECKMULTISIG, using the
+    // extra data push that opcode consumes (softfork safe, and replaces
+    // BIP62 rule 7). Originally coded as REQUIRE_VALID_SIGS in a
+    // softfork deployed on v12.1, the script verification codes for
+    // that soft fork have now been split into NULLFAIL which requires
+    // that failing signatures be empty, and MULTISIG_HINT which allows
+    // matching keys to signatures prior to signature verification.
+    //
+    // CHECKMULTISIG and CHECKMULTISIGVERIFY present a significant
+    // challenge to preventing failed signature checks in that the
+    // original data format did not indicate which public keys were
+    // matched with which signatures, other than the ordering. For a
+    // k-of-n multisig, there are n-choose-(n-k) possibilities. For
+    // example, a 2-of-3 multisig would have three public keys matched
+    // with two signatures, resulting in three possible assignments of
+    // pubkeys to signatures. In the original implementation this is done
+    // by attempting to validate a signature, starting with the first
+    // public key and the first signature, and then moving to the next
+    // pubkey if validation fails. It is not known in advance to the
+    // validator which attempts will fail.
+    //
+    // Thankfully, however, a bug in the original implementation causes an
+    // extra, unused item to be removed from stack after validation.  Since
+    // this value is given no previous consensus meaning, we use it as a
+    // bitfield to indicate which pubkeys to skip. (Note that bitcoin's
+    // NULLDUMMY would require this field to be zero, which is incompatible
+    // with MULTISIG_HINT when any keys must be skipped.)
+    //
+    // Enforcing MULTISIG_HINT and NULLFAIL are necessary precursor steps
+    // to performing batch validation, since in a batch validation regime
+    // individual pubkey-signature combinations would not be checked for
+    // validity.
+    //
+    // Like bitcoin's NULLDUMMY, this also serves as a malleability fix
+    // since the bitmask value is provided by the witness.
+    SCRIPT_VERIFY_MULTISIG_HINT,
 
     // Using a non-push operator in the scriptSig causes script failure (BIP62 rule 2).
     SCRIPT_VERIFY_SIGPUSHONLY,
@@ -94,16 +149,6 @@ enum class script_verify_flag_name : uint8_t {
     // Note: WITNESS_V0 and TAPSCRIPT script execution have behavior similar to CLEANSTACK as part of their
     //       consensus rules. It is automatic there and does not need this flag.
     SCRIPT_VERIFY_CLEANSTACK,
-
-    // Verify CHECKLOCKTIMEVERIFY
-    //
-    // See BIP65 for details.
-    SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY,
-
-    // support CHECKSEQUENCEVERIFY opcode
-    //
-    // See BIP112 for details
-    SCRIPT_VERIFY_CHECKSEQUENCEVERIFY,
 
     // Support segregated witness
     //
@@ -140,10 +185,45 @@ enum class script_verify_flag_name : uint8_t {
     SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION,
 
     // Making unknown OP_SUCCESS non-standard
+    //
+    // Also discourages use of undefined opcodes in legacy scripts
+    // after the protocol cleanup fork activation.
+    //
+    // If the protocol-cleanup fork is activated, undefined opcodes
+    // have "return true" semantics, meaning that encountering such an
+    // opcode results in the immediate SUCCESSFUL(!) termination of
+    // script execution. Before activation they will be given less
+    // dangerous semantics, but until then they are treated as
+    // discouraged as well.
     SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS,
 
     // Making unknown public key versions (in BIP 342 scripts) non-standard
     SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE,
+
+    // Set if we are relaxing some of the overly restrictive protocol
+    // rules as part of the "size expansion" fork. See commet in
+    // main.h for further description. This flag is a bit unlike the
+    // other script verification flags, but it is the easiest way to
+    // pass this parameter around the script validation code.
+    SCRIPT_VERIFY_SIZE_EXPANSION,
+
+    // Set if we are relaxing some of the overly restrictive protocol
+    // rules as part of the "protocol cleanup" fork. See commet in
+    // main.h for further description. This flag is a bit unlike the
+    // other script verification flags, but it is the easiest way to
+    // pass this parameter around the script validation code.
+    SCRIPT_VERIFY_PROTOCOL_CLEANUP,
+
+    // If set, do not serialize CTransaction::lock_height in SignatureHash
+    //
+    // This exists entirely as a shim to keep valuable bitcoin unit
+    // tests working within this codebase. Unit tests containing a
+    // bitcoin transaction have to be rewritten to add the lock_height
+    // field in order to deserialize, but passing this flag to script
+    // verification ensures that the lock heights are not serialized
+    // during signature verification, and therefore do not invalidate
+    // the original bitcoin signatures.
+    SCRIPT_VERIFY_LOCK_HEIGHT_NOT_UNDER_SIGNATURE,
 
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
@@ -177,7 +257,7 @@ struct PrecomputedTransactionData
     //! Whether the 3 fields above are initialized.
     bool m_bip143_segwit_ready = false;
 
-    std::vector<CTxOut> m_spent_outputs;
+    std::vector<SpentOutput> m_spent_outputs;
     //! Whether m_spent_outputs is initialized.
     bool m_spent_outputs_ready = false;
 
@@ -191,7 +271,7 @@ struct PrecomputedTransactionData
      *                             regardless of what is in the inputs (used at signing
      *                             time, when the inputs aren't filled in yet). */
     template <class T>
-    void Init(const T& tx, std::vector<CTxOut>&& spent_outputs, bool force = false);
+    void Init(const T& tx, std::vector<SpentOutput>&& spent_outputs, bool force = false);
 
     template <class T>
     explicit PrecomputedTransactionData(const T& tx);
@@ -200,7 +280,7 @@ struct PrecomputedTransactionData
 enum class SigVersion
 {
     BASE = 0,        //!< Bare scripts and BIP16 P2SH-wrapped redeemscripts
-    WITNESS_V0 = 1,  //!< Witness v0 (P2WPKH and P2WSH); see BIP 141
+    WITNESS_V0 = 1,  //!< Witness v0 (P2WPK and P2WSH); see BIP 141
     TAPROOT = 2,     //!< Witness v1 with 32-byte program, not BIP16 P2SH-wrapped, key path spending; see BIP 341
     TAPSCRIPT = 3,   //!< Witness v1 with 32-byte program, not BIP16 P2SH-wrapped, script path spending, leaf version 0xc0; see BIP 342
 };
@@ -234,8 +314,8 @@ struct ScriptExecutionData
 };
 
 /** Signature hash sizes */
-static constexpr size_t WITNESS_V0_SCRIPTHASH_SIZE = 32;
-static constexpr size_t WITNESS_V0_KEYHASH_SIZE = 20;
+static constexpr size_t WITNESS_V0_LONGHASH_SIZE = 32;
+static constexpr size_t WITNESS_V0_SHORTHASH_SIZE = 20;
 static constexpr size_t WITNESS_V1_TAPROOT_SIZE = 32;
 
 static constexpr uint8_t TAPROOT_LEAF_MASK = 0xfe;
@@ -269,7 +349,7 @@ public:
 };
 
 template <class T>
-uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn, int32_t nHashType, const CAmount& amount, SigVersion sigversion, const PrecomputedTransactionData* cache = nullptr, SigHashCache* sighash_cache = nullptr);
+uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn, int nHashType, const CAmount& amount, int64_t refheight, SigVersion sigversion, const PrecomputedTransactionData* cache = nullptr);
 
 class BaseSignatureChecker
 {
@@ -297,6 +377,11 @@ public:
     virtual ~BaseSignatureChecker() = default;
 };
 
+enum class TxSigCheckOpt {
+    NONE = 0,
+    NO_LOCK_HEIGHT = (1 << 0),
+};
+
 /** Enum to specify what *TransactionSignatureChecker's behavior should be
  *  when dealing with missing transaction data.
  */
@@ -317,16 +402,17 @@ private:
     const MissingDataBehavior m_mdb;
     unsigned int nIn;
     const CAmount amount;
+    const int64_t refheight;
     const PrecomputedTransactionData* txdata;
-    mutable SigHashCache m_sighash_cache;
+    bool no_lock_height;
 
 protected:
     virtual bool VerifyECDSASignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const;
     virtual bool VerifySchnorrSignature(std::span<const unsigned char> sig, const XOnlyPubKey& pubkey, const uint256& sighash) const;
 
 public:
-    GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, MissingDataBehavior mdb) : txTo(txToIn), m_mdb(mdb), nIn(nInIn), amount(amountIn), txdata(nullptr) {}
-    GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn, MissingDataBehavior mdb) : txTo(txToIn), m_mdb(mdb), nIn(nInIn), amount(amountIn), txdata(&txdataIn) {}
+    GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, int64_t refheightIn, MissingDataBehavior mdb, TxSigCheckOpt opts = TxSigCheckOpt::NONE) : txTo(txToIn), m_mdb(mdb), nIn(nInIn), amount(amountIn), refheight(refheightIn), txdata(nullptr), no_lock_height(opts == TxSigCheckOpt::NO_LOCK_HEIGHT) {}
+    GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, int64_t refheightIn, const PrecomputedTransactionData& txdataIn, MissingDataBehavior mdb, TxSigCheckOpt opts = TxSigCheckOpt::NONE) : txTo(txToIn), m_mdb(mdb), nIn(nInIn), amount(amountIn), refheight(refheightIn), txdata(&txdataIn), no_lock_height(opts == TxSigCheckOpt::NO_LOCK_HEIGHT) {}
     bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override;
     bool CheckSchnorrSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override;
     bool CheckLockTime(const CScriptNum& nLockTime) const override;
@@ -377,12 +463,10 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& script, script_verify_flags flags, const BaseSignatureChecker& checker, SigVersion sigversion, ScriptError* error = nullptr);
 bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const CScriptWitness* witness, script_verify_flags flags, const BaseSignatureChecker& checker, ScriptError* serror = nullptr);
 
-size_t CountWitnessSigOps(const CScript& scriptSig, const CScript& scriptPubKey, const CScriptWitness& witness, script_verify_flags flags);
-
 int FindAndDelete(CScript& script, const CScript& b);
 
 const std::map<std::string, script_verify_flag_name>& ScriptFlagNamesToEnum();
 
 std::vector<std::string> GetScriptFlagNames(script_verify_flags flags);
 
-#endif // BITCOIN_SCRIPT_INTERPRETER_H
+#endif // FREICOIN_SCRIPT_INTERPRETER_H

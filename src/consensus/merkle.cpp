@@ -1,10 +1,22 @@
-// Copyright (c) 2015-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2015-2020 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <consensus/merkle.h>
 #include <hash.h>
-#include <util/check.h>
+#include <logging.h>
+#include <streams.h>
 
 /*     WARNING! If you're reading this because you're learning about crypto
        and/or designing a new system that will use merkle trees, keep in mind
@@ -42,56 +54,53 @@
        root.
 */
 
+typedef unsigned merklecomputationopts;
+static const merklecomputationopts MERKLE_COMPUTATION_MUTABLE = 0x1;
+static const merklecomputationopts MERKLE_COMPUTATION_FAST    = 0x2;
+static const merklecomputationopts MERKLE_COMPUTATION_STABLE  = 0x4;
 
-uint256 ComputeMerkleRoot(std::vector<uint256> hashes, bool* mutated) {
-    bool mutation = false;
-    while (hashes.size() > 1) {
-        if (mutated) {
-            for (size_t pos = 0; pos + 1 < hashes.size(); pos += 2) {
-                if (hashes[pos] == hashes[pos + 1]) mutation = true;
-            }
-        }
-        if (hashes.size() & 1) {
-            hashes.push_back(hashes.back());
-        }
-        SHA256D64(hashes[0].begin(), hashes[0].begin(), hashes.size() / 2);
-        hashes.resize(hashes.size() / 2);
-    }
-    if (mutated) *mutated = mutation;
-    if (hashes.size() == 0) return uint256();
-    return hashes[0];
+uint256 MerkleHash_Hash256(const uint256& left, const uint256& right) {
+    return Hash(left, right);
 }
 
-
-uint256 BlockMerkleRoot(const CBlock& block, bool* mutated)
-{
-    std::vector<uint256> leaves;
-    leaves.reserve((block.vtx.size() + 1) & ~1ULL); // capacity rounded up to even
-    for (size_t s = 0; s < block.vtx.size(); s++) {
-        leaves.push_back(block.vtx[s]->GetHash().ToUint256());
-    }
-    return ComputeMerkleRoot(std::move(leaves), mutated);
+/* Calculated by using standard FIPS-180 SHA-256 to produce the digest of the
+ * empty string / zero-length byte array, then feeding the resulting digest into
+ * SHA-256 twice in order to fill a block and trigger a compression round.  The
+ * midstate is then extracted and used as our hash value.  Expressed with the
+ * pure-Python sha256 package, this would be something like the following:
+ *
+ *     import struct
+ *     from sha256 import SHA256
+ *     iv = b''.join([struct.pack(">I", i) for i in
+ *                    SHA256(SHA256(b"").digest() +
+ *                           SHA256(b"").digest()).state])
+ */
+static unsigned char _MidstateIV[32] =
+    { 0x1e, 0x4e, 0x0f, 0x95, 0x5a, 0x4b, 0xc8, 0x1c,
+      0x08, 0xc8, 0xaf, 0x1c, 0x94, 0xf3, 0x4b, 0x9d,
+      0x0a, 0xf2, 0xf4, 0x50, 0xdc, 0x24, 0xa3, 0xbc,
+      0xef, 0x98, 0x31, 0x8f, 0xaf, 0x5e, 0x25, 0x06 };
+uint256 MerkleHash_Sha256Midstate(const uint256& left, const uint256& right) {
+    uint256 parent;
+    CSHA256(_MidstateIV).Write(left.begin(), 32).Write(right.begin(), 32).Midstate(parent.begin(), nullptr, nullptr);
+    return parent;
 }
 
-uint256 BlockWitnessMerkleRoot(const CBlock& block)
-{
-    std::vector<uint256> leaves;
-    leaves.reserve((block.vtx.size() + 1) & ~1ULL); // capacity rounded up to even
-    leaves.emplace_back(); // The witness hash of the coinbase is 0.
-    for (size_t s = 1; s < block.vtx.size(); s++) {
-        leaves.push_back(block.vtx[s]->GetWitnessHash().ToUint256());
-    }
-    return ComputeMerkleRoot(std::move(leaves));
-}
-
-/* This implements a constant-space merkle path calculator, limited to 2^32 leaves. */
-static void MerkleComputation(const std::vector<uint256>& leaves, uint32_t leaf_pos, std::vector<uint256>& path)
-{
-    path.clear();
-    Assume(leaves.size() <= UINT32_MAX);
+/* This implements a constant-space merkle root/path calculator, limited to 2^32 leaves. */
+static void MerkleComputation(const std::vector<uint256>& leaves, uint256* proot, bool* pmutated, uint32_t branchpos, std::vector<uint256>* pbranch, merklecomputationopts flags) {
+    if (pbranch) pbranch->clear();
     if (leaves.size() == 0) {
+        if (pmutated) *pmutated = false;
+        if (proot) *proot = uint256();
         return;
     }
+    bool is_mutable = (flags & MERKLE_COMPUTATION_MUTABLE) != 0;
+    bool is_stable = (flags & MERKLE_COMPUTATION_STABLE) != 0;
+    auto MerkleHash = MerkleHash_Hash256;
+    if (flags & MERKLE_COMPUTATION_FAST) {
+        MerkleHash = MerkleHash_Sha256Midstate;
+    }
+    bool mutated = false;
     // count is the number of leaves processed so far.
     uint32_t count = 0;
     // inner is an array of eagerly computed subtree hashes, indexed by tree
@@ -105,20 +114,23 @@ static void MerkleComputation(const std::vector<uint256>& leaves, uint32_t leaf_
     // First process all leaves into 'inner' values.
     while (count < leaves.size()) {
         uint256 h = leaves[count];
-        bool matchh = count == leaf_pos;
+        bool matchh = count == branchpos;
         count++;
         int level;
         // For each of the lower bits in count that are 0, do 1 step. Each
         // corresponds to an inner value that existed before processing the
         // current leaf, and each needs a hash to combine it.
         for (level = 0; !(count & ((uint32_t{1}) << level)); level++) {
-            if (matchh) {
-                path.push_back(inner[level]);
-            } else if (matchlevel == level) {
-                path.push_back(h);
-                matchh = true;
+            if (pbranch) {
+                if (matchh) {
+                    pbranch->push_back(inner[level]);
+                } else if (matchlevel == level) {
+                    pbranch->push_back(h);
+                    matchh = true;
+                }
             }
-            h = Hash(inner[level], h);
+            mutated |= (inner[level] == h);
+            h = MerkleHash(inner[level], h);
         }
         // Store the resulting hash at inner position level.
         inner[level] = h;
@@ -139,42 +151,436 @@ static void MerkleComputation(const std::vector<uint256>& leaves, uint32_t leaf_
     bool matchh = matchlevel == level;
     while (count != ((uint32_t{1}) << level)) {
         // If we reach this point, h is an inner value that is not the top.
-        // We combine it with itself (Bitcoin's special rule for odd levels in
+        // We combine it with itself (Freicoin's special rule for odd levels in
         // the tree) to produce a higher level one.
-        if (matchh) {
-            path.push_back(h);
+        if (is_mutable && !is_stable && pbranch && matchh) {
+            pbranch->push_back(h);
         }
-        h = Hash(h, h);
+        if (is_mutable) {
+            h = MerkleHash(h, h);
+        }
         // Increment count to the value it would have if two entries at this
         // level had existed.
         count += ((uint32_t{1}) << level);
         level++;
         // And propagate the result upwards accordingly.
         while (!(count & ((uint32_t{1}) << level))) {
-            if (matchh) {
-                path.push_back(inner[level]);
-            } else if (matchlevel == level) {
-                path.push_back(h);
-                matchh = true;
+            if (pbranch) {
+                if (matchh) {
+                    pbranch->push_back(inner[level]);
+                } else if (matchlevel == level) {
+                    pbranch->push_back(h);
+                    matchh = true;
+                }
             }
-            h = Hash(inner[level], h);
+            h = MerkleHash(inner[level], h);
             level++;
         }
     }
+    // Return result.
+    if (pmutated) *pmutated = mutated;
+    if (proot) *proot = h;
 }
 
-static std::vector<uint256> ComputeMerklePath(const std::vector<uint256>& leaves, uint32_t position) {
+uint256 ComputeMerkleRoot(std::vector<uint256> hashes, bool* mutated) {
+    bool mutation = false;
+    while (hashes.size() > 1) {
+        if (mutated) {
+            for (size_t pos = 0; pos + 1 < hashes.size(); pos += 2) {
+                if (hashes[pos] == hashes[pos + 1]) mutation = true;
+            }
+        }
+        if (hashes.size() & 1) {
+            hashes.push_back(hashes.back());
+        }
+        SHA256D64(hashes[0].begin(), hashes[0].begin(), hashes.size() / 2);
+        hashes.resize(hashes.size() / 2);
+    }
+    if (mutated) *mutated = mutation;
+    if (hashes.size() == 0) return uint256();
+    return hashes[0];
+}
+
+std::vector<uint256> ComputeMerkleBranch(const std::vector<uint256>& leaves, uint32_t position) {
     std::vector<uint256> ret;
-    MerkleComputation(leaves, position, ret);
+    MerkleComputation(leaves, nullptr, nullptr, position, &ret, MERKLE_COMPUTATION_MUTABLE);
     return ret;
 }
 
-std::vector<uint256> TransactionMerklePath(const CBlock& block, uint32_t position)
+uint256 ComputeMerkleRootFromBranch(const uint256& leaf, const std::vector<uint256>& vMerkleBranch, uint32_t nIndex) {
+    uint256 hash = leaf;
+    for (std::vector<uint256>::const_iterator it = vMerkleBranch.begin(); it != vMerkleBranch.end(); ++it) {
+        if (nIndex & 1) {
+            hash = Hash(*it, hash);
+        } else {
+            hash = Hash(hash, *it);
+        }
+        nIndex >>= 1;
+    }
+    return hash;
+}
+
+std::pair<std::vector<uint256>, std::pair<uint32_t, uint32_t> > ComputeStableMerkleBranch(const std::vector<uint256>& leaves, uint32_t pos) {
+    std::vector<uint256> ret;
+    MerkleComputation(leaves, nullptr, nullptr, pos, &ret, MERKLE_COMPUTATION_MUTABLE|MERKLE_COMPUTATION_STABLE);
+    return {ret, ComputeMerklePathAndMask(ret.size(), pos)};
+}
+
+uint256 ComputeStableMerkleRootFromBranch(const uint256& leaf, const std::vector<uint256>& branch, uint32_t path, uint32_t mask, bool *mutated) {
+    if (mutated) {
+        *mutated = false;
+    }
+    uint256 hash = leaf;
+    for (std::vector<uint256>::const_iterator it = branch.begin(); it != branch.end(); ) {
+        if (mask & 1) {
+            hash = Hash(hash, hash);
+        } else {
+            if (path & 1) {
+                hash = Hash(*it, hash);
+            } else {
+                hash = Hash(hash, *it);
+            }
+            ++it;
+            path >>= 1;
+        }
+        mask >>= 1;
+    }
+    /* Perform any repeated hashes between the last given branch hash and the
+     * next (missing) hash.  The particular use case for this is computing the
+     * root of a subtree, such as the recomputing the block-final transaction
+     * branch of the Merkle tree when the segwit commitment is updated.  In all
+     * practical situations you want these final repeated hashes to be done,
+     * since the result is the hash value which actually shows up in other
+     * branches. */
+    while (mask & 1) {
+        hash = Hash(hash, hash);
+        mask >>= 1;
+    }
+    if (mutated && (path || mask)) {
+        *mutated = true;
+    }
+    return hash;
+}
+
+uint256 ComputeFastMerkleRoot(const std::vector<uint256>& leaves) {
+    if (leaves.empty()) {
+        return HashWriter{}.GetHash();
+    }
+    uint256 hash;
+    MerkleComputation(leaves, &hash, nullptr, -1, nullptr, MERKLE_COMPUTATION_FAST);
+    return hash;
+}
+
+std::pair<uint32_t, uint32_t> ComputeMerklePathAndMask(uint32_t branchlen, uint32_t position)
+{
+    /* Calculate the largest possible size the branch vector can be.
+     * This is one more than the zero-based index of the highest set
+     * bit. */
+    std::size_t max = 0;
+    for (max = 32; max > 0; --max)
+        if (position & ((uint32_t)1)<<(max-1))
+            break;
+    /* If the number of returned hashes in the branch vector is less
+     * than the maximum allowed size, it must be because the branch
+     * lies at least partially along the right-most path of an
+     * unbalanced tree.
+     *
+     * We calculate the path by dropping the necessary number of
+     * most-significant zero bits from the binary representation of
+     * position. */
+    uint32_t mask = 0;
+    uint32_t path = position;
+    while (max > branchlen) {
+        /* Find the first clear/zero bit *below* the most significant
+         * set bit.  We do this by starting with what we know to be
+         * the most-significant set bit, and then working backwards
+         * until we hit a zero bit. */
+        int i;
+        for (i = max-1; i >= 0; --i)
+            if (!(path & ((uint32_t)1)<<i))
+                break;
+        /* It will never be the case that we don't find a zero bit as
+         * in that situation MerkleComputation would have returned
+         * more hashes.  However for the purpose helping code analysis
+         * tools which can't make this inference, we detect failure
+         * and return. */
+        if (i < 0) // Should never happen
+            return {};
+        /* Set the i'th bit of the mask. */
+        mask |= ((uint32_t)1) << i;
+        /* Bit-fiddle to build two masks: one covering all the bits
+         * above the i'th position, and one covering all bits below.
+         * Apply both to path and shift the top bits down by one
+         * position, effectively eliminating the i'th bit. */
+        path = ((path & ~((((uint32_t)1)<<(i+1))-1))>>1) // e.g. 0b11111111111111111111111100000000
+             |  (path &  ((((uint32_t)1)<< i   )-1));    //      0b00000000000000000000000001111111
+        --max;                                           //                                |
+    }                                                    //                        i = 7 --^
+    return {path, mask};
+}
+
+std::pair<std::vector<uint256>, uint32_t> ComputeFastMerkleBranch(const std::vector<uint256>& leaves, uint32_t position) {
+    std::vector<uint256> branch;
+    MerkleComputation(leaves, nullptr, nullptr, position, &branch, MERKLE_COMPUTATION_FAST);
+    return {branch, ComputeMerklePathAndMask(branch.size(), position).first};
+}
+
+uint256 ComputeFastMerkleRootFromBranch(const uint256& leaf, const std::vector<uint256>& branch, uint32_t path, bool* invalid) {
+    uint256 hash = leaf;
+    for (const uint256& h : branch) {
+        if (path & 1) {
+            hash = MerkleHash_Sha256Midstate(h, hash);
+        } else {
+            hash = MerkleHash_Sha256Midstate(hash, h);
+        }
+        path >>= 1;
+    }
+    if (invalid) {
+        *invalid = (path != 0);
+    }
+    return hash;
+}
+
+static uint256 calc_bits(const uint256& key, int begin, int end)
+{
+    assert(begin <= end);
+    uint256 ret; // = 0
+    for (int idx = begin; idx < end; ++idx) {
+        unsigned char src = 255 - idx;
+        unsigned char dst = end - idx - 1;
+        if (key.begin()[31-(src/8)] & (1 << (src%8))) {
+            ret.begin()[31-(dst/8)] |= 1 << (dst%8);
+        }
+    }
+    ret.begin()[31-((end-begin)/8)] |= 1 << ((end-begin)%8);
+    return ret;
+}
+
+static uint256 calc_remainder(const uint256& key, int used)
+{
+    assert(used <= 255);
+    if (!used) {
+        return key;
+    }
+    uint256 ret; // = 0
+    for (int idx = 0; idx < (256-used); ++idx) {
+        if (key.begin()[31-(idx/8)] & (1 << (idx%8))) {
+            ret.begin()[31-(idx/8)] |= 1 << (idx%8);
+        }
+    }
+    return ret;
+}
+
+static std::shared_ptr<MerkleMapNode> BuildMerkleMapTreeInner(std::map<uint256, uint256> pairs, int used) {
+    // An empty map is an uninteresting edge case.
+    if (pairs.empty()) {
+        assert(false);
+        return nullptr;
+    }
+    // A commitment to a single value is just that value.
+    if (pairs.size() == 1) {
+        auto ret = std::make_shared<MerkleMapNode>();
+        ret->skip = 256 - used;
+        ret->hash = MerkleHash_Sha256Midstate(calc_remainder(pairs.begin()->first, used), pairs.begin()->second);
+        ret->zero = nullptr; // terminal node
+        ret->one = nullptr;
+        return ret;
+    }
+    // Find the longest common prefix between the keys we are given, starting
+    // from the first as yet unused bit.  The keys will have the already used
+    // bits in common as well, but we know that already and don't have to check.
+    int end = used; // used is a count of the number of key prefix bits already
+                    // consumed, and thefore also the zero-indexed beginning of
+                    // the remaining bits.
+    while (end < 256) { // should never reach 256, but just in case
+        // We check for commonality one byte at a time, for efficiency's sake.
+        // 'diff' will be zero if all the keys have the same value for this
+        // byte, and if non-zero the set bits will indicate which positions
+        // differ.
+        unsigned char diff = 0;
+        // Could be any key, doesn't matter which.
+        unsigned char bits = pairs.begin()->first.begin()[end/8];
+        for (auto pair : pairs) {
+            // Bitwise-XOR of the bits of the current byte from each key, with
+            // bits gives the positions which differ from the first key.
+            // Bitwise-OR ensures that if a bit is ever set in a comparison, it
+            // remains set across the whole set.
+            // The end result is that a bit in 'diff' will be zero if and only
+            // if that bit has the same value across all keys.
+            diff |= bits ^ pair.first.begin()[end/8];
+        }
+        // Now check if any of the bits differ.
+        // Note that our starting bit might not be at index 0.
+        int idx = end % 8;
+        while (idx < 8) {
+            // The 0th index is the highest bit of the first byte.
+            if (diff & (1 << (7-idx))) {
+                break;
+            }
+            ++idx;
+            ++end;
+        }
+        // If we found a differing bit, we're done.
+        if (idx != 8) {
+            break;
+        }
+    }
+    if (end == 256) {
+        // FIXME: This cannot happen as there is no way to have two keys with
+        //        the same value.
+        assert(false);
+        return nullptr;
+    }
+    // end is the index of the first differing bit.  We divide the keys into two
+    // groups based on their value for this bit.
+    std::map<uint256, uint256> zero_pairs;
+    std::map<uint256, uint256> one_pairs;
+    for (auto pair : pairs) {
+        if (pair.first.begin()[end/8] & (1 << (7-(end%8)))) {
+            one_pairs[pair.first] = pair.second;
+        } else {
+            zero_pairs[pair.first] = pair.second;
+        }
+    }
+    assert(!zero_pairs.empty());
+    assert(!one_pairs.empty());
+    // Now we recurse to build the subtrees.
+    auto ret = std::make_shared<MerkleMapNode>();
+    ret->skip = end - used;
+    ret->zero = BuildMerkleMapTreeInner(zero_pairs, end + 1);
+    ret->one = BuildMerkleMapTreeInner(one_pairs, end + 1);
+    assert(ret->zero);
+    assert(ret->one);
+    ret->hash = MerkleHash_Sha256Midstate(ret->zero->hash, ret->one->hash);
+    ret->hash = MerkleHash_Sha256Midstate(calc_bits(pairs.begin()->first, used, end), ret->hash);
+    return ret;
+}
+
+std::shared_ptr<MerkleMapNode> BuildMerkleMapTree(std::map<uint256, uint256> pairs) {
+    return BuildMerkleMapTreeInner(pairs, 0);
+}
+
+uint256 ComputeMerkleMapRootFromBranch(const uint256& value, const std::vector<std::pair<unsigned char, uint256> >& branch, const uint256& key, bool* invalid)
+{
+    size_t total = 0;
+    for (auto& skip : branch) {
+        total += 1 + (size_t)skip.first;
+    }
+
+    if (total >= 256) {
+        if (invalid) {
+            *invalid = true;
+        }
+        return {};
+    }
+
+    if (invalid) {
+        *invalid = false;
+    }
+
+    uint256 hash;
+    hash = MerkleHash_Sha256Midstate(calc_remainder(key, total), value);
+    for (auto& skip : branch) {
+        --total;
+        auto begin = total - skip.first;
+        auto end = total;
+        if (key.begin()[31-(end/8)] & (1 << (end%8))) {
+            hash = MerkleHash_Sha256Midstate(skip.second, hash);
+        } else {
+            hash = MerkleHash_Sha256Midstate(hash, skip.second);
+        }
+        hash = MerkleHash_Sha256Midstate(calc_bits(key, begin, end), hash);
+    }
+
+    return hash;
+}
+
+uint256 BlockMerkleRoot(const CBlock& block, bool* mutated)
 {
     std::vector<uint256> leaves;
     leaves.resize(block.vtx.size());
     for (size_t s = 0; s < block.vtx.size(); s++) {
         leaves[s] = block.vtx[s]->GetHash().ToUint256();
     }
-    return ComputeMerklePath(leaves, position);
+    return ComputeMerkleRoot(std::move(leaves), mutated);
+}
+
+uint256 BlockTemplateMerkleRoot(const CBlock& block, bool* mutated)
+{
+    CMutableTransaction cb(*block.vtx[0]);
+    cb.vin[0].scriptSig = CScript();
+    cb.vin[0].nSequence = 0;
+    std::vector<uint256> leaves;
+    leaves.resize(block.vtx.size());
+    leaves[0] = cb.GetHash().ToUint256();
+    for (size_t s = 1; s < block.vtx.size(); s++) {
+        leaves[s] = block.vtx[s]->GetHash().ToUint256();
+    }
+    return ComputeMerkleRoot(leaves, mutated);
+}
+
+uint256 BlockWitnessMerkleRoot(const CBlock& block)
+{
+    std::vector<uint256> leaves;
+    leaves.resize(block.vtx.size());
+
+    // For compatibility with the existing mining infrastructure,
+    // which expects that updating the coinbase's extranonce field has
+    // no impact on witness commitment in the block-final transaction,
+    // we zero out both the scriptSig and nSequence fields of the
+    // coinbase input.  As a result, either the 4-byte nSequence field
+    // (which has no consensus meaning) or the coinbase string can be
+    // updated by the hasher without having to recompute the witness
+    // commitment.  Using nSequence only would be preferred, since
+    // using the coinbase string adds space, but unfortunately the
+    // coinbase-mtp soft-fork has the side effect of forcing the
+    // coinbase's nSequence value to be set to SEQUENCE_FINAL, at
+    // least until the protocol cleanup hard-fork activates.  In the
+    // meantime, the scriptSig can be used.
+    CMutableTransaction cb(*block.vtx.front());
+    if (!cb.vin.empty()) {
+        cb.vin[0].scriptSig = CScript();
+        cb.vin[0].nSequence = 0;
+    }
+    // The coinbase's witness contains the witness nonce, which cannot
+    // be included under the witness Merkle root.
+    leaves.front() = cb.GetHash().ToUint256();
+
+    // The witness Merkle root is placed in the block-final
+    // transaction, but it is a Merkle tree of all transactions,
+    // including itself.  To avoid this impossibility, when computing
+    // the witness Merkle root the commitment is set to zero.
+    DataStream tx;
+    tx << TX_NO_WITNESS(block.vtx.back());
+
+    // Check if there is a witness commitment:
+    if (tx.size() >= (1 + 32 + 4 + 8)            // <- 1 byte for witness path
+        && tx[tx.size()-8-4] == std::byte{0x4b}  //   32 bytes for merkle root
+        && tx[tx.size()-8-3] == std::byte{0x4a}  //    4 bytes for magic value
+        && tx[tx.size()-8-2] == std::byte{0x49}  //    4 bytes for nLockTime
+        && tx[tx.size()-8-1] == std::byte{0x48}) //    4 bytes for lock_height
+    {                                            //      (end of transaction)
+        // Set the witness commitment bytes to 0.
+        std::fill_n(tx.end()-8-4-32-1, 33, std::byte{0});
+    }
+    // The block-final transaction never contains any witness data.
+    CHash256()
+        .Write({(unsigned char*)&tx[0], tx.size()})
+        .Finalize(leaves.back());
+
+    for (size_t s = 1; s < block.vtx.size()-1; s++) {
+        leaves[s] = block.vtx[s]->GetWitnessHash().ToUint256();
+    }
+
+    return ComputeFastMerkleRoot(leaves);
+}
+
+std::vector<uint256> BlockMerkleBranch(const CBlock& block, uint32_t position)
+{
+    std::vector<uint256> leaves;
+    leaves.resize(block.vtx.size());
+    for (size_t s = 0; s < block.vtx.size(); s++) {
+        leaves[s] = block.vtx[s]->GetHash().ToUint256();
+    }
+    return ComputeMerkleBranch(leaves, position);
 }
