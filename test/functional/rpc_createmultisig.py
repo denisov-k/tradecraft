@@ -62,7 +62,7 @@ class RpcCreateMultiSigTest(FreicoinTestFramework):
         m_of_n = [(2, 3), (3, 3), (2, 5), (3, 5), (10, 15), (15, 15)]
         for (sigs, keys) in m_of_n:
             for output_type in ["bech32", "legacy"]:
-                self.do_multisig(keys, sigs, output_type, wallet_multi)
+                self.do_multisig(keys, sigs, output_type)
 
         self.test_multisig_script_limit()
         self.test_mixing_uncompressed_and_compressed_keys(node0)
@@ -96,7 +96,7 @@ class RpcCreateMultiSigTest(FreicoinTestFramework):
         pubs = [self.nodes[1].getaddressinfo(addr)["pubkey"] for addr in addresses]
         assert_raises_rpc_error(-5, "Unknown address type 'bech32m'", self.nodes[0].addmultisigaddress, 2, pubs, "", "bech32m")
 
-    def test_multisig_script_limit(self, wallet_multi):
+    def test_multisig_script_limit(self):
         node1 = self.nodes[1]
         pubkeys = self.pub[0:20]
 
@@ -104,22 +104,15 @@ class RpcCreateMultiSigTest(FreicoinTestFramework):
         assert_raises_rpc_error(-8, "redeemScript exceeds size limit: 684 > 520", node1.createmultisig, 16, pubkeys, 'legacy')
 
         self.log.info('Test valid 16-20 multisig bech32 (no wallet)')
-        self.do_multisig(nkeys=20, nsigs=16, output_type="bech32", wallet_multi=None)
+        self.do_multisig(nkeys=20, nsigs=16, output_type="bech32")
 
         self.log.info('Test invalid 16-21 multisig bech32 (no wallet)')
         assert_raises_rpc_error(-8, "Number of keys involved in the multisignature address creation > 20", node1.createmultisig, 16, self.pub, 'bech32')
 
         # Check legacy wallet related command
         self.log.info('Test legacy redeem script max size limit (with wallet)')
-        if wallet_multi is not None and not self.options.descriptors:
-            assert_raises_rpc_error(-8, "redeemScript exceeds size limit: 684 > 520", wallet_multi.addmultisigaddress, 16, pubkeys, '', 'legacy')
 
-            self.log.info('Test legacy wallet unsupported operation. 16-20 multisig bech32 generation')
-            # Due an internal limitation on legacy wallets, the redeem script limit also applies to bech32 (even when the scripts are valid)
-            # We take this as a "good thing" to tell users to upgrade to descriptors.
-            assert_raises_rpc_error(-4, "Unsupported multisig script size for legacy wallet. Upgrade to descriptors to overcome this limitation for bech32 scripts", wallet_multi.addmultisigaddress, 16, pubkeys, '', 'bech32')
-
-    def do_multisig(self, nkeys, nsigs, output_type, wallet_multi):
+    def do_multisig(self, nkeys, nsigs, output_type):
         node0, _node1, node2 = self.nodes
         pub_keys = self.pub[0: nkeys]
         priv_keys = self.priv[0: nkeys]

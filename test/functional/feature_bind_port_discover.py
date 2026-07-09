@@ -17,6 +17,7 @@
 Test that -discover does not add all interfaces' addresses if we listen on only some of them
 """
 
+from test_framework.util import assert_not_equal
 from test_framework.test_framework import FreicoinTestFramework, SkipTest
 from test_framework.util import assert_equal
 

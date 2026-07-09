@@ -16,6 +16,7 @@
 """Test SENDTXRCNCL message
 """
 
+from test_framework.util import assert_not_equal
 from test_framework.messages import (
     msg_sendtxrcncl,
     msg_verack,
