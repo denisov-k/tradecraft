@@ -1,6 +1,17 @@
-// Copyright (c) 2019-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2019-2021 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <signet.h>
 
@@ -27,7 +38,7 @@
 
 static constexpr uint8_t SIGNET_HEADER[4] = {0xec, 0xc7, 0xda, 0xa2};
 
-static constexpr script_verify_flags BLOCK_SCRIPT_VERIFY_FLAGS = SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_NULLDUMMY;
+static constexpr script_verify_flags BLOCK_SCRIPT_VERIFY_FLAGS = SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_DERSIG;
 
 static bool FetchAndClearCommitmentSection(const std::span<const uint8_t> header, CScript& witness_commitment, std::vector<uint8_t>& result)
 {
@@ -72,12 +83,14 @@ std::optional<SignetTxs> SignetTxs::Create(const CBlock& block, const CScript& c
     CMutableTransaction tx_to_spend;
     tx_to_spend.version = 0;
     tx_to_spend.nLockTime = 0;
+    tx_to_spend.lock_height = 0;
     tx_to_spend.vin.emplace_back(COutPoint(), CScript(OP_0), 0);
     tx_to_spend.vout.emplace_back(0, challenge);
 
     CMutableTransaction tx_spending;
     tx_spending.version = 0;
     tx_spending.nLockTime = 0;
+    tx_spending.lock_height = 0;
     tx_spending.vin.emplace_back(COutPoint(), CScript(), 0);
     tx_spending.vout.emplace_back(0, CScript(OP_RETURN));
 
@@ -88,12 +101,11 @@ std::optional<SignetTxs> SignetTxs::Create(const CBlock& block, const CScript& c
     if (block.vtx.empty()) return std::nullopt; // no coinbase tx in block; invalid
     CMutableTransaction modified_cb(*block.vtx.at(0));
 
-    const int cidx = GetWitnessCommitmentIndex(block);
-    if (cidx == NO_WITNESS_COMMITMENT) {
+    if (!GetWitnessCommitment(block, nullptr, nullptr)) {
         return std::nullopt; // require a witness commitment
     }
 
-    CScript& witness_commitment = modified_cb.vout.at(cidx).scriptPubKey;
+    CScript& witness_commitment = modified_cb.vout.back().scriptPubKey;
 
     std::vector<uint8_t> signet_solution;
     if (!FetchAndClearCommitmentSection(SIGNET_HEADER, witness_commitment, signet_solution)) {
@@ -142,8 +154,8 @@ bool CheckSignetBlockSolution(const CBlock& block, const Consensus::Params& cons
     const CScriptWitness& witness = signet_txs->m_to_sign.vin[0].scriptWitness;
 
     PrecomputedTransactionData txdata;
-    txdata.Init(signet_txs->m_to_sign, {signet_txs->m_to_spend.vout[0]});
-    TransactionSignatureChecker sigcheck(&signet_txs->m_to_sign, /* nInIn= */ 0, /* amountIn= */ signet_txs->m_to_spend.vout[0].nValue, txdata, MissingDataBehavior::ASSERT_FAIL);
+    txdata.Init(signet_txs->m_to_sign, {{signet_txs->m_to_spend.vout[0], signet_txs->m_to_spend.lock_height}});
+    TransactionSignatureChecker sigcheck(&signet_txs->m_to_sign, /* nInIn= */ 0, /* amountIn= */ signet_txs->m_to_spend.vout[0].GetReferenceValue(), signet_txs->m_to_spend.lock_height, txdata, MissingDataBehavior::ASSERT_FAIL);
 
     if (!VerifyScript(scriptSig, signet_txs->m_to_spend.vout[0].scriptPubKey, &witness, BLOCK_SCRIPT_VERIFY_FLAGS, sigcheck)) {
         LogDebug(BCLog::VALIDATION, "CheckSignetBlockSolution: Errors in block (block solution invalid)\n");
