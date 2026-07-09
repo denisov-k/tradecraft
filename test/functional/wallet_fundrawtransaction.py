@@ -593,7 +593,7 @@ class RawTransactionsTest(FreicoinTestFramework):
         assert_equal(import_res[0]["success"], True)
 
         # Send 1.2 FRC to msig addr.
-        self.nodes[0].sendtoaddress(mSigObj, 1.2)
+        self.nodes[0].sendtoaddress(mSigObj["address"], 1.2, fee_rate=self.fee_rate_sats_per_vb)
         self.generate(self.nodes[0], 1)
 
         oldBalance = self.nodes[1].getbalance()
@@ -1472,7 +1472,7 @@ class RawTransactionsTest(FreicoinTestFramework):
         # To test this does not happen, we subtract 202 sats from the input value. If working correctly, this should
         # fail with insufficient funds rather than freicoind asserting.
         rawtx = w.createrawtransaction(inputs=[], outputs=[{self.nodes[0].getnewaddress(address_type="bech32"): 1 - 0.00000202}])
-        expected_err_msg = "The total exceeds your balance when the 0.00000078 transaction fee is included."
+        expected_err_msg = "The total exceeds your balance when the 0.00000086 transaction fee is included."
         assert_raises_rpc_error(-4, expected_err_msg, w.fundrawtransaction, rawtx, fee_rate=1.85)
 
     def test_input_confs_control(self):
@@ -1576,7 +1576,7 @@ class RawTransactionsTest(FreicoinTestFramework):
         self.log.info("Test without preselected inputs")
         self.log.info("Attempt to send 0.45 BTC without SFFO")
         rawtx = wallet.createrawtransaction(inputs=[], outputs=[{default_wallet.getnewaddress(): 0.45}])
-        assert_raises_rpc_error(-4, amount_with_fee_err_msg.format("0.00000042"), wallet.fundrawtransaction, rawtx, options={"fee_rate":1})
+        assert_raises_rpc_error(-4, amount_with_fee_err_msg.format("0.00000046"), wallet.fundrawtransaction, rawtx, options={"fee_rate":1})
 
         self.log.info("Send 0.45 BTC with SFFO")
         wallet.fundrawtransaction(rawtx, options={"subtractFeeFromOutputs":[0]})
@@ -1587,7 +1587,7 @@ class RawTransactionsTest(FreicoinTestFramework):
         self.log.info("Test with preselected inputs")
         self.log.info("Attempt to send 0.45 BTC preselecting 0.15 BTC utxo")
         rawtx = wallet.createrawtransaction(inputs=[{"txid": txid2, "vout": vout2}], outputs=[{default_wallet.getnewaddress(): 0.45}])
-        assert_raises_rpc_error(-4, amount_with_fee_err_msg.format("0.00000042"), wallet.fundrawtransaction, rawtx, options={"fee_rate":1})
+        assert_raises_rpc_error(-4, amount_with_fee_err_msg.format("0.00000046"), wallet.fundrawtransaction, rawtx, options={"fee_rate":1})
 
         self.log.info("Send 0.45 BTC preselecting 0.15 BTC utxo with SFFO")
         wallet.fundrawtransaction(hexstring=rawtx, options={"subtractFeeFromOutputs":[0]})
