@@ -263,4 +263,4 @@ static const char *escapes[256] = {
     nullptr,
     nullptr,
 };
-#endif // BITCOIN_UNIVALUE_INCLUDE_UNIVALUE_ESCAPES_H
+#endif // FREICOIN_UNIVALUE_INCLUDE_UNIVALUE_ESCAPES_H
