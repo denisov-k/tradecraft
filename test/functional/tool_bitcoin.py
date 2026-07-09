@@ -4,7 +4,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test the bitcoin wrapper tool."""
 from test_framework.test_framework import (
-    BitcoinTestFramework,
+    FreicoinTestFramework,
     SkipTest,
 )
 from test_framework.util import (
@@ -16,7 +16,7 @@ import platform
 import re
 
 
-class ToolBitcoinTest(BitcoinTestFramework):
+class ToolBitcoinTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -63,27 +63,27 @@ class ToolBitcoinTest(BitcoinTestFramework):
         node = self.nodes[0]
 
         self.log.info("Ensure bitcoin node command invokes bitcoind by default")
-        self.test_args([], [], expect_exe="bitcoind")
+        self.test_args([], [], expect_exe="freicoind")
 
         self.log.info("Ensure bitcoin -M invokes bitcoind")
-        self.test_args(["-M"], [], expect_exe="bitcoind")
+        self.test_args(["-M"], [], expect_exe="freicoind")
 
         self.log.info("Ensure bitcoin -M does not accept -ipcbind")
         self.test_args(["-M"], ["-ipcbind=unix"], expect_error='Error: Error parsing command line arguments: Invalid parameter -ipcbind=unix')
 
         if self.is_ipc_compiled():
             self.log.info("Ensure bitcoin -m invokes bitcoin-node")
-            self.test_args(["-m"], [], expect_exe="bitcoin-node")
+            self.test_args(["-m"], [], expect_exe="freicoin-node")
 
             self.log.info("Ensure bitcoin -m does accept -ipcbind")
-            self.test_args(["-m"], ["-ipcbind=unix"], expect_exe="bitcoin-node")
+            self.test_args(["-m"], ["-ipcbind=unix"], expect_exe="freicoin-node")
 
             self.log.info("Ensure bitcoin accepts -ipcbind by default")
-            self.test_args([], ["-ipcbind=unix"], expect_exe="bitcoin-node")
+            self.test_args([], ["-ipcbind=unix"], expect_exe="freicoin-node")
 
             self.log.info("Ensure bitcoin recognizes -ipcbind in config file")
             append_config(node.datadir_path, ["ipcbind=unix"])
-            self.test_args([], [], expect_exe="bitcoin-node")
+            self.test_args([], [], expect_exe="freicoin-node")
 
 
 def get_node_output(node):

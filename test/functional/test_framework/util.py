@@ -330,7 +330,7 @@ def get_binary_paths(config):
 
     paths = types.SimpleNamespace()
     binaries = {
-        "bitcoin": "BITCOIN_BIN",
+        "freicoin": "BITCOIN_BIN",
         "freicoind": "FREICOIND",
         "bench_bitcoin": "BITCOIN_BENCH",
         "freicoin-cli": "FREICOINCLI",
