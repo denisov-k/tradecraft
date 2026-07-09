@@ -124,7 +124,7 @@ class AssumeutxoTest(FreicoinTestFramework):
         ]
         for [magic, name, real] in invalid_magics:
             with open(bad_snapshot_path, 'wb') as f:
-                f.write(valid_snapshot_contents[:7] + magic + valid_snapshot_contents[11:])
+                f.write(valid_snapshot_contents[:7] + magic.to_bytes(4, 'big') + valid_snapshot_contents[11:])
             if real:
                 assert_raises_rpc_error(parsing_error_code, f"Unable to parse metadata: The network of the snapshot ({name}) does not match the network of this node (regtest).", node.loadtxoutset, bad_snapshot_path)
             else:
