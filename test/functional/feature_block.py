@@ -18,6 +18,7 @@ import copy
 import time
 
 from test_framework.blocktools import (
+    add_witness_commitment,
     add_final_tx,
     create_block,
     create_coinbase,
@@ -144,10 +145,8 @@ class FullBlockTest(FreicoinTestFramework):
         self.send_blocks([b0])
 
         # Will test spending once possibly-mature
-        # Freicoin: coinbase index 0 is the block-final OP_TRUE output (inserted at
-        # height 1), shifting the additional scripts to indices 2 and 3.
-        max_size_spendable_output = CTxIn(COutPoint(b0.vtx[0].txid_int, 2))
-        min_size_unspendable_output = CTxIn(COutPoint(b0.vtx[0].txid_int, 3))
+        max_size_spendable_output = CTxIn(COutPoint(b0.vtx[0].txid_int, 1))
+        min_size_unspendable_output = CTxIn(COutPoint(b0.vtx[0].txid_int, 2))
 
         # These constants chosen specifically to trigger an immature coinbase spend
         # at a certain time below.
@@ -1369,7 +1368,11 @@ class FullBlockTest(FreicoinTestFramework):
         b_cb34.vtx[0].vin[0].scriptSig = b_cb34.vtx[0].vin[0].scriptSig[:-1]
         b_cb34.hashMerkleRoot = b_cb34.calc_merkle_root()
         b_cb34.solve()
-        self.send_blocks([b_cb34], success=False, reject_reason='bad-cb-height', reconnect=True)
+        # Freicoin: at height 88 the coinbase scriptSig is exactly the 2-byte BIP34
+        # height push, so dropping the last byte violates the 2-byte minimum and is
+        # caught as bad-cb-length (CheckTransaction) before the bad-cb-height check
+        # (ContextualCheckBlock). The block is rejected either way.
+        self.send_blocks([b_cb34], success=False, reject_reason='bad-cb-length', reconnect=True)
 
         # Don't use v2transport for the large reorg, which is too slow with the unoptimized python ChaCha20 implementation
         if self.options.v2transport:
