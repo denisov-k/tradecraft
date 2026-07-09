@@ -1,9 +1,20 @@
-// Copyright (c) 2023-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2023 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_COMMON_ARGS_H
-#define BITCOIN_COMMON_ARGS_H
+#ifndef FREICOIN_COMMON_ARGS_H
+#define FREICOIN_COMMON_ARGS_H
 
 #include <common/settings.h>
 #include <compat/compat.h>
@@ -24,8 +35,8 @@
 
 class ArgsManager;
 
-extern const char * const BITCOIN_CONF_FILENAME;
-extern const char * const BITCOIN_SETTINGS_FILENAME;
+extern const char * const FREICOIN_CONF_FILENAME;
+extern const char * const FREICOIN_SETTINGS_FILENAME;
 
 // Return true if -datadir option points to a valid directory or is not specified.
 bool CheckDataDirOption(const ArgsManager& args);
@@ -61,6 +72,7 @@ enum class OptionsCategory {
     NODE_RELAY,
     BLOCK_CREATION,
     RPC,
+    STRATUM,
     GUI,
     COMMANDS,
     REGISTER_COMMANDS,
@@ -444,7 +456,7 @@ private:
     fs::path GetDataDir(bool net_specific) const;
 
     /**
-     * Return -regtest/-signet/-testnet/-testnet4/-chain= setting as a ChainType enum if a
+     * Return -regtest/-signet/-testnet/-chain= setting as a ChainType enum if a
      * recognized chain type was set, or as a string if an unrecognized chain
      * name was set. Raise an exception if an invalid combination of flags was
      * provided.
@@ -490,4 +502,21 @@ std::string HelpMessageGroup(const std::string& message);
  */
 std::string HelpMessageOpt(const std::string& option, const std::string& message);
 
-#endif // BITCOIN_COMMON_ARGS_H
+namespace common {
+#ifdef WIN32
+class WinCmdLineArgs
+{
+public:
+    WinCmdLineArgs();
+    ~WinCmdLineArgs();
+    std::pair<int, char**> get();
+
+private:
+    int argc;
+    char** argv;
+    std::vector<std::string> args;
+};
+#endif
+} // namespace common
+
+#endif // FREICOIN_COMMON_ARGS_H

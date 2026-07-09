@@ -1,7 +1,18 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <common/args.h>
 
@@ -34,8 +45,8 @@
 #include <utility>
 #include <variant>
 
-const char * const BITCOIN_CONF_FILENAME = "bitcoin.conf";
-const char * const BITCOIN_SETTINGS_FILENAME = "settings.json";
+const char * const FREICOIN_CONF_FILENAME = "freicoin.conf";
+const char * const FREICOIN_SETTINGS_FILENAME = "settings.json";
 
 ArgsManager gArgs;
 
@@ -158,7 +169,6 @@ std::list<SectionInfo> ArgsManager::GetUnrecognizedSections() const
         ChainTypeToString(ChainType::REGTEST),
         ChainTypeToString(ChainType::SIGNET),
         ChainTypeToString(ChainType::TESTNET),
-        ChainTypeToString(ChainType::TESTNET4),
         ChainTypeToString(ChainType::MAIN),
     };
 
@@ -190,7 +200,7 @@ bool ArgsManager::ParseParameters(int argc, const char* const argv[], std::strin
         if (key.starts_with("-psn_")) continue;
 #endif
 
-        if (key == "-") break; //bitcoin-tx using stdin
+        if (key == "-") break; //freicoin-tx using stdin
         std::optional<std::string> val;
         size_t is_index = key.find('=');
         if (is_index != std::string::npos) {
@@ -379,7 +389,7 @@ bool ArgsManager::IsArgSet(const std::string& strArg) const
 
 bool ArgsManager::GetSettingsPath(fs::path* filepath, bool temp, bool backup) const
 {
-    fs::path settings = GetPathArg("-settings", BITCOIN_SETTINGS_FILENAME);
+    fs::path settings = GetPathArg("-settings", FREICOIN_SETTINGS_FILENAME);
     if (settings.empty()) {
         return false;
     }
@@ -680,6 +690,9 @@ std::string ArgsManager::GetHelpMessage() const
             case OptionsCategory::CHAINPARAMS:
                 usage += HelpMessageGroup("Chain selection options:");
                 break;
+            case OptionsCategory::STRATUM:
+                usage += HelpMessageGroup("Stratum server:");
+                break;
             case OptionsCategory::GUI:
                 usage += HelpMessageGroup("UI Options:");
                 break;
@@ -757,18 +770,18 @@ bool HasTestOption(const ArgsManager& args, const std::string& test_option)
 fs::path GetDefaultDataDir()
 {
     // Windows:
-    //   old: C:\Users\Username\AppData\Roaming\Bitcoin
-    //   new: C:\Users\Username\AppData\Local\Bitcoin
-    // macOS: ~/Library/Application Support/Bitcoin
-    // Unix-like: ~/.bitcoin
+    //   old: C:\Users\Username\AppData\Roaming\Freicoin
+    //   new: C:\Users\Username\AppData\Local\Freicoin
+    // macOS: ~/Library/Application Support/Freicoin
+    // Unix-like: ~/.freicoin
 #ifdef WIN32
     // Windows
     // Check for existence of datadir in old location and keep it there
-    fs::path legacy_path = GetSpecialFolderPath(CSIDL_APPDATA) / "Bitcoin";
+    fs::path legacy_path = GetSpecialFolderPath(CSIDL_APPDATA) / "Freicoin";
     if (fs::exists(legacy_path)) return legacy_path;
 
     // Otherwise, fresh installs can start in the new, "proper" location
-    return GetSpecialFolderPath(CSIDL_LOCAL_APPDATA) / "Bitcoin";
+    return GetSpecialFolderPath(CSIDL_LOCAL_APPDATA) / "Freicoin";
 #else
     fs::path pathRet;
     char* pszHome = getenv("HOME");
@@ -778,10 +791,10 @@ fs::path GetDefaultDataDir()
         pathRet = fs::path(pszHome);
 #ifdef __APPLE__
     // macOS
-    return pathRet / "Library/Application Support/Bitcoin";
+    return pathRet / "Library/Application Support/Freicoin";
 #else
     // Unix-like
-    return pathRet / ".bitcoin";
+    return pathRet / ".freicoin";
 #endif
 #endif
 }
@@ -833,11 +846,10 @@ std::variant<ChainType, std::string> ArgsManager::GetChainArg() const
     const bool fRegTest = get_net("-regtest");
     const bool fSigNet  = get_net("-signet");
     const bool fTestNet = get_net("-testnet");
-    const bool fTestNet4 = get_net("-testnet4");
     const auto chain_arg = GetArg("-chain");
 
-    if ((int)chain_arg.has_value() + (int)fRegTest + (int)fSigNet + (int)fTestNet + (int)fTestNet4 > 1) {
-        throw std::runtime_error("Invalid combination of -regtest, -signet, -testnet, -testnet4 and -chain. Can use at most one.");
+    if ((int)chain_arg.has_value() + (int)fRegTest + (int)fSigNet + (int)fTestNet > 1) {
+        throw std::runtime_error("Invalid combination of -regtest, -signet, -testnet and -chain. Can use at most one.");
     }
     if (chain_arg) {
         if (auto parsed = ChainTypeFromString(*chain_arg)) return *parsed;
@@ -847,7 +859,6 @@ std::variant<ChainType, std::string> ArgsManager::GetChainArg() const
     if (fRegTest) return ChainType::REGTEST;
     if (fSigNet) return ChainType::SIGNET;
     if (fTestNet) return ChainType::TESTNET;
-    if (fTestNet4) return ChainType::TESTNET4;
     return ChainType::MAIN;
 }
 

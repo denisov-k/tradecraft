@@ -1,10 +1,21 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef BITCOIN_ARITH_UINT256_H
-#define BITCOIN_ARITH_UINT256_H
+#ifndef FREICOIN_ARITH_UINT256_H
+#define FREICOIN_ARITH_UINT256_H
 
 #include <compare>
 #include <cstdint>
@@ -226,6 +237,8 @@ public:
     }
 };
 
+class arith_uint320;
+
 /** 256-bit unsigned big integer. */
 class arith_uint256 : public base_uint<256>
 {
@@ -249,7 +262,7 @@ public:
      * Thus 0x1234560000 is compact (0x05123456)
      * and  0xc0de000000 is compact (0x0600c0de)
      *
-     * Bitcoin only uses this "compact" format for encoding difficulty
+     * Freicoin only uses this "compact" format for encoding difficulty
      * targets, which are unsigned 256bit quantities.  Thus, all the
      * complexities of the sign bit and using base 256 are probably an
      * implementation accident.
@@ -259,6 +272,8 @@ public:
 
     friend uint256 ArithToUint256(const arith_uint256 &);
     friend arith_uint256 UintToArith256(const uint256 &);
+
+    friend class arith_uint320;
 };
 
 // Keeping the trivially copyable property is beneficial for performance
@@ -269,4 +284,17 @@ arith_uint256 UintToArith256(const uint256 &);
 
 extern template class base_uint<256>;
 
-#endif // BITCOIN_ARITH_UINT256_H
+/** 320-bit unsigned big integer. */
+class arith_uint320 : public base_uint<320> {
+public:
+    arith_uint320() : base_uint<320>() {}
+    arith_uint320(const base_uint<320>& b) : base_uint<320>(b) {}
+    arith_uint320(uint64_t b) : base_uint<320>(b) {}
+
+    arith_uint320(const arith_uint256 &a);
+    bool TruncateTo256(arith_uint256 &);
+};
+
+extern template class base_uint<320>;
+
+#endif // FREICOIN_ARITH_UINT256_H
