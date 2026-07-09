@@ -43,6 +43,7 @@ from test_framework.messages import (
     DEFAULT_BLOCK_RESERVED_WEIGHT,
     MAX_BLOCK_WEIGHT,
     MAX_SEQUENCE_NONFINAL,
+    SEQUENCE_FINAL,
     MINIMUM_BLOCK_RESERVED_WEIGHT,
     ser_uint256,
     WITNESS_SCALE_FACTOR,
@@ -349,13 +350,20 @@ class MiningTest(FreicoinTestFramework):
             extra_args=[f"-blockmaxweight={MAX_BLOCK_WEIGHT + 1}"],
             expected_msg=f"Error: Specified -blockmaxweight ({MAX_BLOCK_WEIGHT + 1}) exceeds consensus maximum block weight ({MAX_BLOCK_WEIGHT})",
         )
+        # Freicoin: v31 runs test_timewarp() next which restarts node 0; we skip it
+        # (Freicoin has its own difficulty adjustment), so restart node 0 here for the
+        # following tests (test_pruning/test_height_in_locktime need it running).
+        self.start_node(0)
 
     def test_height_in_locktime(self):
         self.log.info("Sanity check generated blocks have their coinbase timelocked to their height.")
         self.generate(self.nodes[0], 1, sync_fun=self.no_op)
         block = self.nodes[0].getblock(self.nodes[0].getbestblockhash(), 2)
-        assert_equal(block["tx"][0]["locktime"], block["height"] - 1)
-        assert_equal(block["tx"][0]["vin"][0]["sequence"], MAX_SEQUENCE_NONFINAL)
+        # Freicoin: coinbase nLockTime = median-time-past of the previous block (not
+        # height-1), input sequence = SEQUENCE_FINAL (not MAX_SEQUENCE_NONFINAL).
+        prev = self.nodes[0].getblockheader(block["previousblockhash"])
+        assert_equal(block["tx"][0]["locktime"], prev["mediantime"])
+        assert_equal(block["tx"][0]["vin"][0]["sequence"], SEQUENCE_FINAL)
 
     def run_test(self):
         node = self.nodes[0]
