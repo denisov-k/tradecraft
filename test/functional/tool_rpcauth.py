@@ -21,11 +21,11 @@ import os
 import re
 import sys
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_equal
 
 
-class RpcAuthTest(BitcoinTestFramework):
+class RpcAuthTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 0  # No node/datadir needed
 

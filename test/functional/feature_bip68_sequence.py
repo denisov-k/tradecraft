@@ -37,6 +37,10 @@ from test_framework.script import (
     CScript,
     OP_TRUE,
     OP_0NOTEQUAL,
+    SEQUENCE_LOCKTIME_DISABLE_FLAG,
+    SEQUENCE_LOCKTIME_TYPE_FLAG,
+    SEQUENCE_LOCKTIME_GRANULARITY,
+    SEQUENCE_LOCKTIME_MASK,
 )
 from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (

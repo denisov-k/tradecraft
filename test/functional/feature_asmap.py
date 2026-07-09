@@ -65,7 +65,7 @@ class AsmapTest(FreicoinTestFramework):
             self.start_node(0)
 
     def test_noasmap_arg(self):
-        self.log.info('Test bitcoind with -noasmap arg passed')
+        self.log.info('Test freicoind with -noasmap arg passed')
         self.stop_node(0)
         with self.node.assert_debug_log(['Using /16 prefix for IP bucketing']):
             self.start_node(0, ["-noasmap"])
@@ -89,14 +89,19 @@ class AsmapTest(FreicoinTestFramework):
             self.start_node(0, [f'-asmap={name}'])
         os.remove(filename)
 
-    def test_default_asmap(self):
-        shutil.copyfile(self.asmap_raw, self.default_asmap)
-        for arg in ['-asmap', '-asmap=']:
-            self.log.info(f'Test freicoind {arg} (using default map file)')
-            self.stop_node(0)
-            with self.node.assert_debug_log(expected_messages(self.default_asmap)):
-                self.start_node(0, [arg])
-        os.remove(self.default_asmap)
+    def test_embedded_asmap(self):
+        if self.is_embedded_asmap_compiled():
+            self.log.info('Test freicoind -asmap (using embedded map data)')
+            for arg in ['-asmap', '-asmap=1']:
+                self.stop_node(0)
+                with self.node.assert_debug_log(["Opened asmap data", "from embedded byte array"]):
+                    self.start_node(0, [arg])
+        else:
+            self.log.info('Test freicoind -asmap (compiled without embedded map data)')
+            for arg in ['-asmap', '-asmap=1']:
+                self.stop_node(0)
+                msg = "Error: Embedded asmap data not available"
+                self.node.assert_start_raises_init_error(extra_args=[arg], expected_msg=msg)
 
     def test_asmap_interaction_with_addrman_containing_entries(self):
         self.log.info("Test freicoind -asmap restart with addrman containing new and tried entries")
@@ -112,8 +117,8 @@ class AsmapTest(FreicoinTestFramework):
         ):
             self.node.getnodeaddresses()  # getnodeaddresses re-runs the addrman checks
 
-    def test_default_asmap_with_missing_file(self):
-        self.log.info('Test freicoind -asmap with missing default map file')
+    def test_asmap_with_missing_file(self):
+        self.log.info('Test freicoind -asmap with missing map file')
         self.stop_node(0)
         msg = f"Error: Could not find asmap file \"{self.datadir}{os.sep}missing\""
         self.node.assert_start_raises_init_error(extra_args=['-asmap=missing'], expected_msg=msg)
@@ -130,7 +135,6 @@ class AsmapTest(FreicoinTestFramework):
 
     def test_asmap_health_check(self):
         self.log.info('Test freicoind -asmap logs ASMap Health Check with basic stats')
-        shutil.copyfile(self.asmap_raw, self.default_asmap)
         msg = "ASMap Health Check: 4 clearnet peers are mapped to 3 ASNs with 0 peers being unmapped"
         with self.node.assert_debug_log(expected_msgs=[msg]):
             self.start_node(0, extra_args=[f'-asmap={self.asmap_raw}'])

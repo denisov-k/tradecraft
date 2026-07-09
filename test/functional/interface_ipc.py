@@ -6,7 +6,7 @@
 import asyncio
 
 from contextlib import ExitStack
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_equal
 from test_framework.ipc_util import (
     load_capnp_modules,
@@ -21,7 +21,7 @@ except ModuleNotFoundError:
     pass
 
 
-class IPCInterfaceTest(BitcoinTestFramework):
+class IPCInterfaceTest(FreicoinTestFramework):
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_ipc()

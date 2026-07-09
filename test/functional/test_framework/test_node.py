@@ -384,12 +384,13 @@ class TestNode():
                     errno.ECONNREFUSED  # Port not yet open?
                 ]:
                     raise  # unknown OS error
+                latest_error = suppress_error(f"OSError {errno.errorcode[error_num]}", e)
             except ValueError as e:  # cookie file not found and no rpcuser or rpcpassword; freicoind is still starting
                 if "No RPC credentials" not in str(e):
                     raise
                 latest_error = suppress_error("missing_credentials", e)
             time.sleep(1.0 / poll_per_s)
-        self._raise_assertion_error("Unable to connect to freicoind after {}s".format(self.rpc_timeout))
+        self._raise_assertion_error(f"Unable to connect to freicoind after {self.rpc_timeout}s (ignored errors: {dict(suppressed_errors)!s}{'' if latest_error is None else f', latest: {latest_error[0]!r}/{latest_error[1]}'})")
 
     def wait_for_cookie_credentials(self):
         """Ensures auth cookie credentials can be read, e.g. for testing CLI with -rpcwait before RPC connection is up."""
