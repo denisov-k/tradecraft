@@ -17,6 +17,7 @@
 
 from decimal import Decimal
 
+from test_framework.mempool_util import DEFAULT_CLUSTER_LIMIT
 from test_framework.messages import (
     MAX_BIP125_RBF_SEQUENCE,
     COIN,
@@ -40,6 +41,8 @@ class ReplaceByFeeTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
         self.uses_wallet = None
+        # Freicoin: datacarrier defaults off; OP_RETURN outputs in RBF subtests need it
+        self.extra_args = [["-datacarrier=1", "-datacarriersize=100000"]] * self.num_nodes
 
     def run_test(self):
         self.wallet = MiniWallet(self.nodes[0])
@@ -512,7 +515,7 @@ class ReplaceByFeeTest(FreicoinTestFramework):
         for incremental_setting in (0, 5, 10, 50, 100, 234, 1000, 5000, 21000):
             incremental_setting_decimal = incremental_setting / Decimal(COIN)
             self.log.info(f"-> Test -incrementalrelayfee={incremental_setting:.8f}sat/kvB...")
-            self.restart_node(0, extra_args=[f"-incrementalrelayfee={incremental_setting_decimal:.8f}", "-persistmempool=0"])
+            self.restart_node(0, extra_args=[f"-incrementalrelayfee={incremental_setting_decimal:.8f}", "-persistmempool=0", "-datacarrier=1", "-datacarriersize=100000"])
 
             # When incremental relay feerate is higher than min relay feerate, min relay feerate is automatically increased.
             min_relay_feerate = node.getmempoolinfo()["minrelaytxfee"]
