@@ -70,6 +70,17 @@ VERSIONBITS_DEPLOYMENT_FINALTX_BIT = 12
 VERSIONBITS_DEPLOYMENT_TESTDUMMY_BIT = 28
 DEFAULT_BLOCK_MIN_TX_FEE = 1 # default `-blockmintxfee` setting [sat/kvB]
 
+def assert_template(node, block, expect, rehash=True):
+    if rehash:
+        block.hashMerkleRoot = block.calc_merkle_root()
+    rsp = node.getblocktemplate(template_request={
+        'data': block.serialize().hex(),
+        'mode': 'proposal',
+        'rules': ['segwit', 'finaltx', 'auxpow'],
+    })
+    assert_equal(rsp, expect)
+
+
 class MiningTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 3

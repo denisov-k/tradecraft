@@ -160,6 +160,29 @@ def add_final_tx(info, block):
         'amount': int(finaltx.vout[-1].nValue),
     }]
 
+FORK_LENGTH = 10
+
+def create_empty_fork(node, fork_length=FORK_LENGTH):
+    '''
+        Creates a fork using node's chaintip as the starting point.
+        Returns a list of blocks to submit in order.
+    '''
+    tip = int(node.getbestblockhash(), 16)
+    height = node.getblockcount()
+    block_time = node.getblock(node.getbestblockhash())['time'] + 1
+
+    blocks = []
+    for _ in range(fork_length):
+        block = create_block(tip, create_coinbase(height + 1), block_time)
+        block.solve()
+        blocks.append(block)
+        tip = block.sha256
+        block_time += 1
+        height += 1
+
+    return blocks
+
+
 def get_witness_script(witness_root, witness_nonce):
     witness_path = 0x01
     if witness_nonce:

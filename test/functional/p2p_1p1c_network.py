@@ -22,6 +22,7 @@ too-low-feerate transactions). The packages should be received and accepted by a
 
 from decimal import Decimal
 
+from math import ceil
 from test_framework.mempool_util import (
     DEFAULT_MIN_RELAY_TX_FEE,
 )

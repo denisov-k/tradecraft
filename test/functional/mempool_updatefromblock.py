@@ -22,6 +22,7 @@ from decimal import Decimal
 from math import ceil
 import time
 
+from test_framework.blocktools import create_empty_fork
 from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_equal
 from test_framework.wallet import MiniWallet
