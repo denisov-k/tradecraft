@@ -1271,7 +1271,10 @@ class SegWitTest(FreicoinTestFramework):
         tx2.wit.vtxinwit.pop()
         tx2.wit.vtxinwit.pop()
 
-        block.vtx = [block.vtx[0], block.vtx[-1]]
+        # Freicoin: keep only the coinbase so the block-final tx is not re-appended after
+        # the malformed short-witness tx2; tx2 must be last for the DataStream end-of-data
+        # exception to fire (else block-final bytes are read as tx2's missing witness).
+        block.vtx = [block.vtx[0]]
         self.update_witness_block_with_transactions(block, [tx2])
         # This block doesn't result in a specific reject reason, but an iostream exception:
         with self.nodes[0].assert_debug_log(["Exception 'DataStream::read(): end of data"]):
