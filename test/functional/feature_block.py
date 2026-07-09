@@ -144,8 +144,10 @@ class FullBlockTest(FreicoinTestFramework):
         self.send_blocks([b0])
 
         # Will test spending once possibly-mature
-        max_size_spendable_output = CTxIn(COutPoint(b0.vtx[0].txid_int, 1))
-        min_size_unspendable_output = CTxIn(COutPoint(b0.vtx[0].txid_int, 2))
+        # Freicoin: coinbase index 0 is the block-final OP_TRUE output (inserted at
+        # height 1), shifting the additional scripts to indices 2 and 3.
+        max_size_spendable_output = CTxIn(COutPoint(b0.vtx[0].txid_int, 2))
+        min_size_unspendable_output = CTxIn(COutPoint(b0.vtx[0].txid_int, 3))
 
         # These constants chosen specifically to trigger an immature coinbase spend
         # at a certain time below.
@@ -1461,6 +1463,8 @@ class FullBlockTest(FreicoinTestFramework):
         final_tx = self.final_txs[base_block_hash]
         coinbase = create_coinbase(height, self.coinbase_pubkey)
         coinbase.vout[0].nValue += additional_coinbase_value
+        for additional_script in additional_output_scripts:
+            coinbase.vout.append(CTxOut(0, additional_script))
         if height == 1:
             coinbase.vout.insert(0, CTxOut(0, CScript([OP_TRUE])))
         coinbase.rehash()
