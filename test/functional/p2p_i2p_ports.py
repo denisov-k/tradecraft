@@ -19,6 +19,7 @@ Test ports handling for I2P hosts
 
 
 from test_framework.test_framework import FreicoinTestFramework
+from test_framework.util import p2p_port
 
 
 class I2PPorts(FreicoinTestFramework):
