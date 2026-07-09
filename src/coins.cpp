@@ -1,6 +1,17 @@
-// Copyright (c) 2012-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2012-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <coins.h>
 
@@ -18,7 +29,8 @@ std::optional<Coin> CCoinsView::GetCoin(const COutPoint& outpoint) const { retur
 std::optional<Coin> CCoinsView::PeekCoin(const COutPoint& outpoint) const { return GetCoin(outpoint); }
 uint256 CCoinsView::GetBestBlock() const { return uint256(); }
 std::vector<uint256> CCoinsView::GetHeadBlocks() const { return std::vector<uint256>(); }
-void CCoinsView::BatchWrite(CoinsViewCacheCursor& cursor, const uint256& hashBlock)
+BlockFinalTxEntry CCoinsView::GetFinalTx() const { return BlockFinalTxEntry(); }
+void CCoinsView::BatchWrite(CoinsViewCacheCursor& cursor, const uint256& hashBlock, const BlockFinalTxEntry& final_tx)
 {
     for (auto it{cursor.Begin()}; it != cursor.End(); it = cursor.NextAndMaybeErase(*it)) { }
 }
@@ -36,8 +48,9 @@ std::optional<Coin> CCoinsViewBacked::PeekCoin(const COutPoint& outpoint) const 
 bool CCoinsViewBacked::HaveCoin(const COutPoint &outpoint) const { return base->HaveCoin(outpoint); }
 uint256 CCoinsViewBacked::GetBestBlock() const { return base->GetBestBlock(); }
 std::vector<uint256> CCoinsViewBacked::GetHeadBlocks() const { return base->GetHeadBlocks(); }
+BlockFinalTxEntry CCoinsViewBacked::GetFinalTx() const { return base->GetFinalTx(); }
 void CCoinsViewBacked::SetBackend(CCoinsView &viewIn) { base = &viewIn; }
-void CCoinsViewBacked::BatchWrite(CoinsViewCacheCursor& cursor, const uint256& hashBlock) { base->BatchWrite(cursor, hashBlock); }
+void CCoinsViewBacked::BatchWrite(CoinsViewCacheCursor& cursor, const uint256& hashBlock, const BlockFinalTxEntry& final_tx) { base->BatchWrite(cursor, hashBlock, final_tx); }
 std::unique_ptr<CCoinsViewCursor> CCoinsViewBacked::Cursor() const { return base->Cursor(); }
 size_t CCoinsViewBacked::EstimateSize() const { return base->EstimateSize(); }
 
@@ -125,7 +138,8 @@ void CCoinsViewCache::AddCoin(const COutPoint &outpoint, Coin&& coin, bool possi
            outpoint.hash.data(),
            (uint32_t)outpoint.n,
            (uint32_t)it->second.coin.nHeight,
-           (int64_t)it->second.coin.out.nValue,
+           (int64_t)it->second.coin.out.GetReferenceValue(),
+           (uint32_t)it->second.coin.refheight,
            (bool)it->second.coin.IsCoinBase());
 }
 
@@ -146,7 +160,7 @@ void AddCoins(CCoinsViewCache& cache, const CTransaction &tx, int nHeight, bool 
         bool overwrite = check_for_overwrite ? cache.HaveCoin(COutPoint(txid, i)) : fCoinbase;
         // Coinbase transactions can always be overwritten, in order to correctly
         // deal with the pre-BIP30 occurrences of duplicate coinbase transactions.
-        cache.AddCoin(COutPoint(txid, i), Coin(tx.vout[i], nHeight, fCoinbase), overwrite);
+        cache.AddCoin(COutPoint(txid, i), Coin(tx.vout[i], tx.lock_height, nHeight, fCoinbase), overwrite);
     }
 }
 
@@ -159,7 +173,8 @@ bool CCoinsViewCache::SpendCoin(const COutPoint &outpoint, Coin* moveout) {
            outpoint.hash.data(),
            (uint32_t)outpoint.n,
            (uint32_t)it->second.coin.nHeight,
-           (int64_t)it->second.coin.out.nValue,
+           (int64_t)it->second.coin.out.GetReferenceValue(),
+           (uint32_t)it->second.coin.refheight,
            (bool)it->second.coin.IsCoinBase());
     if (moveout) {
         *moveout = std::move(it->second.coin);
@@ -205,7 +220,18 @@ void CCoinsViewCache::SetBestBlock(const uint256 &hashBlockIn) {
     hashBlock = hashBlockIn;
 }
 
-void CCoinsViewCache::BatchWrite(CoinsViewCacheCursor& cursor, const uint256& hashBlockIn)
+BlockFinalTxEntry CCoinsViewCache::GetFinalTx() const {
+    if (!finalTxEntry) {
+        finalTxEntry = base->GetFinalTx();
+    }
+    return *finalTxEntry;
+}
+
+void CCoinsViewCache::SetFinalTx(const BlockFinalTxEntry &final_tx) {
+    finalTxEntry = final_tx;
+}
+
+void CCoinsViewCache::BatchWrite(CoinsViewCacheCursor& cursor, const uint256& hashBlockIn, const BlockFinalTxEntry& final_tx)
 {
     for (auto it{cursor.Begin()}; it != cursor.End(); it = cursor.NextAndMaybeErase(*it)) {
         if (!it->second.IsDirty()) { // TODO a cursor can only contain dirty entries
@@ -274,12 +300,13 @@ void CCoinsViewCache::BatchWrite(CoinsViewCacheCursor& cursor, const uint256& ha
         }
     }
     SetBestBlock(hashBlockIn);
+    finalTxEntry = final_tx;
 }
 
 void CCoinsViewCache::Flush(bool reallocate_cache)
 {
     auto cursor{CoinsViewCacheCursor(m_dirty_count, m_sentinel, cacheCoins, /*will_erase=*/true)};
-    base->BatchWrite(cursor, hashBlock);
+    base->BatchWrite(cursor, hashBlock, GetFinalTx());
     Assume(m_dirty_count == 0);
     cacheCoins.clear();
     if (reallocate_cache) {
@@ -291,7 +318,7 @@ void CCoinsViewCache::Flush(bool reallocate_cache)
 void CCoinsViewCache::Sync()
 {
     auto cursor{CoinsViewCacheCursor(m_dirty_count, m_sentinel, cacheCoins, /*will_erase=*/false)};
-    base->BatchWrite(cursor, hashBlock);
+    base->BatchWrite(cursor, hashBlock, GetFinalTx());
     Assume(m_dirty_count == 0);
     if (m_sentinel.second.Next() != &m_sentinel) {
         /* BatchWrite must clear flags of all entries */
@@ -305,6 +332,9 @@ void CCoinsViewCache::Reset() noexcept
     cachedCoinsUsage = 0;
     m_dirty_count = 0;
     SetBestBlock(uint256::ZERO);
+    // Freicoin: drop the cached block-final entry so the next GetFinalTx()
+    // lazily refetches from the base view (mirrors the null best-block).
+    finalTxEntry.reset();
 }
 
 void CCoinsViewCache::Uncache(const COutPoint& hash)
@@ -316,7 +346,8 @@ void CCoinsViewCache::Uncache(const COutPoint& hash)
                hash.hash.data(),
                (uint32_t)hash.n,
                (uint32_t)it->second.coin.nHeight,
-               (int64_t)it->second.coin.out.nValue,
+               (int64_t)it->second.coin.out.GetReferenceValue(),
+               (uint32_t)it->second.coin.refheight,
                (bool)it->second.coin.IsCoinBase());
         cacheCoins.erase(it);
     }
@@ -324,6 +355,18 @@ void CCoinsViewCache::Uncache(const COutPoint& hash)
 
 unsigned int CCoinsViewCache::GetCacheSize() const {
     return cacheCoins.size();
+}
+
+CAmount CCoinsViewCache::GetValueIn(const CTransaction& tx) const
+{
+    if (tx.IsCoinBase())
+        return 0;
+
+    CAmount nResult = 0;
+    for (unsigned int i = 0; i < tx.vin.size(); i++)
+        nResult += AccessCoin(tx.vin[i].prevout).GetPresentValue(tx.lock_height);
+
+    return nResult;
 }
 
 bool CCoinsViewCache::HaveInputs(const CTransaction& tx) const
