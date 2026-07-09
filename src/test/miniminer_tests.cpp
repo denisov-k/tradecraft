@@ -1,6 +1,17 @@
-// Copyright (c) 2021-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2021 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <node/mini_miner.h>
 #include <random.h>
 #include <txmempool.h>
@@ -20,11 +31,12 @@ const CAmount med_fee{CENT/200}; // 5000 ṩ
 const CAmount high_fee{CENT/10}; // 100_000 ṩ
 
 
-static inline CTransactionRef make_tx(const std::vector<COutPoint>& inputs, size_t num_outputs)
+static inline CTransactionRef make_tx(const std::vector<COutPoint>& inputs, size_t num_outputs, uint32_t lockheight)
 {
     CMutableTransaction tx = CMutableTransaction();
     tx.vin.resize(inputs.size());
     tx.vout.resize(num_outputs);
+    tx.lock_height = lockheight;
     for (size_t i = 0; i < inputs.size(); ++i) {
         tx.vin[i].prevout = inputs[i];
     }
@@ -32,7 +44,7 @@ static inline CTransactionRef make_tx(const std::vector<COutPoint>& inputs, size
         tx.vout[i].scriptPubKey = CScript() << OP_11 << OP_EQUAL;
         // The actual input and output values of these transactions don't really
         // matter, since all accounting will use the entries' cached fees.
-        tx.vout[i].nValue = COIN;
+        tx.vout[i].SetReferenceValue(COIN);
     }
     return MakeTransactionRef(tx);
 }
@@ -83,7 +95,7 @@ BOOST_FIXTURE_TEST_CASE(miniminer_negative, TestChain100Setup)
     const CAmount negative_fee_delta{-50000};
     const CAmount negative_modified_fees{positive_base_fee + negative_fee_delta};
     BOOST_CHECK(negative_modified_fees < 0);
-    const auto tx_mod_negative = make_tx({COutPoint{m_coinbase_txns[4]->GetHash(), 0}}, /*num_outputs=*/1);
+    const auto tx_mod_negative = make_tx({COutPoint{m_coinbase_txns[4]->GetHash(), 0}}, /*num_outputs=*/1, m_coinbase_txns[4]->lock_height);
     TryAddToMempool(pool, entry.Fee(positive_base_fee).FromTx(tx_mod_negative));
     pool.PrioritiseTransaction(tx_mod_negative->GetHash(), negative_fee_delta);
     const COutPoint only_outpoint{tx_mod_negative->GetHash(), 0};
@@ -112,22 +124,27 @@ BOOST_FIXTURE_TEST_CASE(miniminer_1p1c, TestChain100Setup)
     LOCK2(::cs_main, pool.cs);
     TestMemPoolEntryHelper entry;
 
+    uint32_t lockheight = std::numeric_limits<uint32_t>::min();
+    for (const auto& tx : m_coinbase_txns) {
+        lockheight = std::max(lockheight, tx->lock_height);
+    }
+
     // Create a parent tx0 and child tx1 with normal fees:
-    const auto tx0 = make_tx({COutPoint{m_coinbase_txns[0]->GetHash(), 0}}, /*num_outputs=*/2);
+    const auto tx0 = make_tx({COutPoint{m_coinbase_txns[0]->GetHash(), 0}}, /*num_outputs=*/2, lockheight);
     TryAddToMempool(pool, entry.Fee(med_fee).FromTx(tx0));
-    const auto tx1 = make_tx({COutPoint{tx0->GetHash(), 0}}, /*num_outputs=*/1);
+    const auto tx1 = make_tx({COutPoint{tx0->GetHash(), 0}}, /*num_outputs=*/1, lockheight);
     TryAddToMempool(pool, entry.Fee(med_fee).FromTx(tx1));
 
     // Create a low-feerate parent tx2 and high-feerate child tx3 (cpfp)
-    const auto tx2 = make_tx({COutPoint{m_coinbase_txns[1]->GetHash(), 0}}, /*num_outputs=*/2);
+    const auto tx2 = make_tx({COutPoint{m_coinbase_txns[1]->GetHash(), 0}}, /*num_outputs=*/2, lockheight);
     TryAddToMempool(pool, entry.Fee(low_fee).FromTx(tx2));
-    const auto tx3 = make_tx({COutPoint{tx2->GetHash(), 0}}, /*num_outputs=*/1);
+    const auto tx3 = make_tx({COutPoint{tx2->GetHash(), 0}}, /*num_outputs=*/1, lockheight);
     TryAddToMempool(pool, entry.Fee(high_fee).FromTx(tx3));
 
     // Create a parent tx4 and child tx5 where both have low fees
-    const auto tx4 = make_tx({COutPoint{m_coinbase_txns[2]->GetHash(), 0}}, /*num_outputs=*/2);
+    const auto tx4 = make_tx({COutPoint{m_coinbase_txns[2]->GetHash(), 0}}, /*num_outputs=*/2, lockheight);
     TryAddToMempool(pool, entry.Fee(low_fee).FromTx(tx4));
-    const auto tx5 = make_tx({COutPoint{tx4->GetHash(), 0}}, /*num_outputs=*/1);
+    const auto tx5 = make_tx({COutPoint{tx4->GetHash(), 0}}, /*num_outputs=*/1, lockheight);
     TryAddToMempool(pool, entry.Fee(low_fee).FromTx(tx5));
     const CAmount tx5_delta{CENT/100};
     // Make tx5's modified fee much higher than its base fee. This should cause it to pass
@@ -136,9 +153,9 @@ BOOST_FIXTURE_TEST_CASE(miniminer_1p1c, TestChain100Setup)
     const CAmount tx5_mod_fee{low_fee + tx5_delta};
 
     // Create a high-feerate parent tx6, low-feerate child tx7
-    const auto tx6 = make_tx({COutPoint{m_coinbase_txns[3]->GetHash(), 0}}, /*num_outputs=*/2);
+    const auto tx6 = make_tx({COutPoint{m_coinbase_txns[3]->GetHash(), 0}}, /*num_outputs=*/2, lockheight);
     TryAddToMempool(pool, entry.Fee(high_fee).FromTx(tx6));
-    const auto tx7 = make_tx({COutPoint{tx6->GetHash(), 0}}, /*num_outputs=*/1);
+    const auto tx7 = make_tx({COutPoint{tx6->GetHash(), 0}}, /*num_outputs=*/1, lockheight);
     TryAddToMempool(pool, entry.Fee(low_fee).FromTx(tx7));
 
     std::vector<COutPoint> all_unspent_outpoints({
@@ -404,23 +421,27 @@ BOOST_FIXTURE_TEST_CASE(miniminer_overlap, TestChain100Setup)
     TestMemPoolEntryHelper entry;
 
     // Create 3 parents of different feerates, and 1 child spending outputs from all 3 parents.
-    const auto tx0 = make_tx({COutPoint{m_coinbase_txns[0]->GetHash(), 0}}, /*num_outputs=*/2);
+    uint32_t lockheight = std::numeric_limits<uint32_t>::min();
+    for (const auto& tx : m_coinbase_txns) {
+        lockheight = std::max(lockheight, tx->lock_height);
+    }
+    const auto tx0 = make_tx({COutPoint{m_coinbase_txns[0]->GetHash(), 0}}, /*num_outputs=*/2, lockheight);
     TryAddToMempool(pool, entry.Fee(low_fee).FromTx(tx0));
-    const auto tx1 = make_tx({COutPoint{m_coinbase_txns[1]->GetHash(), 0}}, /*num_outputs=*/2);
+    const auto tx1 = make_tx({COutPoint{m_coinbase_txns[1]->GetHash(), 0}}, /*num_outputs=*/2, lockheight);
     TryAddToMempool(pool, entry.Fee(med_fee).FromTx(tx1));
-    const auto tx2 = make_tx({COutPoint{m_coinbase_txns[2]->GetHash(), 0}}, /*num_outputs=*/2);
+    const auto tx2 = make_tx({COutPoint{m_coinbase_txns[2]->GetHash(), 0}}, /*num_outputs=*/2, lockheight);
     TryAddToMempool(pool, entry.Fee(high_fee).FromTx(tx2));
-    const auto tx3 = make_tx({COutPoint{tx0->GetHash(), 0}, COutPoint{tx1->GetHash(), 0}, COutPoint{tx2->GetHash(), 0}}, /*num_outputs=*/3);
+    const auto tx3 = make_tx({COutPoint{tx0->GetHash(), 0}, COutPoint{tx1->GetHash(), 0}, COutPoint{tx2->GetHash(), 0}}, /*num_outputs=*/3, lockheight);
     TryAddToMempool(pool, entry.Fee(high_fee).FromTx(tx3));
 
     // Create 1 grandparent and 1 parent, then 2 children.
-    const auto tx4 = make_tx({COutPoint{m_coinbase_txns[3]->GetHash(), 0}}, /*num_outputs=*/2);
+    const auto tx4 = make_tx({COutPoint{m_coinbase_txns[3]->GetHash(), 0}}, /*num_outputs=*/2, lockheight);
     TryAddToMempool(pool, entry.Fee(high_fee).FromTx(tx4));
-    const auto tx5 = make_tx({COutPoint{tx4->GetHash(), 0}}, /*num_outputs=*/3);
+    const auto tx5 = make_tx({COutPoint{tx4->GetHash(), 0}}, /*num_outputs=*/3, lockheight);
     TryAddToMempool(pool, entry.Fee(low_fee).FromTx(tx5));
-    const auto tx6 = make_tx({COutPoint{tx5->GetHash(), 0}}, /*num_outputs=*/2);
+    const auto tx6 = make_tx({COutPoint{tx5->GetHash(), 0}}, /*num_outputs=*/2, lockheight);
     TryAddToMempool(pool, entry.Fee(med_fee).FromTx(tx6));
-    const auto tx7 = make_tx({COutPoint{tx5->GetHash(), 1}}, /*num_outputs=*/2);
+    const auto tx7 = make_tx({COutPoint{tx5->GetHash(), 1}}, /*num_outputs=*/2, lockheight);
     TryAddToMempool(pool, entry.Fee(high_fee).FromTx(tx7));
 
     std::vector<CTransactionRef> all_transactions{tx0, tx1, tx2, tx3, tx4, tx5, tx6, tx7};
@@ -607,7 +628,7 @@ BOOST_FIXTURE_TEST_CASE(calculate_cluster, TestChain100Setup)
         // Add chain of size 50
         lasttx = m_coinbase_txns[cluster_count];
         for (auto i{0}; i < 50; ++i) {
-            const auto tx = make_tx({COutPoint{lasttx->GetHash(), 0}}, /*num_outputs=*/1);
+            const auto tx = make_tx({COutPoint{lasttx->GetHash(), 0}}, /*num_outputs=*/1, lasttx->lock_height);
             TryAddToMempool(pool, entry.Fee(CENT).FromTx(tx));
             chain_txids.push_back(tx->GetHash());
             lasttx = tx;
@@ -621,7 +642,7 @@ BOOST_FIXTURE_TEST_CASE(calculate_cluster, TestChain100Setup)
     for (const auto& iter : vec_iters_500) BOOST_CHECK(cluster_500tx_set.count(iter));
 
     // GatherClusters stops at 500 transactions.
-    const auto tx_501 = make_tx({COutPoint{lasttx->GetHash(), 0}}, /*num_outputs=*/1);
+    const auto tx_501 = make_tx({COutPoint{lasttx->GetHash(), 0}}, /*num_outputs=*/1, lasttx->lock_height);
     TryAddToMempool(pool, entry.Fee(CENT).FromTx(tx_501));
     const auto cluster_501 = pool.GatherClusters(last_txs);
     BOOST_CHECK_EQUAL(cluster_501.size(), 0);
@@ -634,12 +655,12 @@ BOOST_FIXTURE_TEST_CASE(calculate_cluster, TestChain100Setup)
      * However, all of these transactions are in the same cluster. */
     std::vector<Txid> zigzag_txids;
     for (auto p{0}; p < 32; ++p) {
-        const auto txp = make_tx({COutPoint{Txid::FromUint256(GetRandHash()), 0}}, /*num_outputs=*/2);
+        const auto txp = make_tx({COutPoint{Txid::FromUint256(GetRandHash()), 0}}, /*num_outputs=*/2, lasttx->lock_height);
         TryAddToMempool(pool, entry.Fee(CENT).FromTx(txp));
         zigzag_txids.push_back(txp->GetHash());
     }
     for (auto c{0}; c < 31; ++c) {
-        const auto txc = make_tx({COutPoint{zigzag_txids[c], 1}, COutPoint{zigzag_txids[c+1], 0}}, /*num_outputs=*/1);
+        const auto txc = make_tx({COutPoint{zigzag_txids[c], 1}, COutPoint{zigzag_txids[c+1], 0}}, /*num_outputs=*/1, lasttx->lock_height);
         TryAddToMempool(pool, entry.Fee(CENT).FromTx(txc));
         zigzag_txids.push_back(txc->GetHash());
     }
@@ -660,18 +681,22 @@ BOOST_FIXTURE_TEST_CASE(manual_ctor, TestChain100Setup)
     CTxMemPool& pool = *Assert(m_node.mempool);
     LOCK2(cs_main, pool.cs);
     {
+        uint32_t lockheight = std::numeric_limits<uint32_t>::min();
+        for (const auto& tx : m_coinbase_txns) {
+            lockheight = std::max(lockheight, tx->lock_height);
+        }
         // 3 pairs of grandparent + fee-bumping parent, plus 1 low-feerate child.
         // 0 fee + high fee
-        auto grandparent_zero_fee = make_tx({{m_coinbase_txns.at(0)->GetHash(), 0}}, 1);
-        auto parent_high_feerate = make_tx({{grandparent_zero_fee->GetHash(), 0}}, 1);
+        auto grandparent_zero_fee = make_tx({{m_coinbase_txns.at(0)->GetHash(), 0}}, 1, lockheight);
+        auto parent_high_feerate = make_tx({{grandparent_zero_fee->GetHash(), 0}}, 1, lockheight);
         // double low fee + med fee
-        auto grandparent_double_low_feerate = make_tx({{m_coinbase_txns.at(2)->GetHash(), 0}}, 1);
-        auto parent_med_feerate = make_tx({{grandparent_double_low_feerate->GetHash(), 0}}, 1);
+        auto grandparent_double_low_feerate = make_tx({{m_coinbase_txns.at(2)->GetHash(), 0}}, 1, lockheight);
+        auto parent_med_feerate = make_tx({{grandparent_double_low_feerate->GetHash(), 0}}, 1, lockheight);
         // low fee + double low fee
-        auto grandparent_low_feerate = make_tx({{m_coinbase_txns.at(1)->GetHash(), 0}}, 1);
-        auto parent_double_low_feerate = make_tx({{grandparent_low_feerate->GetHash(), 0}}, 1);
+        auto grandparent_low_feerate = make_tx({{m_coinbase_txns.at(1)->GetHash(), 0}}, 1, lockheight);
+        auto parent_double_low_feerate = make_tx({{grandparent_low_feerate->GetHash(), 0}}, 1, lockheight);
         // child is below the cpfp package feerates because it is larger than everything else
-        auto child = make_tx({{parent_high_feerate->GetHash(), 0}, {parent_double_low_feerate->GetHash(), 0}, {parent_med_feerate->GetHash(), 0}}, 1);
+        auto child = make_tx({{parent_high_feerate->GetHash(), 0}, {parent_double_low_feerate->GetHash(), 0}, {parent_med_feerate->GetHash(), 0}}, 1, lockheight);
 
         // We artificially record each transaction (except the child) with a uniform vsize of 100vB.
         const int64_t tx_vsize{100};

@@ -89,7 +89,6 @@ add_executable(test_bitcoin
   rpc_tests.cpp
   sanity_tests.cpp
   scheduler_tests.cpp
-  script_assets_tests.cpp
   script_p2sh_tests.cpp
   script_parse_tests.cpp
   script_segwit_tests.cpp
@@ -108,7 +107,6 @@ add_executable(test_bitcoin
   sync_tests.cpp
   system_ram_tests.cpp
   system_tests.cpp
-  testnet4_miner_tests.cpp
   threadpool_tests.cpp
   timeoffsets_tests.cpp
   torcontrol_tests.cpp

@@ -1,7 +1,19 @@
-// Copyright (c) 2019-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2019-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include <test/util/setup_common.h>
 #include <test/util/mining.h>
 
 #include <chainparams.h>
@@ -23,7 +35,7 @@
 using node::BlockAssembler;
 using node::NodeContext;
 
-COutPoint generatetoaddress(const NodeContext& node, const std::string& address)
+std::pair<COutPoint, uint32_t> generatetoaddress(const NodeContext& node, const std::string& address)
 {
     const auto dest = DecodeDestination(address);
     assert(IsValidDestination(dest));
@@ -49,7 +61,7 @@ std::vector<std::shared_ptr<CBlock>> CreateBlockChain(size_t total_height, const
         coinbase_tx.vin[0].nSequence = CTxIn::MAX_SEQUENCE_NONFINAL; // Make sure timelock is enforced.
         coinbase_tx.vout.resize(1);
         coinbase_tx.vout[0].scriptPubKey = P2WSH_OP_TRUE;
-        coinbase_tx.vout[0].nValue = GetBlockSubsidy(height + 1, params.GetConsensus());
+        coinbase_tx.vout[0].SetReferenceValue(GetBlockSubsidy(height + 1, params.GetConsensus()));
         // Always include OP_0 as a dummy extraNonce.
         coinbase_tx.vin[0].scriptSig = CScript() << (height + 1) << OP_0;
         block.vtx = {MakeTransactionRef(std::move(coinbase_tx))};
@@ -61,7 +73,7 @@ std::vector<std::shared_ptr<CBlock>> CreateBlockChain(size_t total_height, const
         block.nBits = params.GenesisBlock().nBits;
         block.nNonce = 0;
 
-        while (!CheckProofOfWork(block.GetHash(), block.nBits, params.GetConsensus())) {
+        while (!CheckProofOfWork(block, params.GetConsensus())) {
             ++block.nNonce;
             assert(block.nNonce);
         }
@@ -69,11 +81,11 @@ std::vector<std::shared_ptr<CBlock>> CreateBlockChain(size_t total_height, const
     return ret;
 }
 
-COutPoint MineBlock(const NodeContext& node, const node::BlockAssembler::Options& assembler_options)
+std::pair<COutPoint, uint32_t> MineBlock(const NodeContext& node, const node::BlockAssembler::Options& assembler_options)
 {
     auto block = PrepareBlock(node, assembler_options);
     auto valid = MineBlock(node, block);
-    assert(!valid.IsNull());
+    assert(!valid.first.IsNull());
     return valid;
 }
 
@@ -93,9 +105,9 @@ protected:
     }
 };
 
-COutPoint MineBlock(const NodeContext& node, std::shared_ptr<CBlock>& block)
+std::pair<COutPoint, uint32_t> MineBlock(const NodeContext& node, std::shared_ptr<CBlock>& block)
 {
-    while (!CheckProofOfWork(block->GetHash(), block->nBits, Params().GetConsensus())) {
+    while (!CheckProofOfWork(*block, Params().GetConsensus())) {
         ++block->nNonce;
         assert(block->nNonce);
     }
@@ -103,7 +115,7 @@ COutPoint MineBlock(const NodeContext& node, std::shared_ptr<CBlock>& block)
     return ProcessBlock(node, block);
 }
 
-COutPoint ProcessBlock(const NodeContext& node, const std::shared_ptr<CBlock>& block)
+std::pair<COutPoint, uint32_t> ProcessBlock(const NodeContext& node, const std::shared_ptr<CBlock>& block)
 {
     auto& chainman{*Assert(node.chainman)};
     const auto old_height = WITH_LOCK(chainman.GetMutex(), return chainman.ActiveHeight());
@@ -118,7 +130,7 @@ COutPoint ProcessBlock(const NodeContext& node, const std::shared_ptr<CBlock>& b
     const bool was_valid{bvsc.m_state && bvsc.m_state->IsValid()};
     assert(old_height + was_valid == WITH_LOCK(chainman.GetMutex(), return chainman.ActiveHeight()));
 
-    if (was_valid) return {block->vtx[0]->GetHash(), 0};
+    if (was_valid) return {{block->vtx[0]->GetHash(), static_cast<uint32_t>(block->vtx[0]->vout.size()-1)}, block->vtx[0]->lock_height};
     return {};
 }
 

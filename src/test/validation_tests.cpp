@@ -1,6 +1,17 @@
-// Copyright (c) 2014-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2014-2021 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <chainparams.h>
 #include <consensus/amount.h>
@@ -26,11 +37,12 @@ static void TestBlockSubsidyHalvings(const Consensus::Params& consensusParams)
     int maxHalvings = 64;
     CAmount nInitialSubsidy = 50 * COIN;
 
-    CAmount nPreviousSubsidy = nInitialSubsidy * 2; // for height == 0
-    BOOST_CHECK_EQUAL(nPreviousSubsidy, nInitialSubsidy * 2);
-    for (int nHalvings = 0; nHalvings < maxHalvings; nHalvings++) {
+    CAmount nPreviousSubsidy = nInitialSubsidy;
+    for (int nHalvings = 1; nHalvings < maxHalvings; nHalvings++) {
         int nHeight = nHalvings * consensusParams.nSubsidyHalvingInterval;
-        CAmount nSubsidy = GetBlockSubsidy(nHeight, consensusParams);
+        CAmount nSubsidy = GetBlockSubsidy(nHeight-1, consensusParams);
+        BOOST_CHECK_EQUAL(nSubsidy, nPreviousSubsidy);
+        nSubsidy = GetBlockSubsidy(nHeight, consensusParams);
         BOOST_CHECK(nSubsidy <= nInitialSubsidy);
         BOOST_CHECK_EQUAL(nSubsidy, nPreviousSubsidy / 2);
         nPreviousSubsidy = nSubsidy;
@@ -38,34 +50,56 @@ static void TestBlockSubsidyHalvings(const Consensus::Params& consensusParams)
     BOOST_CHECK_EQUAL(GetBlockSubsidy(maxHalvings * consensusParams.nSubsidyHalvingInterval, consensusParams), 0);
 }
 
-static void TestBlockSubsidyHalvings(int nSubsidyHalvingInterval)
+static void TestBlockSubsidyHalvings(const CChainParams& chainParams, int nSubsidyHalvingInterval)
 {
-    Consensus::Params consensusParams;
+    Consensus::Params consensusParams(chainParams.GetConsensus());
     consensusParams.nSubsidyHalvingInterval = nSubsidyHalvingInterval;
     TestBlockSubsidyHalvings(consensusParams);
 }
 
 BOOST_AUTO_TEST_CASE(block_subsidy_test)
 {
-    const auto chainParams = CreateChainParams(*m_node.args, ChainType::MAIN);
-    TestBlockSubsidyHalvings(chainParams->GetConsensus()); // As in main
-    TestBlockSubsidyHalvings(150); // As in regtest
-    TestBlockSubsidyHalvings(1000); // Just another interval
+    const auto chainParams = CreateChainParams(*m_node.args, ChainType::REGTEST);
+    TestBlockSubsidyHalvings(*chainParams, 150); // As in regtest
+    TestBlockSubsidyHalvings(*chainParams, 1000); // Just another interval
 }
 
 BOOST_AUTO_TEST_CASE(subsidy_limit_test)
 {
     const auto chainParams = CreateChainParams(*m_node.args, ChainType::MAIN);
     CAmount nSum = 0;
-    for (int nHeight = 0; nHeight < 14000000; nHeight += 1000) {
+    for (int nHeight = 0; nHeight < chainParams->GetConsensus().equilibrium_height; ++nHeight) {
         CAmount nSubsidy = GetBlockSubsidy(nHeight, chainParams->GetConsensus());
-        BOOST_CHECK(nSubsidy <= 50 * COIN);
-        nSum += nSubsidy * 1000;
-        BOOST_CHECK(MoneyRange(nSum));
+        BOOST_CHECK(nSubsidy <= 75056846172LL);
+        BOOST_CHECK(nSubsidy >=  9536743164LL);
+        nSum += GetTimeAdjustedValue(nSubsidy, chainParams->GetConsensus().equilibrium_height-nHeight);
+        BOOST_CHECK(nSum <= 9999990463180220LL);
     }
-    BOOST_CHECK_EQUAL(nSum, CAmount{2099999997690000});
+    BOOST_CHECK(nSum == 9999990463180220LL);
 }
 
+BOOST_AUTO_TEST_CASE(subsidy_limit_test_bitcoin_mode)
+{
+    const auto chainParams = CreateChainParams(*m_node.args, ChainType::REGTEST);
+    bool old_disable_time_adjust = disable_time_adjust;
+    disable_time_adjust = true;
+    try {
+        CAmount nSum = 0;
+        for (int nHeight = 1; nHeight < 10000; ++nHeight) {
+            CAmount nSubsidy = GetBlockSubsidy(nHeight, chainParams->GetConsensus());
+            BOOST_CHECK(nSubsidy == ((int64_t)5000000000LL >> std::min(nHeight/150, 63)));
+            nSum += GetTimeAdjustedValue(nSubsidy, 10000-nHeight);
+            BOOST_CHECK(MoneyRange(nSum));
+            BOOST_CHECK(nSum <= 1494999998350LL);
+        }
+    } catch (...) {
+        disable_time_adjust = old_disable_time_adjust;
+        throw;
+    }
+    disable_time_adjust = old_disable_time_adjust;
+}
+
+#if 0 // disable signet
 BOOST_AUTO_TEST_CASE(signet_parse_tests)
 {
     ArgsManager signet_argsman;
@@ -92,14 +126,14 @@ BOOST_AUTO_TEST_CASE(signet_parse_tests)
     for (int i = 0; i < 32; ++i) {
         witness_commitment_section_141.push_back(0xff);
     }
-    cb.vout.at(0).scriptPubKey = CScript{} << OP_RETURN << witness_commitment_section_141;
+    cb.vout.at(0).scriptPubKey = CScript{} << witness_commitment_section_141;
     block.vtx.at(0) = MakeTransactionRef(cb);
     BOOST_CHECK(SignetTxs::Create(block, challenge));
     BOOST_CHECK(CheckSignetBlockSolution(block, signet_params->GetConsensus()));
 
     // no data after header, valid
     std::vector<uint8_t> witness_commitment_section_325{0xec, 0xc7, 0xda, 0xa2};
-    cb.vout.at(0).scriptPubKey = CScript{} << OP_RETURN << witness_commitment_section_141 << witness_commitment_section_325;
+    cb.vout.at(0).scriptPubKey = CScript{} << witness_commitment_section_141 << witness_commitment_section_325;
     block.vtx.at(0) = MakeTransactionRef(cb);
     BOOST_CHECK(SignetTxs::Create(block, challenge));
     BOOST_CHECK(CheckSignetBlockSolution(block, signet_params->GetConsensus()));
@@ -107,25 +141,26 @@ BOOST_AUTO_TEST_CASE(signet_parse_tests)
     // Premature end of data, invalid
     witness_commitment_section_325.push_back(0x01);
     witness_commitment_section_325.push_back(0x51);
-    cb.vout.at(0).scriptPubKey = CScript{} << OP_RETURN << witness_commitment_section_141 << witness_commitment_section_325;
+    cb.vout.at(0).scriptPubKey = CScript{} << witness_commitment_section_141 << witness_commitment_section_325;
     block.vtx.at(0) = MakeTransactionRef(cb);
     BOOST_CHECK(!SignetTxs::Create(block, challenge));
     BOOST_CHECK(!CheckSignetBlockSolution(block, signet_params->GetConsensus()));
 
     // has data, valid
     witness_commitment_section_325.push_back(0x00);
-    cb.vout.at(0).scriptPubKey = CScript{} << OP_RETURN << witness_commitment_section_141 << witness_commitment_section_325;
+    cb.vout.at(0).scriptPubKey = CScript{} << witness_commitment_section_141 << witness_commitment_section_325;
     block.vtx.at(0) = MakeTransactionRef(cb);
     BOOST_CHECK(SignetTxs::Create(block, challenge));
     BOOST_CHECK(CheckSignetBlockSolution(block, signet_params->GetConsensus()));
 
     // Extraneous data, invalid
     witness_commitment_section_325.push_back(0x00);
-    cb.vout.at(0).scriptPubKey = CScript{} << OP_RETURN << witness_commitment_section_141 << witness_commitment_section_325;
+    cb.vout.at(0).scriptPubKey = CScript{} << witness_commitment_section_141 << witness_commitment_section_325;
     block.vtx.at(0) = MakeTransactionRef(cb);
     BOOST_CHECK(!SignetTxs::Create(block, challenge));
     BOOST_CHECK(!CheckSignetBlockSolution(block, signet_params->GetConsensus()));
 }
+#endif // disable signet
 
 //! Test retrieval of valid assumeutxo values.
 BOOST_AUTO_TEST_CASE(test_assumeutxo)
@@ -142,20 +177,21 @@ BOOST_AUTO_TEST_CASE(test_assumeutxo)
     }
 
     const auto out110 = *params->AssumeutxoForHeight(110);
-    BOOST_CHECK_EQUAL(out110.hash_serialized.ToString(), "b952555c8ab81fec46f3d4253b7af256d766ceb39fb7752b9d18cdf4a0141327");
-    BOOST_CHECK_EQUAL(out110.m_chain_tx_count, 111U);
+    BOOST_CHECK_EQUAL(out110.hash_serialized.ToString(), "791b2d5a07306430c42133c227cc825ace19a4936aa5d638beb319a54adb4db9");
+    BOOST_CHECK_EQUAL(out110.m_chain_tx_count, 121U);
 
-    const auto out110_2 = *params->AssumeutxoForBlockhash(uint256{"6affe030b7965ab538f820a56ef56c8149b7dc1d1c144af57113be080db7c397"});
-    BOOST_CHECK_EQUAL(out110_2.hash_serialized.ToString(), "b952555c8ab81fec46f3d4253b7af256d766ceb39fb7752b9d18cdf4a0141327");
-    BOOST_CHECK_EQUAL(out110_2.m_chain_tx_count, 111U);
+    const auto out110_2 = *params->AssumeutxoForBlockhash(uint256{"0d114635dabb2b646deb9352b208ad82bff52218877db95566913e7f6f7b2d12"});
+    BOOST_CHECK_EQUAL(out110_2.hash_serialized.ToString(), "791b2d5a07306430c42133c227cc825ace19a4936aa5d638beb319a54adb4db9");
+    BOOST_CHECK_EQUAL(out110_2.m_chain_tx_count, 121U);
 }
 
 BOOST_AUTO_TEST_CASE(block_malleation)
 {
+    const auto params = CreateChainParams(*m_node.args, ChainType::REGTEST);
     // Test utilities that calls `IsBlockMutated` and then clears the validity
     // cache flags on `CBlock`.
-    auto is_mutated = [](CBlock& block, bool check_witness_root) {
-        bool mutated{IsBlockMutated(block, check_witness_root)};
+    auto is_mutated = [&params](CBlock& block, bool check_witness_root) {
+        bool mutated{IsBlockMutated(block, params->GetConsensus(), check_witness_root)};
         block.fChecked = false;
         block.m_checked_witness_commitment = false;
         block.m_checked_merkle_root = false;
@@ -176,29 +212,30 @@ BOOST_AUTO_TEST_CASE(block_malleation)
         coinbase.vin.resize(1);
         if (include_witness) {
             coinbase.vin[0].scriptWitness.stack.resize(1);
-            coinbase.vin[0].scriptWitness.stack[0] = std::vector<unsigned char>(32, 0x00);
+            coinbase.vin[0].scriptWitness.stack[0] = std::vector<unsigned char>();
         }
 
         coinbase.vout.resize(1);
-        coinbase.vout[0].scriptPubKey.resize(MINIMUM_WITNESS_COMMITMENT);
-        coinbase.vout[0].scriptPubKey[0] = OP_RETURN;
-        coinbase.vout[0].scriptPubKey[1] = 0x24;
-        coinbase.vout[0].scriptPubKey[2] = 0xaa;
-        coinbase.vout[0].scriptPubKey[3] = 0x21;
-        coinbase.vout[0].scriptPubKey[4] = 0xa9;
-        coinbase.vout[0].scriptPubKey[5] = 0xed;
-
         auto tx = MakeTransactionRef(coinbase);
         assert(tx->IsCoinBase());
         return tx;
     };
     auto insert_witness_commitment = [](CBlock& block, uint256 commitment) {
-        assert(!block.vtx.empty() && block.vtx[0]->IsCoinBase() && !block.vtx[0]->vout.empty());
+        assert(!block.vtx.empty());
 
-        CMutableTransaction mtx{*block.vtx[0]};
-        CHash256().Write(commitment).Write(std::vector<unsigned char>(32, 0x00)).Finalize(commitment);
-        memcpy(&mtx.vout[0].scriptPubKey[6], commitment.begin(), 32);
-        block.vtx[0] = MakeTransactionRef(mtx);
+        CMutableTransaction mtx{*block.vtx.back()};
+        if (mtx.vout.empty()) {
+            mtx.vout.resize(1);
+        }
+        mtx.vout.back().scriptPubKey.resize(MINIMUM_WITNESS_COMMITMENT);
+        mtx.vout.back().scriptPubKey[0] = MINIMUM_WITNESS_COMMITMENT - 1;
+        mtx.vout.back().scriptPubKey[1] = 0x01;
+        memcpy(&mtx.vout.back().scriptPubKey[2], commitment.begin(), 32);
+        mtx.vout.back().scriptPubKey[MINIMUM_WITNESS_COMMITMENT-4] = 0x4b;
+        mtx.vout.back().scriptPubKey[MINIMUM_WITNESS_COMMITMENT-3] = 0x4a;
+        mtx.vout.back().scriptPubKey[MINIMUM_WITNESS_COMMITMENT-2] = 0x49;
+        mtx.vout.back().scriptPubKey[MINIMUM_WITNESS_COMMITMENT-1] = 0x48;
+        block.vtx.back() = MakeTransactionRef(mtx);
     };
 
     {
@@ -246,7 +283,7 @@ BOOST_AUTO_TEST_CASE(block_malleation)
             CMutableTransaction mtx;
             mtx.vin.resize(1);
             mtx.vout.resize(1);
-            mtx.vout[0].scriptPubKey.resize(4);
+            mtx.vout[0].scriptPubKey.resize(0);
             block.vtx.push_back(MakeTransactionRef(mtx));
             block.hashMerkleRoot = block.vtx.back()->GetHash().ToUint256();
             assert(block.vtx.back()->IsCoinBase());
@@ -275,11 +312,11 @@ BOOST_AUTO_TEST_CASE(block_malleation)
         // The `random_tx` function used to mine the txs below simply created
         // empty transactions with a random version field.
         CMutableTransaction tx1;
-        BOOST_CHECK(DecodeHexTx(tx1, "ff204bd0000000000000", /*try_no_witness=*/true, /*try_witness=*/false));
+        BOOST_CHECK(DecodeHexTx(tx1, "2342643600000000000000000000", /*try_no_witness=*/true, /*try_witness=*/false));
         CMutableTransaction tx2;
-        BOOST_CHECK(DecodeHexTx(tx2, "8ae53c92000000000000", /*try_no_witness=*/true, /*try_witness=*/false));
+        BOOST_CHECK(DecodeHexTx(tx2, "0ae9a47200000000000000000000", /*try_no_witness=*/true, /*try_witness=*/false));
         CMutableTransaction tx3;
-        BOOST_CHECK(DecodeHexTx(tx3, "cdaf22d00002c6a7f848f8ae4d30054e61dcf3303d6fe01d282163341f06feecc10032b3160fcab87bdfe3ecfb769206ef2d991b92f8a268e423a6ef4d485f06", /*try_no_witness=*/true, /*try_witness=*/false));
+        BOOST_CHECK(DecodeHexTx(tx3, "ac965eca000172a1ea27d71cec1d2999d2b8cb7b590110d2a929ca3d6f79320ae5add5c2b65085bc81f9e83877f5ae54a41d0f9dce57d70f97832b19591d9fa8", /*try_no_witness=*/true, /*try_witness=*/false));
         {
             // Verify that double_sha256(txid1||txid2) == txid3
             HashWriter hasher;
@@ -316,6 +353,11 @@ BOOST_AUTO_TEST_CASE(block_malleation)
             mtx.vin[0].scriptWitness.stack[0] = {0};
             block.vtx.push_back(MakeTransactionRef(mtx));
         }
+        {
+            CMutableTransaction mtx;
+            mtx.vin.resize(1);
+            block.vtx.push_back(MakeTransactionRef(mtx));
+        }
         block.hashMerkleRoot = BlockMerkleRoot(block);
         // Block with witnesses is considered mutated if the witness commitment
         // is not validated.
@@ -325,6 +367,7 @@ BOOST_AUTO_TEST_CASE(block_malleation)
 
         // Block with valid commitment is not mutated
         {
+            insert_witness_commitment(block, uint256());
             auto commitment{BlockWitnessMerkleRoot(block)};
             insert_witness_commitment(block, commitment);
             block.hashMerkleRoot = BlockMerkleRoot(block);
@@ -343,6 +386,7 @@ BOOST_AUTO_TEST_CASE(block_malleation)
         BOOST_CHECK(block.hashMerkleRoot == BlockMerkleRoot(block));
         BOOST_CHECK(is_mutated(block, /*check_witness_root=*/true));
         {
+            insert_witness_commitment(block, uint256());
             auto commitment{BlockWitnessMerkleRoot(block)};
             insert_witness_commitment(block, commitment);
             block.hashMerkleRoot = BlockMerkleRoot(block);

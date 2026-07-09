@@ -1,6 +1,17 @@
-// Copyright (c) 2013-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2013-2021 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <clientversion.h>
 #include <crypto/siphash.h>
@@ -20,7 +31,7 @@ BOOST_AUTO_TEST_CASE(murmurhash3)
 
     // Test MurmurHash3 with various inputs. Of course this is retested in the
     // bloom filter tests - they would fail if MurmurHash3() had any problems -
-    // but is useful for those trying to implement Bitcoin libraries as a
+    // but is useful for those trying to implement Freicoin libraries as a
     // source of test data for their MurmurHash3() primitive during
     // development.
     //
@@ -128,7 +139,7 @@ BOOST_AUTO_TEST_CASE(siphash)
     // and the test would be affected by default tx version bumps if not fixed.
     tx.version = 1;
     ss << TX_WITH_WITNESS(tx);
-    BOOST_CHECK_EQUAL(PresaltedSipHasher(1, 2)(ss.GetHash()), 0x79751e980c2a0a35ULL);
+    BOOST_CHECK_EQUAL(PresaltedSipHasher(1, 2)(ss.GetHash()), 0x1708baa2a6b3c73ULL);
 
     // Check consistency between CSipHasher and PresaltedSipHasher.
     FastRandomContext ctx;

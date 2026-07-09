@@ -1,6 +1,17 @@
-// Copyright (c) 2012-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2012-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <addrman.h>
 #include <chainparams.h>
@@ -63,6 +74,7 @@ BOOST_AUTO_TEST_CASE(cnode_simple_test)
     std::string pszDest;
 
     std::unique_ptr<CNode> pnode1 = std::make_unique<CNode>(id++,
+                                                            DEFAULT_MAX_PEER_CONNECTIONS,
                                                             /*sock=*/nullptr,
                                                             addr,
                                                             /*nKeyedNetGroupIn=*/0,
@@ -82,6 +94,7 @@ BOOST_AUTO_TEST_CASE(cnode_simple_test)
     BOOST_CHECK_EQUAL(pnode1->ConnectedThroughNetwork(), Network::NET_IPV4);
 
     std::unique_ptr<CNode> pnode2 = std::make_unique<CNode>(id++,
+                                                            DEFAULT_MAX_PEER_CONNECTIONS,
                                                             /*sock=*/nullptr,
                                                             addr,
                                                             /*nKeyedNetGroupIn=*/1,
@@ -101,6 +114,7 @@ BOOST_AUTO_TEST_CASE(cnode_simple_test)
     BOOST_CHECK_EQUAL(pnode2->ConnectedThroughNetwork(), Network::NET_IPV4);
 
     std::unique_ptr<CNode> pnode3 = std::make_unique<CNode>(id++,
+                                                            DEFAULT_MAX_PEER_CONNECTIONS,
                                                             /*sock=*/nullptr,
                                                             addr,
                                                             /*nKeyedNetGroupIn=*/0,
@@ -120,6 +134,7 @@ BOOST_AUTO_TEST_CASE(cnode_simple_test)
     BOOST_CHECK_EQUAL(pnode3->ConnectedThroughNetwork(), Network::NET_IPV4);
 
     std::unique_ptr<CNode> pnode4 = std::make_unique<CNode>(id++,
+                                                            DEFAULT_MAX_PEER_CONNECTIONS,
                                                             /*sock=*/nullptr,
                                                             addr,
                                                             /*nKeyedNetGroupIn=*/1,
@@ -451,7 +466,7 @@ BOOST_AUTO_TEST_CASE(cnetaddr_unserialize_v2)
     // Valid IPv6, contains embedded "internal".
     s << "02"                                    // network type (IPv6)
          "10"                                    // address length
-         "fd6b88c08724ca978112ca1bbdcafac2"_hex; // address: 0xfd + sha256("bitcoin")[0:5] +
+         "fd6b88c08724ca978112ca1bbdcafac2"_hex; // address: 0xfd + sha256("freicoin")[0:5] +
                                                  // sha256(name)[0:10]
     s >> ser_params(addr);
     BOOST_CHECK(addr.IsInternal());
@@ -613,6 +628,7 @@ BOOST_AUTO_TEST_CASE(ipv4_peer_with_ipv6_addrMe_test)
     ipv4AddrPeer.s_addr = 0xa0b0c001;
     CAddress addr = CAddress(CService(ipv4AddrPeer, 7777), NODE_NETWORK);
     std::unique_ptr<CNode> pnode = std::make_unique<CNode>(/*id=*/0,
+                                                           DEFAULT_MAX_PEER_CONNECTIONS,
                                                            /*sock=*/nullptr,
                                                            addr,
                                                            /*nKeyedNetGroupIn=*/0,
@@ -668,8 +684,9 @@ BOOST_AUTO_TEST_CASE(get_local_addr_for_peer_port)
     in_addr peer_out_in_addr;
     peer_out_in_addr.s_addr = htonl(0x01020304);
     CNode peer_out{/*id=*/0,
+                   /*max_untrusted_peersIn=*/DEFAULT_MAX_PEER_CONNECTIONS,
                    /*sock=*/nullptr,
-                   /*addrIn=*/CAddress{CService{peer_out_in_addr, 8333}, NODE_NETWORK},
+                   /*addrIn=*/CAddress{CService{peer_out_in_addr, 8639}, NODE_NETWORK},
                    /*nKeyedNetGroupIn=*/0,
                    /*nLocalHostNonceIn=*/0,
                    /*addrBindIn=*/CService{},
@@ -680,7 +697,7 @@ BOOST_AUTO_TEST_CASE(get_local_addr_for_peer_port)
     peer_out.fSuccessfullyConnected = true;
     peer_out.SetAddrLocal(peer_us);
 
-    // Without the fix peer_us:8333 is chosen instead of the proper peer_us:bind_port.
+    // Without the fix peer_us:8639 is chosen instead of the proper peer_us:bind_port.
     auto chosen_local_addr = GetLocalAddrForPeer(peer_out);
     BOOST_REQUIRE(chosen_local_addr);
     const CService expected{peer_us_addr, bind_port};
@@ -690,8 +707,9 @@ BOOST_AUTO_TEST_CASE(get_local_addr_for_peer_port)
     in_addr peer_in_in_addr;
     peer_in_in_addr.s_addr = htonl(0x05060708);
     CNode peer_in{/*id=*/0,
+                  /*max_untrusted_peersIn=*/DEFAULT_MAX_PEER_CONNECTIONS,
                   /*sock=*/nullptr,
-                  /*addrIn=*/CAddress{CService{peer_in_in_addr, 8333}, NODE_NETWORK},
+                  /*addrIn=*/CAddress{CService{peer_in_in_addr, 8639}, NODE_NETWORK},
                   /*nKeyedNetGroupIn=*/0,
                   /*nLocalHostNonceIn=*/0,
                   /*addrBindIn=*/CService{},
@@ -702,7 +720,7 @@ BOOST_AUTO_TEST_CASE(get_local_addr_for_peer_port)
     peer_in.fSuccessfullyConnected = true;
     peer_in.SetAddrLocal(peer_us);
 
-    // Without the fix peer_us:8333 is chosen instead of the proper peer_us:peer_us.GetPort().
+    // Without the fix peer_us:8639 is chosen instead of the proper peer_us:peer_us.GetPort().
     chosen_local_addr = GetLocalAddrForPeer(peer_in);
     BOOST_REQUIRE(chosen_local_addr);
     BOOST_CHECK(*chosen_local_addr == peer_us);
@@ -829,8 +847,9 @@ BOOST_AUTO_TEST_CASE(initial_advertise_from_version_message)
     in_addr peer_in_addr;
     peer_in_addr.s_addr = htonl(0x01020304);
     CNode peer{/*id=*/0,
+               /*max_untrusted_peersIn=*/DEFAULT_MAX_PEER_CONNECTIONS,
                /*sock=*/nullptr,
-               /*addrIn=*/CAddress{CService{peer_in_addr, 8333}, NODE_NETWORK},
+               /*addrIn=*/CAddress{CService{peer_in_addr, 8639}, NODE_NETWORK},
                /*nKeyedNetGroupIn=*/0,
                /*nLocalHostNonceIn=*/0,
                /*addrBindIn=*/CService{},
@@ -906,6 +925,7 @@ BOOST_AUTO_TEST_CASE(advertise_local_address)
 {
     auto CreatePeer = [](const CAddress& addr) {
         return std::make_unique<CNode>(/*id=*/0,
+                                       /*max_untrusted_peers=*/DEFAULT_MAX_PEER_CONNECTIONS,
                                        /*sock=*/nullptr,
                                        addr,
                                        /*nKeyedNetGroupIn=*/0,
@@ -918,20 +938,20 @@ BOOST_AUTO_TEST_CASE(advertise_local_address)
     };
     g_reachable_nets.Add(NET_CJDNS);
 
-    CAddress addr_ipv4{Lookup("1.2.3.4", 8333, false).value(), NODE_NONE};
+    CAddress addr_ipv4{Lookup("1.2.3.4", 8639, false).value(), NODE_NONE};
     BOOST_REQUIRE(addr_ipv4.IsValid());
     BOOST_REQUIRE(addr_ipv4.IsIPv4());
 
-    CAddress addr_ipv6{Lookup("1122:3344:5566:7788:9900:aabb:ccdd:eeff", 8333, false).value(), NODE_NONE};
+    CAddress addr_ipv6{Lookup("1122:3344:5566:7788:9900:aabb:ccdd:eeff", 8639, false).value(), NODE_NONE};
     BOOST_REQUIRE(addr_ipv6.IsValid());
     BOOST_REQUIRE(addr_ipv6.IsIPv6());
 
-    CAddress addr_ipv6_tunnel{Lookup("2002:3344:5566:7788:9900:aabb:ccdd:eeff", 8333, false).value(), NODE_NONE};
+    CAddress addr_ipv6_tunnel{Lookup("2002:3344:5566:7788:9900:aabb:ccdd:eeff", 8639, false).value(), NODE_NONE};
     BOOST_REQUIRE(addr_ipv6_tunnel.IsValid());
     BOOST_REQUIRE(addr_ipv6_tunnel.IsIPv6());
     BOOST_REQUIRE(addr_ipv6_tunnel.IsRFC3964());
 
-    CAddress addr_teredo{Lookup("2001:0000:5566:7788:9900:aabb:ccdd:eeff", 8333, false).value(), NODE_NONE};
+    CAddress addr_teredo{Lookup("2001:0000:5566:7788:9900:aabb:ccdd:eeff", 8639, false).value(), NODE_NONE};
     BOOST_REQUIRE(addr_teredo.IsValid());
     BOOST_REQUIRE(addr_teredo.IsIPv6());
     BOOST_REQUIRE(addr_teredo.IsRFC4380());
@@ -946,7 +966,7 @@ BOOST_AUTO_TEST_CASE(advertise_local_address)
     BOOST_REQUIRE(addr_i2p.IsValid());
     BOOST_REQUIRE(addr_i2p.IsI2P());
 
-    CService service_cjdns{Lookup("fc00:3344:5566:7788:9900:aabb:ccdd:eeff", 8333, false).value(), NODE_NONE};
+    CService service_cjdns{Lookup("fc00:3344:5566:7788:9900:aabb:ccdd:eeff", 8639, false).value(), NODE_NONE};
     CAddress addr_cjdns{MaybeFlipIPv6toCJDNS(service_cjdns), NODE_NONE};
     BOOST_REQUIRE(addr_cjdns.IsValid());
     BOOST_REQUIRE(addr_cjdns.IsCJDNS());
@@ -1554,7 +1574,7 @@ BOOST_AUTO_TEST_CASE(v2transport_test)
     // Send wrong network's V1 header
     {
         V2TransportTester tester(m_rng, false);
-        tester.SendV1Version(CChainParams::Main()->MessageStart());
+        tester.SendV1Version(CChainParams::Main(CChainParams::MainNetOptions())->MessageStart());
         auto ret = tester.Interact();
         BOOST_CHECK(!ret);
     }
@@ -1568,6 +1588,7 @@ BOOST_AUTO_TEST_CASE(private_broadcast_version_does_not_update_addrman_services)
     const CAddress addr{Lookup("1.2.3.4", 8333, /*fAllowLookup=*/false).value(), NODE_NONE};
     BOOST_REQUIRE(m_node.addrman->Add({addr}, source));
     CNode node{/*id=*/0,
+               /*max_untrusted_peers=*/DEFAULT_MAX_PEER_CONNECTIONS,
                /*sock=*/nullptr,
                /*addrIn=*/addr,
                /*nKeyedNetGroupIn=*/0,

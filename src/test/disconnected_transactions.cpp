@@ -1,6 +1,17 @@
-// Copyright (c) 2023-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2023 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 #include <boost/test/unit_test.hpp>
 #include <core_memusage.h>
@@ -15,8 +26,10 @@ BOOST_AUTO_TEST_CASE(disconnectpool_memory_limits)
     // Use the coinbase transactions from TestChain100Setup. It doesn't matter whether these
     // transactions would realistically be in a block together, they just need distinct txids and
     // uniform size for this test to work.
-    std::vector<CTransactionRef> block_vtx(m_coinbase_txns);
-    BOOST_CHECK_EQUAL(block_vtx.size(), 100);
+    // We skip the last coinbase transaction because it contains the initial
+    // block-final transaction input.
+    std::vector<CTransactionRef> block_vtx(m_coinbase_txns.begin(), m_coinbase_txns.end() - 1);
+    BOOST_CHECK_EQUAL(block_vtx.size(), 99);
 
     // Roughly estimate sizes to sanity check that DisconnectedBlockTransactions::DynamicMemoryUsage
     // is within an expected range.

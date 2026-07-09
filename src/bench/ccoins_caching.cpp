@@ -1,6 +1,17 @@
-// Copyright (c) 2016-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2016-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bench/bench.h>
 #include <coins.h>
@@ -43,7 +54,7 @@ static void CCoinsCaching(benchmark::Bench& bench)
     t1.vin[2].prevout.n = 1;
     t1.vin[2].scriptSig << std::vector<unsigned char>(65, 0) << std::vector<unsigned char>(33, 4);
     t1.vout.resize(2);
-    t1.vout[0].nValue = 90 * COIN;
+    t1.vout[0].SetReferenceValue(90 * COIN);
     t1.vout[0].scriptPubKey << OP_1;
 
     // Benchmark.
@@ -51,6 +62,8 @@ static void CCoinsCaching(benchmark::Bench& bench)
     bench.run([&] {
         bool success{AreInputsStandard(tx_1, coins)};
         assert(success);
+        CAmount value = coins.GetValueIn(tx_1);
+        assert(value == (50 + 21 + 22) * COIN);
     });
 }
 

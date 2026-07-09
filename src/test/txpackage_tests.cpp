@@ -1,6 +1,17 @@
-// Copyright (c) 2021-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2021-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <consensus/validation.h>
 #include <key_io.h>
@@ -41,7 +52,7 @@ inline CTransactionRef create_placeholder_tx(size_t num_inputs, size_t num_outpu
         mtx.vin[i].scriptSig = random_script;
     }
     for (size_t o{0}; o < num_outputs; ++o) {
-        mtx.vout[o].nValue = 1 * CENT;
+        mtx.vout[o].SetReferenceValue(1 * CENT);
         mtx.vout[o].scriptPubKey = random_script;
     }
     return MakeTransactionRef(mtx);
@@ -54,29 +65,29 @@ BOOST_AUTO_TEST_CASE(package_hash_tests)
 {
     // Random real segwit transaction
     DataStream stream_1{
-        "02000000000101964b8aa63509579ca6086e6012eeaa4c2f4dd1e283da29b67c8eea38b3c6fd220000000000fdffffff0294c618000000000017a9145afbbb42f4e83312666d0697f9e66259912ecde38768fa2c0000000000160014897388a0889390fd0e153a22bb2cf9d8f019faf50247304402200547406380719f84d68cf4e96cc3e4a1688309ef475b150be2b471c70ea562aa02206d255f5acc40fd95981874d77201d2eb07883657ce1c796513f32b6079545cdf0121023ae77335cefcb5ab4c1dc1fb0d2acfece184e593727d7d5906c78e564c7c11d125cf0c00"_hex,
+        ParseHex("02000000ff0101964b8aa63509579ca6086e6012eeaa4c2f4dd1e283da29b67c8eea38b3c6fd220000000000fdffffff0294c618000000000017a9145afbbb42f4e83312666d0697f9e66259912ecde38768fa2c0000000000160014897388a0889390fd0e153a22bb2cf9d8f019faf50247304402200547406380719f84d68cf4e96cc3e4a1688309ef475b150be2b471c70ea562aa02206d255f5acc40fd95981874d77201d2eb07883657ce1c796513f32b6079545cdf0121023ae77335cefcb5ab4c1dc1fb0d2acfece184e593727d7d5906c78e564c7c11d125cf0c0004000000"),
     };
     CTransaction tx_1(deserialize, TX_WITH_WITNESS, stream_1);
     CTransactionRef ptx_1{MakeTransactionRef(tx_1)};
 
     // Random real nonsegwit transaction
     DataStream stream_2{
-        "01000000010b26e9b7735eb6aabdf358bab62f9816a21ba9ebdb719d5299e88607d722c190000000008b4830450220070aca44506c5cef3a16ed519d7c3c39f8aab192c4e1c90d065f37b8a4af6141022100a8e160b856c2d43d27d8fba71e5aef6405b8643ac4cb7cb3c462aced7f14711a0141046d11fee51b0e60666d5049a9101a72741df480b96ee26488a4d3466b95c9a40ac5eeef87e10a5cd336c19a84565f80fa6c547957b7700ff4dfbdefe76036c339ffffffff021bff3d11000000001976a91404943fdd508053c75000106d3bc6e2754dbcff1988ac2f15de00000000001976a914a266436d2965547608b9e15d9032a7b9d64fa43188ac00000000"_hex,
+        ParseHex("01000000010b26e9b7735eb6aabdf358bab62f9816a21ba9ebdb719d5299e88607d722c190000000008b4830450220070aca44506c5cef3a16ed519d7c3c39f8aab192c4e1c90d065f37b8a4af6141022100a8e160b856c2d43d27d8fba71e5aef6405b8643ac4cb7cb3c462aced7f14711a0141046d11fee51b0e60666d5049a9101a72741df480b96ee26488a4d3466b95c9a40ac5eeef87e10a5cd336c19a84565f80fa6c547957b7700ff4dfbdefe76036c339ffffffff021bff3d11000000001976a91404943fdd508053c75000106d3bc6e2754dbcff1988ac2f15de00000000001976a914a266436d2965547608b9e15d9032a7b9d64fa43188ac0000000006000000"),
     };
     CTransaction tx_2(deserialize, TX_WITH_WITNESS, stream_2);
     CTransactionRef ptx_2{MakeTransactionRef(tx_2)};
 
     // Random real segwit transaction
     DataStream stream_3{
-        "0200000000010177862801f77c2c068a70372b4c435ef8dd621291c36a64eb4dd491f02218f5324600000000fdffffff014a0100000000000022512035ea312034cfac01e956a269f3bf147f569c2fbb00180677421262da042290d803402be713325ff285e66b0380f53f2fae0d0fb4e16f378a440fed51ce835061437566729d4883bc917632f3cff474d6384bc8b989961a1d730d4a87ed38ad28bd337b20f1d658c6c138b1c312e072b4446f50f01ae0da03a42e6274f8788aae53416a7fac0063036f7264010118746578742f706c61696e3b636861727365743d7574662d3800357b2270223a226272632d3230222c226f70223a226d696e74222c227469636b223a224342414c222c22616d74223a2236393639227d6821c1f1d658c6c138b1c312e072b4446f50f01ae0da03a42e6274f8788aae53416a7f00000000"_hex,
+        ParseHex("02000000ff010177862801f77c2c068a70372b4c435ef8dd621291c36a64eb4dd491f02218f5324600000000fdffffff014a0100000000000022512035ea312034cfac01e956a269f3bf147f569c2fbb00180677421262da042290d803402be713325ff285e66b0380f53f2fae0d0fb4e16f378a440fed51ce835061437566729d4883bc917632f3cff474d6384bc8b989961a1d730d4a87ed38ad28bd337b20f1d658c6c138b1c312e072b4446f50f01ae0da03a42e6274f8788aae53416a7fac0063036f7264010118746578742f706c61696e3b636861727365743d7574662d3800357b2270223a226272632d3230222c226f70223a226d696e74222c227469636b223a224342414c222c22616d74223a2236393639227d6821c1f1d658c6c138b1c312e072b4446f50f01ae0da03a42e6274f8788aae53416a7f0000000000000000"),
     };
     CTransaction tx_3(deserialize, TX_WITH_WITNESS, stream_3);
     CTransactionRef ptx_3{MakeTransactionRef(tx_3)};
 
     // It's easy to see that wtxids are sorted in lexicographical order:
-    constexpr Wtxid wtxid_1{"85cd1a31eb38f74ed5742ec9cb546712ab5aaf747de28a9168b53e846cbda17f"};
-    constexpr Wtxid wtxid_2{"b4749f017444b051c44dfd2720e88f314ff94f3dd6d56d40ef65854fcd7fff6b"};
-    constexpr Wtxid wtxid_3{"e065bac15f62bb4e761d761db928ddee65a47296b2b776785abb912cdec474e3"};
+    constexpr Wtxid wtxid_1{"2bea976bb2cc14b521d70273df015fe55ac721f8378dc113f3b92b30d8825226"};
+    constexpr Wtxid wtxid_2{"37c0b439a77e1f2af3d354ab7056195369bdbd3651aeb8a705a6262c74c7990f"};
+    constexpr Wtxid wtxid_3{"a4846c0556722f30bf36ebc0bc63ff57728ba4b5a064a420bcb35b69f140f8f0"};
     BOOST_CHECK_EQUAL(tx_1.GetWitnessHash(), wtxid_1);
     BOOST_CHECK_EQUAL(tx_2.GetWitnessHash(), wtxid_2);
     BOOST_CHECK_EQUAL(tx_3.GetWitnessHash(), wtxid_3);
@@ -85,9 +96,9 @@ BOOST_AUTO_TEST_CASE(package_hash_tests)
     BOOST_CHECK(wtxid_2.GetHex() < wtxid_3.GetHex());
 
     // The txids are not (we want to test that sorting and hashing use wtxid, not txid):
-    constexpr Txid txid_1{"bd0f71c1d5e50589063e134fad22053cdae5ab2320db5bf5e540198b0b5a4e69"};
-    constexpr Txid txid_2{"b4749f017444b051c44dfd2720e88f314ff94f3dd6d56d40ef65854fcd7fff6b"};
-    constexpr Txid txid_3{"ee707be5201160e32c4fc715bec227d1aeea5940fb4295605e7373edce3b1a93"};
+    constexpr Txid txid_1{"ff0f4cbdd3cde82edfee3cbe3d88d54f97a85a95ca0211b2f7c6230b23b79d76"};
+    constexpr Txid txid_2{"37c0b439a77e1f2af3d354ab7056195369bdbd3651aeb8a705a6262c74c7990f"};
+    constexpr Txid txid_3{"cc0ab94791af3f3ef4293a6655f6f2a1635af73f3a229dda82ee0ed13a46f9ed"};
     BOOST_CHECK_EQUAL(tx_1.GetHash(), txid_1);
     BOOST_CHECK_EQUAL(tx_2.GetHash(), txid_2);
     BOOST_CHECK_EQUAL(tx_3.GetHash(), txid_3);
@@ -492,7 +503,7 @@ BOOST_AUTO_TEST_CASE(package_submission_tests)
         auto tx_parent_2 = MakeTransactionRef(CreateValidMempoolTransaction(/*input_transaction=*/m_coinbase_txns[2], /*input_vout=*/0,
                                                                             /*input_height=*/0, /*input_signing_key=*/coinbaseKey,
                                                                             /*output_destination=*/parent_locking_script,
-                                                                            /*output_amount=*/CAmount(50 * COIN - 800), /*submit=*/false));
+                                                                            /*output_amount=*/CAmount(50 * COIN - 900), /*submit=*/false));
 
         auto tx_child_missing_parent = MakeTransactionRef(CreateValidMempoolTransaction({tx_parent_1, tx_parent_2},
                                                                                         {{tx_parent_1->GetHash(), 0}, {tx_parent_2->GetHash(), 0}},
@@ -566,7 +577,7 @@ BOOST_AUTO_TEST_CASE(package_single_tx)
 
     // Parent and Child. Both submitted by themselves through the ProcessNewPackage interface.
     CKey parent_key = GenerateRandomKey();
-    CScript parent_locking_script = GetScriptForDestination(WitnessV0KeyHash(parent_key.GetPubKey()));
+    CScript parent_locking_script = GetScriptForDestination(PKHash(parent_key.GetPubKey()));
     auto mtx_parent = CreateValidMempoolTransaction(/*input_transaction=*/m_coinbase_txns[1], /*input_vout=*/0,
                                                     /*input_height=*/0, /*input_signing_key=*/coinbaseKey,
                                                     /*output_destination=*/parent_locking_script,
@@ -587,7 +598,7 @@ BOOST_AUTO_TEST_CASE(package_single_tx)
     BOOST_CHECK_EQUAL(m_node.mempool->size(), expected_pool_size);
 
     CKey child_key = GenerateRandomKey();
-    CScript child_locking_script = GetScriptForDestination(WitnessV0KeyHash(child_key.GetPubKey()));
+    CScript child_locking_script = GetScriptForDestination(PKHash(child_key.GetPubKey()));
     auto mtx_child = CreateValidMempoolTransaction(/*input_transaction=*/tx_parent, /*input_vout=*/0,
                                                    /*input_height=*/101, /*input_signing_key=*/parent_key,
                                                    /*output_destination=*/child_locking_script,
@@ -641,7 +652,8 @@ BOOST_AUTO_TEST_CASE(package_witness_swap_tests)
     // Transactions with a same-txid-different-witness transaction in the mempool should be ignored,
     // and the mempool entry's wtxid returned.
     CScript witnessScript = CScript() << OP_DROP << OP_TRUE;
-    CScript scriptPubKey = GetScriptForDestination(WitnessV0ScriptHash(witnessScript));
+    WitnessV0ScriptEntry entry(/*version=*/ 0, witnessScript);
+    CScript scriptPubKey = GetScriptForDestination(entry.GetLongHash());
     auto mtx_parent = CreateValidMempoolTransaction(/*input_transaction=*/m_coinbase_txns[0], /*input_vout=*/0,
                                                     /*input_height=*/0, /*input_signing_key=*/coinbaseKey,
                                                     /*output_destination=*/scriptPubKey,
@@ -651,14 +663,16 @@ BOOST_AUTO_TEST_CASE(package_witness_swap_tests)
     // Make two children with the same txid but different witnesses.
     CScriptWitness witness1;
     witness1.stack.emplace_back(1);
-    witness1.stack.emplace_back(witnessScript.begin(), witnessScript.end());
+    witness1.stack.push_back(entry.m_script);
+    witness1.stack.emplace_back();
 
     CScriptWitness witness2(witness1);
     witness2.stack.emplace_back(2);
-    witness2.stack.emplace_back(witnessScript.begin(), witnessScript.end());
+    witness2.stack.push_back(entry.m_script);
+    witness2.stack.emplace_back();
 
     CKey child_key = GenerateRandomKey();
-    CScript child_locking_script = GetScriptForDestination(WitnessV0KeyHash(child_key.GetPubKey()));
+    CScript child_locking_script = GetScriptForDestination(WitnessV0ShortHash(/*version=*/0, child_key.GetPubKey()));
     CMutableTransaction mtx_child1;
     mtx_child1.version = 1;
     mtx_child1.vin.resize(1);
@@ -667,8 +681,9 @@ BOOST_AUTO_TEST_CASE(package_witness_swap_tests)
     mtx_child1.vin[0].scriptSig = CScript();
     mtx_child1.vin[0].scriptWitness = witness1;
     mtx_child1.vout.resize(1);
-    mtx_child1.vout[0].nValue = CAmount(48 * COIN);
+    mtx_child1.vout[0].SetReferenceValue(48 * COIN);
     mtx_child1.vout[0].scriptPubKey = child_locking_script;
+    mtx_child1.lock_height = ptx_parent->lock_height;
 
     CMutableTransaction mtx_child2{mtx_child1};
     mtx_child2.vin[0].scriptWitness = witness2;
@@ -729,7 +744,7 @@ BOOST_AUTO_TEST_CASE(package_witness_swap_tests)
     // where a parent's witness is mutated. The honest package should be accepted despite the fact
     // that we don't allow witness replacement.
     CKey grandchild_key = GenerateRandomKey();
-    CScript grandchild_locking_script = GetScriptForDestination(WitnessV0KeyHash(grandchild_key.GetPubKey()));
+    CScript grandchild_locking_script = GetScriptForDestination(WitnessV0ShortHash(/*version=*/0, grandchild_key.GetPubKey()));
     auto mtx_grandchild = CreateValidMempoolTransaction(/*input_transaction=*/ptx_child2, /*input_vout=*/0,
                                                         /*input_height=*/0, /*input_signing_key=*/child_key,
                                                         /*output_destination=*/grandchild_locking_script,
@@ -758,9 +773,11 @@ BOOST_AUTO_TEST_CASE(package_witness_swap_tests)
 
     // Give all the parents anyone-can-spend scripts so we don't have to deal with signing the child.
     CScript acs_script = CScript() << OP_TRUE;
-    CScript acs_spk = GetScriptForDestination(WitnessV0ScriptHash(acs_script));
+    WitnessV0ScriptEntry acs_entry(/*version=*/ 0, acs_script);
+    CScript acs_spk = GetScriptForDestination(acs_entry.GetLongHash());
     CScriptWitness acs_witness;
-    acs_witness.stack.emplace_back(acs_script.begin(), acs_script.end());
+    acs_witness.stack.push_back(acs_entry.m_script);
+    acs_witness.stack.emplace_back();
 
     // parent1 will already be in the mempool
     auto mtx_parent1 = CreateValidMempoolTransaction(/*input_transaction=*/m_coinbase_txns[1], /*input_vout=*/0,
@@ -772,13 +789,16 @@ BOOST_AUTO_TEST_CASE(package_witness_swap_tests)
 
     // parent2 will have a same-txid-different-witness tx already in the mempool
     CScript grandparent2_script = CScript() << OP_DROP << OP_TRUE;
-    CScript grandparent2_spk = GetScriptForDestination(WitnessV0ScriptHash(grandparent2_script));
+    WitnessV0ScriptEntry grandparent2_entry(/*version=*/ 0, grandparent2_script);
+    CScript grandparent2_spk = GetScriptForDestination(grandparent2_entry.GetLongHash());
     CScriptWitness parent2_witness1;
     parent2_witness1.stack.emplace_back(1);
-    parent2_witness1.stack.emplace_back(grandparent2_script.begin(), grandparent2_script.end());
+    parent2_witness1.stack.push_back(grandparent2_entry.m_script);
+    parent2_witness1.stack.emplace_back();
     CScriptWitness parent2_witness2;
     parent2_witness2.stack.emplace_back(2);
-    parent2_witness2.stack.emplace_back(grandparent2_script.begin(), grandparent2_script.end());
+    parent2_witness2.stack.push_back(grandparent2_entry.m_script);
+    parent2_witness2.stack.emplace_back();
 
     // Create grandparent2 creating an output with multiple spending paths. Submit to mempool.
     auto mtx_grandparent2 = CreateValidMempoolTransaction(/*input_transaction=*/m_coinbase_txns[2], /*input_vout=*/0,
@@ -795,8 +815,9 @@ BOOST_AUTO_TEST_CASE(package_witness_swap_tests)
     mtx_parent2_v1.vin[0].scriptSig = CScript();
     mtx_parent2_v1.vin[0].scriptWitness = parent2_witness1;
     mtx_parent2_v1.vout.resize(1);
-    mtx_parent2_v1.vout[0].nValue = CAmount(48 * COIN);
+    mtx_parent2_v1.vout[0].SetReferenceValue(48 * COIN);
     mtx_parent2_v1.vout[0].scriptPubKey = acs_spk;
+    mtx_parent2_v1.lock_height = ptx_grandparent2->lock_height;
 
     CMutableTransaction mtx_parent2_v2{mtx_parent2_v1};
     mtx_parent2_v2.vin[0].scriptWitness = parent2_witness2;
@@ -820,7 +841,7 @@ BOOST_AUTO_TEST_CASE(package_witness_swap_tests)
 
     // child spends parent1, parent2, and parent3
     CKey mixed_grandchild_key = GenerateRandomKey();
-    CScript mixed_child_spk = GetScriptForDestination(WitnessV0KeyHash(mixed_grandchild_key.GetPubKey()));
+    CScript mixed_child_spk = GetScriptForDestination(WitnessV0ShortHash(/*version=*/0, mixed_grandchild_key.GetPubKey()));
 
     CMutableTransaction mtx_mixed_child;
     mtx_mixed_child.vin.emplace_back(COutPoint(ptx_parent1->GetHash(), 0));
@@ -829,7 +850,12 @@ BOOST_AUTO_TEST_CASE(package_witness_swap_tests)
     mtx_mixed_child.vin[0].scriptWitness = acs_witness;
     mtx_mixed_child.vin[1].scriptWitness = acs_witness;
     mtx_mixed_child.vin[2].scriptWitness = acs_witness;
-    mtx_mixed_child.vout.emplace_back((48 + 49 + 50 - 1) * COIN, mixed_child_spk);
+    mtx_mixed_child.lock_height = ptx_parent3->lock_height;
+    CAmount mixed_child_value_in =
+          GetTimeAdjustedValue(49 * COIN, 2)
+        + GetTimeAdjustedValue(48 * COIN, 1)
+        + GetTimeAdjustedValue(50 * COIN, 0);
+    mtx_mixed_child.vout.emplace_back(mixed_child_value_in - COIN, mixed_child_spk);
     CTransactionRef ptx_mixed_child = MakeTransactionRef(mtx_mixed_child);
     package_mixed.push_back(ptx_mixed_child);
 
@@ -872,9 +898,9 @@ BOOST_AUTO_TEST_CASE(package_cpfp_tests)
     LOCK(::cs_main);
     size_t expected_pool_size = m_node.mempool->size();
     CKey child_key = GenerateRandomKey();
-    CScript parent_spk = GetScriptForDestination(WitnessV0KeyHash(child_key.GetPubKey()));
+    CScript parent_spk = GetScriptForDestination(WitnessV0ShortHash(/*version=*/0, child_key.GetPubKey()));
     CKey grandchild_key = GenerateRandomKey();
-    CScript child_spk = GetScriptForDestination(WitnessV0KeyHash(grandchild_key.GetPubKey()));
+    CScript child_spk = GetScriptForDestination(WitnessV0ShortHash(/*version=*/0, grandchild_key.GetPubKey()));
 
     // low-fee parent and high-fee child package
     const CAmount coinbase_value{50 * COIN};
@@ -950,7 +976,7 @@ BOOST_AUTO_TEST_CASE(package_cpfp_tests)
     }
 
     // Just because we allow low-fee parents doesn't mean we allow low-feerate packages.
-    // The mempool minimum feerate is 5sat/vB, but this package just pays 800 satoshis total.
+    // The mempool minimum feerate is 5sat/vB, but this package just pays 800 kria total.
     // The child fees would be able to pay for itself, but isn't enough for the entire package.
     Package package_still_too_low;
     const CAmount parent_fee{200};
@@ -1000,7 +1026,7 @@ BOOST_AUTO_TEST_CASE(package_cpfp_tests)
     // Package feerate includes the modified fees of the transactions.
     // This means a child with its fee delta from prioritisetransaction can pay for a parent.
     m_node.mempool->PrioritiseTransaction(tx_child_cheap->GetHash(), 1 * COIN);
-    // Now that the child's fees have "increased" by 1 BTC, the cheap package should succeed.
+    // Now that the child's fees have "increased" by 1 FRC, the cheap package should succeed.
     {
         const auto submit_prioritised_package = ProcessNewPackage(m_node.chainman->ActiveChainstate(), *m_node.mempool,
                                                                   package_still_too_low, /*test_accept=*/false, /*client_maxfeerate=*/{});
@@ -1047,7 +1073,7 @@ BOOST_AUTO_TEST_CASE(package_cpfp_tests)
     CTransactionRef tx_child_poor = MakeTransactionRef(mtx_child_poor);
     package_rich_parent.push_back(tx_child_poor);
 
-    // Parent pays 1 BTC and child pays none. The parent should be accepted without the child.
+    // Parent pays 1 FRC and child pays none. The parent should be accepted without the child.
     {
         BOOST_CHECK_EQUAL(m_node.mempool->size(), expected_pool_size);
         const auto submit_rich_parent = ProcessNewPackage(m_node.chainman->ActiveChainstate(), *m_node.mempool,
@@ -1082,9 +1108,9 @@ BOOST_AUTO_TEST_CASE(package_rbf_tests)
     LOCK(::cs_main);
     size_t expected_pool_size = m_node.mempool->size();
     CKey child_key{GenerateRandomKey()};
-    CScript parent_spk = GetScriptForDestination(WitnessV0KeyHash(child_key.GetPubKey()));
+    CScript parent_spk = GetScriptForDestination(WitnessV0ShortHash(/*version=*/0, child_key.GetPubKey()));
     CKey grandchild_key{GenerateRandomKey()};
-    CScript child_spk = GetScriptForDestination(WitnessV0KeyHash(grandchild_key.GetPubKey()));
+    CScript child_spk = GetScriptForDestination(WitnessV0ShortHash(/*version=*/0, grandchild_key.GetPubKey()));
 
     const CAmount coinbase_value{50 * COIN};
     // Test that de-duplication works. This is not actually package rbf.
@@ -1222,7 +1248,9 @@ BOOST_AUTO_TEST_CASE(package_rbf_tests)
         if (auto err_4{CheckPackageMempoolAcceptResult(package1, submit4, /*expect_valid=*/false, m_node.mempool.get())}) {
             BOOST_ERROR(err_4.value());
         }
-        m_node.mempool->PrioritiseTransaction(tx_child_1->GetHash(), 1363);
+        // Freicoin: transactions are slightly larger than upstream (lock_height),
+        // so the anti-DoS incremental-fee threshold is higher than upstream's 1363.
+        m_node.mempool->PrioritiseTransaction(tx_child_1->GetHash(), 1400);
         const auto submit5 = ProcessNewPackage(m_node.chainman->ActiveChainstate(), *m_node.mempool, package1, false, std::nullopt);
         if (auto err_5{CheckPackageMempoolAcceptResult(package1, submit5, /*expect_valid=*/true, m_node.mempool.get())}) {
             BOOST_ERROR(err_5.value());

@@ -1,9 +1,22 @@
-// Copyright (c) 2011-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <bench/bench.h>
+#include <chainparams.h>
 #include <consensus/amount.h>
+#include <kernel/mempool_entry.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
 #include <random.h>
@@ -55,7 +68,7 @@ static std::vector<CTransactionRef> CreateCoinCluster(FastRandomContext& det_ran
         tx.vout.resize(det_rand.randrange(10)+2);
         for (auto& out : tx.vout) {
             out.scriptPubKey = CScript() << CScriptNum(tx_counter) << OP_EQUAL;
-            out.nValue = 10 * COIN;
+            out.SetReferenceValue(10 * COIN);
         }
         ordered_coins.emplace_back(MakeTransactionRef(tx));
         available_coins.emplace_back(ordered_coins.back(), tx_counter++);
@@ -84,7 +97,7 @@ static std::vector<CTransactionRef> CreateCoinCluster(FastRandomContext& det_ran
             tx.vout.resize(det_rand.randrange(10)+2);
             for (auto& out : tx.vout) {
                 out.scriptPubKey = CScript() << CScriptNum(tx_counter) << OP_EQUAL;
-                out.nValue = 10 * COIN;
+                out.SetReferenceValue(10 * COIN);
             }
         }
         ordered_coins.emplace_back(MakeTransactionRef(tx));
@@ -204,7 +217,7 @@ static void MempoolCheck(benchmark::Bench& bench)
 
     bench.run([&]() NO_THREAD_SAFETY_ANALYSIS {
         // Bump up the spendheight so we don't hit premature coinbase spend errors.
-        pool.check(coins_tip, /*spendheight=*/300);
+        pool.check(coins_tip, /*spendheight=*/300, Params().GetConsensus());
     });
 }
 
