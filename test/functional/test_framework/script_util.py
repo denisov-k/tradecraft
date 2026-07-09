@@ -251,8 +251,8 @@ def build_malleated_tx_package(*, parent: CTransaction, rebalance_parent_output_
         calling this function) or anyone-can-spend (e.g., MiniWallet's OP_TRUE).
     """
     hashlock = hash160(b'Preimage')
-    witness_script = CScript([OP_IF, OP_HASH160, hashlock, OP_EQUAL, OP_ELSE, OP_TRUE, OP_ENDIF])
-    witness_program = sha256(witness_script)
+    witness_script = script_to_witness(CScript([OP_IF, OP_HASH160, hashlock, OP_EQUAL, OP_ELSE, OP_TRUE, OP_ENDIF]))
+    witness_program = hash256(witness_script)
     script_pubkey = CScript([OP_0, witness_program])
 
     # Append to the transaction the vout containing the script supporting 2 spending conditions
@@ -265,18 +265,19 @@ def build_malleated_tx_package(*, parent: CTransaction, rebalance_parent_output_
 
     # Create 2 valid children that differ only in witness data.
     # 1. Create a new transaction with witness solving first branch
-    child_witness_script = CScript([OP_TRUE])
-    child_witness_program = sha256(child_witness_script)
+    child_witness_script = script_to_witness(CScript([OP_TRUE]))
+    child_witness_program = hash256(child_witness_script)
     child_script_pubkey = CScript([OP_0, child_witness_program])
     child_one = CTransaction()
 
     child_one.vin.append(CTxIn(COutPoint(int(parent.txid_hex, 16), len(parent.vout) - 1), b""))
     child_one.vout.append(CTxOut(child_amount, child_script_pubkey))
+    child_one.lock_height = parent.lock_height
     child_one.wit.vtxinwit.append(CTxInWitness())
-    child_one.wit.vtxinwit[0].scriptWitness.stack = [b'Preimage', b'\x01', witness_script]
+    child_one.wit.vtxinwit[0].scriptWitness.stack = [b'Preimage', b'\x01', witness_script, b'']
     # 2. Create another identical transaction with witness solving second branch
     child_two = deepcopy(child_one)
-    child_two.wit.vtxinwit[0].scriptWitness.stack = [b'', witness_script]
+    child_two.wit.vtxinwit[0].scriptWitness.stack = [b'', witness_script, b'']
     return parent, child_one, child_two
 
 

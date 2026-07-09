@@ -24,7 +24,11 @@ import time
 
 from test_framework.blocktools import create_empty_fork
 from test_framework.test_framework import FreicoinTestFramework
-from test_framework.util import assert_equal
+from test_framework.util import (
+    assert_equal,
+    assert_greater_than_or_equal,
+    assert_raises_rpc_error,
+)
 from test_framework.wallet import MiniWallet
 from test_framework.mempool_util import DEFAULT_CLUSTER_LIMIT
 
@@ -36,7 +40,8 @@ CUSTOM_DESCENDANT_COUNT = CUSTOM_ANCESTOR_COUNT
 class MempoolUpdateFromBlockTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
-        self.extra_args = [['-limitclustersize=1000']]
+        # large datacarrier output needed to pad transactions to target_vsize
+        self.extra_args = [['-limitclustersize=1000', '-datacarrier=1', '-datacarriersize=110000']]
 
     def trigger_reorg(self, fork_blocks):
         """Trigger reorg of the fork blocks."""

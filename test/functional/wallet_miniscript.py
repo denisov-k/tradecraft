@@ -252,7 +252,7 @@ class WalletMiniscriptTest(FreicoinTestFramework):
                 pst.i[0].map[k] = bytes.fromhex(preimage)
             pst = pst.hex()
         res = self.ms_sig_wallet.walletprocesspst(pst=pst, finalize=False)
-        pstin = self.nodes[0].rpc.decodepst(res["pst"])["inputs"][0]
+        pstin = self.nodes[0].decodepst(res["pst"])["inputs"][0]
         sigs_field_name = "partial_signatures"
         assert len(pstin[sigs_field_name]) == sigs_count
         res = self.ms_sig_wallet.finalizepst(res["pst"])

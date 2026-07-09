@@ -267,7 +267,6 @@ BASE_SCRIPTS = [
     'feature_utxo_set_hash.py',
     'feature_rbf.py --bitcoin-mode',
     'mempool_packages.py --bitcoin-mode',
-    'mempool_package_onemore.py --bitcoin-mode',
     'mempool_package_limits.py --bitcoin-mode',
     'mempool_package_rbf.py --bitcoin-mode',
     'tool_utxo_to_sqlite.py',

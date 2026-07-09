@@ -247,7 +247,7 @@ class WalletSignerTest(FreicoinTestFramework):
         assert_equal(hww.getwalletinfo()["external_signer"], True)
 
         # Fund wallet
-        self.nodes[0].sendtoaddress(hww.getnewaddress(address_type="bech32m"), 1)
+        self.nodes[0].sendtoaddress(hww.getnewaddress(address_type="bech32"), 1)  # Freicoin: no bech32m/taproot
         self.generate(self.nodes[0], 1)
 
         # Restart node with no signer connected

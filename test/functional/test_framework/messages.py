@@ -1258,6 +1258,10 @@ class CBlock(CBlockHeader):
         target = uint256_from_compact(self.nBits)
         while self.hash_int > target:
             self.nNonce += 1
+        # Refresh the cached sha256/hash: the loop above bumped nNonce against
+        # the live hash_int property, leaving the cache stale for any reader
+        # of block.sha256/block.hash after solve().
+        self.rehash()
 
     # Calculate the block weight using witness and non-witness
     # serialization size (does NOT use sigops).

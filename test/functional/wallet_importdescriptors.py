@@ -741,7 +741,10 @@ class ImportDescriptorsTest(FreicoinTestFramework):
             safe_value = (65535 | flag)
             self.test_importdesc(
                 {
-                    'desc': descsum_create(f"wsh(and_v(v:pk([12345678/0h/0h]{xpub}/*),older({safe_value})))"),
+                    # Freicoin miniscript: older() is type V, so it goes on the
+                    # left of and_v without a v: wrapper (upstream uses
+                    # and_v(v:pk(...),older(...)))
+                    'desc': descsum_create(f"wsh(and_v(older({safe_value}),pk([12345678/0h/0h]{xpub}/*)))"),
                     'active': True,
                     'range': [0, 2],
                     'timestamp': 'now'
@@ -751,7 +754,7 @@ class ImportDescriptorsTest(FreicoinTestFramework):
 
             self.log.debug("Importing an unsafe value results in a warning")
             unsafe_value = safe_value + 1
-            desc = descsum_create(f"wsh(and_v(v:pk([12345678/0h/0h]{xpub}/*),older({unsafe_value})))")
+            desc = descsum_create(f"wsh(and_v(older({unsafe_value}),pk([12345678/0h/0h]{xpub}/*)))")
             expected_warning = (
                 f"time-based relative locktime: older({unsafe_value}) > (65535 * 512) seconds is unsafe"
                 if flag == SEQUENCE_LOCKTIME_TYPE_FLAG

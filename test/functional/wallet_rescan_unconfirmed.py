@@ -67,7 +67,9 @@ class WalletRescanUnconfirmed(FreicoinTestFramework):
         # The only UTXO available to spend is tx_parent_to_reorg.
         assert_equal(len(w0_utxos), 1)
         assert_equal(w0_utxos[0]["txid"], tx_parent_to_reorg["txid"])
-        tx_child_unconfirmed_sweep = w0.sendall([ADDRESS_FCRT1_UNSPENDABLE], options={"lockheight": max(utxo['refheight'] for utxo in w0_utxos) or 1})
+        # locktime 0 disables anti-fee-sniping, so the sweep stays valid (and in
+        # the mempool) after the reorg below shortens the chain by one block.
+        tx_child_unconfirmed_sweep = w0.sendall([ADDRESS_FCRT1_UNSPENDABLE], options={"locktime": 0, "lockheight": max(utxo['refheight'] for utxo in w0_utxos) or 1})
         assert tx_child_unconfirmed_sweep["txid"] in node.getrawmempool()
         node.syncwithvalidationinterfacequeue()
 

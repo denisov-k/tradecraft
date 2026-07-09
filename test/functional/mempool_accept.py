@@ -20,6 +20,11 @@ from decimal import Decimal
 import math
 
 from test_framework.test_framework import FreicoinTestFramework
+from test_framework.blocktools import MAX_STANDARD_TX_WEIGHT
+from test_framework.mempool_util import (
+    DEFAULT_MIN_RELAY_TX_FEE,
+    DEFAULT_INCREMENTAL_RELAY_FEE,
+)
 from test_framework.messages import (
     MAX_BIP125_RBF_SEQUENCE,
     COIN,
@@ -355,27 +360,38 @@ class MempoolAcceptanceTest(FreicoinTestFramework):
             rawtxs=[tx.serialize().hex()],
         )
 
-        # Multiple OP_RETURN and more than 83 bytes, even if over MAX_SCRIPT_ELEMENT_SIZE
-        # are standard since v30
+        # Freicoin enforces a shared -datacarriersize budget (default 51 bytes)
+        # across all OP_RETURN outputs, so an oversized data carrier output is
+        # rejected even with -datacarrier=1.
         tx = tx_from_hex(raw_tx_reference)
         tx.vout.append(CTxOut(0, CScript([OP_RETURN, b'\xff'])))
         tx.vout.append(CTxOut(0, CScript([OP_RETURN, b'\xff' * 50000])))
 
         self.check_mempool_result(
-            result_expected=[{'txid': tx.txid_hex, 'allowed': True, 'vsize': tx.get_vsize(), 'fees': {'base': Decimal('0.05')}}],
+            result_expected=[{'txid': tx.txid_hex, 'allowed': False, 'reject-reason': 'datacarrier'}],
             rawtxs=[tx.serialize().hex()],
             maxfeerate=0
         )
 
         self.log.info("A transaction with several OP_RETURN outputs.")
+        # 17 outputs of 3 bytes each exactly fill the 51 byte datacarrier budget
         tx = tx_from_hex(raw_tx_reference)
-        op_return_count = 42
+        op_return_count = 17
         tx.vout[0].nValue = int(tx.vout[0].nValue / op_return_count)
         tx.vout[0].scriptPubKey = CScript([OP_RETURN, b'\xff'])
         tx.vout = [tx.vout[0]] * op_return_count
         self.check_mempool_result(
-            result_expected=[{"txid": tx.txid_hex, "allowed": True, "vsize": tx.get_vsize(), "fees": {"base": Decimal("0.05000026")}}],
+            result_expected=[{"txid": tx.txid_hex, "allowed": True, "vsize": tx.get_vsize(), "fees": {"base": Decimal("0.05000011")}}],
             rawtxs=[tx.serialize().hex()],
+            maxfeerate=0,
+        )
+
+        # One more 3-byte OP_RETURN output exceeds the budget
+        tx.vout = [tx.vout[0]] * (op_return_count + 1)
+        self.check_mempool_result(
+            result_expected=[{"txid": tx.txid_hex, "allowed": False, "reject-reason": "datacarrier"}],
+            rawtxs=[tx.serialize().hex()],
+            maxfeerate=0,
         )
 
         self.log.info("A transaction with an OP_RETURN output that bumps into the max standardness tx size.")
@@ -384,8 +400,9 @@ class MempoolAcceptanceTest(FreicoinTestFramework):
         data_len = int(MAX_STANDARD_TX_WEIGHT / 4) - tx.get_vsize() - 5 - 4  # -5 for PUSHDATA4 and -4 for script size
         tx.vout[0].scriptPubKey = CScript([OP_RETURN, b"\xff" * (data_len)])
         assert_equal(tx.get_vsize(), int(MAX_STANDARD_TX_WEIGHT / 4))
+        # Within the standardness weight limit, but far over the datacarrier budget
         self.check_mempool_result(
-            result_expected=[{"txid": tx.txid_hex, "allowed": True, "vsize": tx.get_vsize(), "fees": {"base": Decimal("0.1") - Decimal("0.05")}}],
+            result_expected=[{"txid": tx.txid_hex, "allowed": False, "reject-reason": "datacarrier"}],
             rawtxs=[tx.serialize().hex()],
         )
         tx.vout[0].scriptPubKey = CScript([OP_RETURN, b"\xff" * (data_len + 1)])
@@ -429,7 +446,7 @@ class MempoolAcceptanceTest(FreicoinTestFramework):
         assert_greater_than(len(tx.serialize()), 64)
 
         self.check_mempool_result(
-            result_expected=[{'txid': tx.rehash(), 'allowed': False, 'reject-reason': 'scriptpubkey'}],
+            result_expected=[{'txid': tx.txid_hex, 'allowed': False, 'reject-reason': 'scriptpubkey'}],
             rawtxs=[tx.serialize().hex()],
             maxfeerate=0,
         )
@@ -492,7 +509,7 @@ class MempoolAcceptanceTest(FreicoinTestFramework):
         nested_anchor_spend.vout.append(CTxOut(nested_anchor_tx.vout[0].nValue - int(fee*COIN), script_to_p2wsh_script(CScript([OP_TRUE]))))
 
         self.check_mempool_result(
-            result_expected=[{'txid': nested_anchor_spend.rehash(), 'allowed': False, 'reject-reason': 'non-mandatory-script-verify-flag (Stack size must be exactly one after execution)'}],
+            result_expected=[{'txid': nested_anchor_spend.txid_hex, 'allowed': False, 'reject-reason': 'mempool-script-verify-flag-failed (Stack size must be exactly one after execution)'}],
             rawtxs=[nested_anchor_spend.serialize().hex()],
             maxfeerate=0,
         )

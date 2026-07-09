@@ -198,8 +198,9 @@ class BytesPerSigOpTest(FreicoinTestFramework):
     def test_legacy_sigops_stdness(self):
         self.log.info("Test a transaction with too many legacy sigops in its inputs is non-standard.")
 
-        # Restart with the default settings
-        self.restart_node(0)
+        # Restart with the default settings (except -datacarrier, which is
+        # needed for the OP_RETURN outputs below)
+        self.restart_node(0, extra_args=['-datacarrier=1'])
 
         # Create a P2SH script with 15 sigops.
         _, dummy_pubkey = generate_keypair()
@@ -240,7 +241,8 @@ class BytesPerSigOpTest(FreicoinTestFramework):
             else:
                 bytespersigop_parameter = f"-bytespersigop={bytes_per_sigop}"
                 self.log.info(f"Test sigops limit setting {bytespersigop_parameter}...")
-                self.restart_node(0, extra_args=[bytespersigop_parameter])
+                # restart_node replaces extra_args, so re-add the datacarrier settings
+                self.restart_node(0, extra_args=[bytespersigop_parameter, '-datacarrier=1', '-datacarriersize=100000'])
 
             for num_sigops in (69, 101, 142, 183, 222):
                 self.test_sigops_limit(bytes_per_sigop, num_sigops)

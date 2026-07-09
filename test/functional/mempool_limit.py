@@ -368,7 +368,7 @@ class MempoolLimitTest(FreicoinTestFramework):
         # Should be a true CPFP: parent's feerate is just below mempool min feerate
         parent_feerate = mempoolmin_feerate - Decimal("0.0000001")  # 0.01 sats/vbyte below min feerate
         # Parent + child is above mempool minimum feerate
-        child_feerate = (worst_feerate_frcvb * 1000) - Decimal("0.000001")  # 0.1 sats/vbyte below worst feerate
+        child_feerate = (worst_feerate_frcvb * 1000) - Decimal("0.0000001")  # 0.01 sats/vbyte below worst feerate
         # However, when eviction is triggered, these transactions should be at the bottom.
         # This assertion assumes parent and child are the same size.
         miniwallet.rescan_utxos()

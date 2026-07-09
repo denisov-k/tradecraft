@@ -21,6 +21,7 @@ except ImportError:
     pass
 
 import re
+import concurrent.futures
 
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.descriptors import descsum_create
@@ -56,6 +57,36 @@ class WalletDescriptorTest(FreicoinTestFramework):
         wallet.importdescriptors([{"desc":descsum_create("wpk(tprv8ZgxMBicQKsPeuVhWwi6wuMQGfPKi9Li5GtX35jVNknACgqe3CY4g5xgkfDDJcmtF7o1QnxWDRYw4H5P26PXq7sbcUkEqeR4fg3Kxp2tigg/0h/0h/*h)"), "timestamp": "now", "active": True}])
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as thread:
             topup = thread.submit(wallet.keypoolrefill, newsize=1000)
+
+            # Then while the topup is running, we need to do something that will call
+            # ChainStateFlushed which will trigger a write to the db, hopefully at the
+            # same time that the topup still has an open db transaction.
+            self.nodes[0].cli.gettxoutsetinfo()
+            assert_equal(topup.result(), None)
+
+        wallet.unloadwallet()
+
+        # Check that everything was written
+        wallet_db = self.nodes[0].wallets_path / "concurrency" / self.wallet_data_filename
+        conn = sqlite3.connect(wallet_db)
+        with conn:
+            # Retrieve the bestblock_nomerkle record
+            bestblock_rec = conn.execute("SELECT value FROM main WHERE hex(key) = '1262657374626C6F636B5F6E6F6D65726B6C65'").fetchone()[0]
+            # Retrieve the number of descriptor cache records
+            # Since we store binary data, sqlite's comparison operators don't work everywhere
+            # so just retrieve all records and process them ourselves.
+            db_keys = conn.execute("SELECT key FROM main").fetchall()
+            cache_records = len([k[0] for k in db_keys if b"walletdescriptorcache" in k[0]])
+        conn.close()
+
+        assert_equal(bestblock_rec[5:37][::-1].hex(), self.nodes[0].getbestblockhash())
+        assert_equal(cache_records, 1000)
+
+    def test_parent_descriptors(self):
+        self.log.info("Check that parent_descs is the same for all RPCs and is normalized")
+        self.nodes[0].createwallet(wallet_name="parent_descs")
+        wallet = self.nodes[0].get_wallet_rpc("parent_descs")
+        default_wallet = self.nodes[0].get_wallet_rpc(self.default_wallet_name)
 
         addr = wallet.getnewaddress()
         parent_desc = wallet.getaddressinfo(addr)["parent_desc"]
@@ -99,6 +130,7 @@ class WalletDescriptorTest(FreicoinTestFramework):
 
         wallet.unloadwallet()
 
+
     def run_test(self):
         self.generate(self.nodes[0], COINBASE_MATURITY + 1)
 
@@ -122,8 +154,8 @@ class WalletDescriptorTest(FreicoinTestFramework):
         assert addr_info['desc'].startswith('pkh(')
         assert_equal(addr_info['hdkeypath'], 'm/44h/1h/0h/0/0')
 
-        addr = self.nodes[0].getnewaddress("", "bech32")
-        addr_info = self.nodes[0].getaddressinfo(addr)
+        addr = wallet.getnewaddress("", "bech32")
+        addr_info = wallet.getaddressinfo(addr)
         assert addr_info['desc'].startswith('wpk(')
         assert_equal(addr_info['hdkeypath'], 'm/84h/1h/0h/0/0')
 
@@ -133,8 +165,8 @@ class WalletDescriptorTest(FreicoinTestFramework):
         assert addr_info['desc'].startswith('pkh(')
         assert_equal(addr_info['hdkeypath'], 'm/44h/1h/0h/1/0')
 
-        addr = self.nodes[0].getrawchangeaddress("bech32")
-        addr_info = self.nodes[0].getaddressinfo(addr)
+        addr = wallet.getrawchangeaddress("bech32")
+        addr_info = wallet.getaddressinfo(addr)
         assert addr_info['desc'].startswith('wpk(')
         assert_equal(addr_info['hdkeypath'], 'm/84h/1h/0h/1/0')
 
@@ -265,6 +297,7 @@ class WalletDescriptorTest(FreicoinTestFramework):
         assert_raises_rpc_error(-4, "Unexpected legacy entry in descriptor wallet found.", self.nodes[0].loadwallet, "crashme")
 
         self.test_parent_descriptors()
+        self.test_concurrent_writes()
 
 if __name__ == '__main__':
     WalletDescriptorTest(__file__).main()

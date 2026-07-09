@@ -170,13 +170,18 @@ def create_empty_fork(node, fork_length=FORK_LENGTH):
     tip = int(node.getbestblockhash(), 16)
     height = node.getblockcount()
     block_time = node.getblock(node.getbestblockhash())['time'] + 1
+    # Freicoin: each block past the block-final activation point must contain
+    # a block-final transaction chaining off the prior one.
+    finaltx_prevout = get_final_tx_info(node)
 
     blocks = []
     for _ in range(fork_length):
         block = create_block(tip, create_coinbase(height + 1), block_time)
+        if finaltx_prevout:
+            finaltx_prevout = add_final_tx(finaltx_prevout, block)
         block.solve()
         blocks.append(block)
-        tip = block.sha256
+        tip = block.hash_int
         block_time += 1
         height += 1
 
