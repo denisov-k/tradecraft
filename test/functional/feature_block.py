@@ -1508,7 +1508,7 @@ class FullBlockTest(FreicoinTestFramework):
     def update_block(self, block_number, new_transactions, *, nTime=None):
         block = self.blocks[block_number]
         self.add_transactions_to_block(block, new_transactions)
-        old_hash_int = block.hash_int
+        old_sha256 = block.sha256
         if nTime is not None:
             block.nTime = nTime
         block.hashMerkleRoot = block.calc_merkle_root()
