@@ -85,34 +85,20 @@ class ToolWalletTest(FreicoinTestFramework):
 
     def get_expected_info_output(self, name="", transactions=0, keypool=2, address=0, imported_privs=0):
         wallet_name = self.default_wallet_name if name == "" else name
-        if self.options.descriptors:
-            output_types = 2  # p2pkh, segwit
-            return textwrap.dedent('''\
-                Wallet info
-                ===========
-                Name: %s
-                Format: sqlite
-                Descriptors: yes
-                Encrypted: no
-                HD (hd seed available): yes
-                Keypool Size: %d
-                Transactions: %d
-                Address Book: %d
-            ''' % (wallet_name, keypool * output_types, transactions, imported_privs * 2 + address))
-        else:
-            output_types = 2  # p2pkh, segwit. Legacy wallets do not support bech32m.
-            return textwrap.dedent('''\
-                Wallet info
-                ===========
-                Name: %s
-                Format: bdb
-                Descriptors: no
-                Encrypted: no
-                HD (hd seed available): yes
-                Keypool Size: %d
-                Transactions: %d
-                Address Book: %d
-            ''' % (wallet_name, keypool, transactions, (address + imported_privs) * output_types))
+        output_types = 2  # p2pkh, segwit
+        return textwrap.dedent('''\
+            Wallet info
+            ===========
+            Name: %s
+            Format: sqlite
+            Descriptors: yes
+            Encrypted: no
+            HD (hd seed available): yes
+            Keypool Size: %d
+            Transactions: %d
+            Address Book: %d
+        ''' % (wallet_name, keypool * output_types, transactions, imported_privs * 2 + address))
+
 
     def read_dump(self, filename):
         dump = OrderedDict()
@@ -270,13 +256,8 @@ class ToolWalletTest(FreicoinTestFramework):
         self.log.debug('Wallet file timestamp after calling getwalletinfo: {}'.format(timestamp_after))
 
         assert_equal(0, out['txcount'])
-        if not self.options.descriptors:
-            assert_equal(1000, out['keypoolsize'])
-            assert_equal(1000, out['keypoolsize_hd_internal'])
-            assert_equal(True, 'hdseedid' in out)
-        else:
-            assert_equal(2000, out['keypoolsize'])
-            assert_equal(2000, out['keypoolsize_hd_internal'])
+        assert_equal(2000, out['keypoolsize'])
+        assert_equal(2000, out['keypoolsize_hd_internal'])
 
         self.log_wallet_timestamp_comparison(timestamp_before, timestamp_after)
         assert_equal(timestamp_before, timestamp_after)
@@ -410,7 +391,7 @@ class ToolWalletTest(FreicoinTestFramework):
             Descriptors: yes
             Encrypted: no
             HD (hd seed available): yes
-            Keypool Size: {"4" if self.options.descriptors else "1"}
+            Keypool Size: 4
             Transactions: 4
             Address Book: 4
         ''')
@@ -474,65 +455,10 @@ class ToolWalletTest(FreicoinTestFramework):
     def test_no_create_legacy(self):
         self.log.info("Test that legacy wallets cannot be created")
 
-        self.start_node(0, extra_args=["-flushwallet=0"])
-        self.nodes[0].createwallet("unclean_lsn")
-        wallet = self.nodes[0].get_wallet_rpc("unclean_lsn")
-        # First unload and load normally to make sure everything is written
-        wallet.unloadwallet()
-        self.nodes[0].loadwallet("unclean_lsn")
-        # Next cause a bunch of writes by filling the keypool
-        wallet.keypoolrefill(wallet.getwalletinfo()["keypoolsize"] + 100)
-        # Lastly kill freicoind so that the LSNs don't get reset
-        self.nodes[0].process.kill()
-        self.nodes[0].wait_until_stopped(expected_ret_code=1 if platform.system() == "Windows" else -9)
-        assert self.nodes[0].is_node_stopped()
-
-        wallet_dump = self.nodes[0].datadir_path / "unclean_lsn.dump"
-        self.assert_raises_tool_error("LSNs are not reset, this database is not completely flushed. Please reopen then close the database with a version that has BDB support", "-wallet=unclean_lsn", f"-dumpfile={wallet_dump}", "dump")
-
-        # File can be dumped after reload it normally
-        self.start_node(0)
-        self.nodes[0].loadwallet("unclean_lsn")
-        self.stop_node(0)
-        self.assert_tool_output("The dumpfile may contain private keys. To ensure the safety of your Freicoin, do not share the dumpfile.\n", "-wallet=unclean_lsn", f"-dumpfile={wallet_dump}", "dump")
-
-    def test_compare_legacy_dump_with_framework_bdb_parser(self):
-        self.log.info("Verify that legacy wallet database dump matches the one from the test framework's BDB parser")
-        wallet_name = "bdb_ro_test"
-        self.start_node(0)
-        # add some really large labels (above twice the largest valid page size) to create BDB overflow pages
-        self.nodes[0].createwallet(wallet_name)
-        wallet_rpc = self.nodes[0].get_wallet_rpc(wallet_name)
-        generated_labels = {}
-        for i in range(10):
-            address = getnewdestination()[2]
-            large_label = ''.join([random.choice(string.ascii_letters) for _ in range(150000)])
-            wallet_rpc.setlabel(address, large_label)
-            generated_labels[address] = large_label
-        # fill the keypool to create BDB internal pages
-        wallet_rpc.keypoolrefill(1000)
-        self.stop_node(0)
-
-        wallet_dumpfile = self.nodes[0].datadir_path / "bdb_ro_test.dump"
-        self.assert_tool_output("The dumpfile may contain private keys. To ensure the safety of your Bitcoin, do not share the dumpfile.\n", "-wallet={}".format(wallet_name), "-dumpfile={}".format(wallet_dumpfile), "dump")
-
-        expected_dump = self.read_dump(wallet_dumpfile)
-        # remove extra entries from wallet tool dump that are not actual key/value pairs from the database
-        del expected_dump['BITCOIN_CORE_WALLET_DUMP']
-        del expected_dump['format']
-        del expected_dump['checksum']
-        bdb_ro_parser_dump_raw = dump_bdb_kv(self.nodes[0].wallets_path / wallet_name / "wallet.dat")
-        bdb_ro_parser_dump = OrderedDict()
-        assert any([len(bytes.fromhex(value)) >= 150000 for value in expected_dump.values()])
-        for key, value in sorted(bdb_ro_parser_dump_raw.items()):
-            bdb_ro_parser_dump[key.hex()] = value.hex()
-        assert_equal(bdb_ro_parser_dump, expected_dump)
-
-        # check that all labels were created with the correct address
-        for address, label in generated_labels.items():
-            key_bytes = b'\x04name' + ser_string(address.encode())
-            assert key_bytes in bdb_ro_parser_dump_raw
-            assert_equal(bdb_ro_parser_dump_raw[key_bytes], ser_string(label.encode()))
+        self.assert_raises_tool_error("Invalid parameter -legacy", "-wallet=legacy", "-legacy", "create")
+        assert not (self.nodes[0].wallets_path / "legacy").exists()
+        self.assert_raises_tool_error("Invalid parameter -descriptors", "-wallet=legacy", "-descriptors=false", "create")
+        assert not (self.nodes[0].wallets_path / "legacy").exists()
 
     def test_no_create_unnamed(self):
         self.log.info("Test that unnamed (default) wallets cannot be created")

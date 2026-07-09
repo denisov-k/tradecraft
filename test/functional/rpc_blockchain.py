@@ -224,7 +224,9 @@ class BlockchainTest(FreicoinTestFramework):
         assert_equal(gdi_result, {
           "hash": blockhash,
           "height": height,
-          "script_flags": ["CHECKLOCKTIMEVERIFY","CHECKSEQUENCEVERIFY","DERSIG","NULLDUMMY","P2SH","TAPROOT","WITNESS"],
+          # Freicoin: CLTV/CSV are unconditional and NULLDUMMY is MULTISIG_HINT
+          # (not block-gated); base flags are P2SH|WITNESS|TAPROOT + buried DERSIG.
+          "script_flags": ["DERSIG","P2SH","TAPROOT","WITNESS"],
           "deployments": {
             'bip34': {'type': 'buried', 'active': True, 'height': 2},
             'bip66': {'type': 'buried', 'active': True, 'height': 3},

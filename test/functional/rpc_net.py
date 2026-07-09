@@ -360,7 +360,7 @@ class NetTest(FreicoinTestFramework):
         assert "unknown command: addpeeraddress" not in node.help("addpeeraddress")
 
         self.log.debug("Test that adding an empty address fails")
-        assert_equal(node.addpeeraddress(address="", port=8639), {"success": False})
+        assert_raises_rpc_error(-30, "Invalid IP address", node.addpeeraddress, address="", port=8639)
         assert_equal(node.getnodeaddresses(count=0), [])
 
         self.log.debug("Test that adding a non-IP/hostname fails (no DNS lookup allowed)")
