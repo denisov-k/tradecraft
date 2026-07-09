@@ -1,18 +1,7 @@
 #!/usr/bin/env python3
-# Copyright (c) 2022- The Bitcoin Core developers
-# Copyright (c) 2010-2024 The Freicoin Developers
-#
-# This program is free software: you can redistribute it and/or modify it under
-# the terms of version 3 of the GNU Affero General Public License as published
-# by the Free Software Foundation.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
-# details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Copyright (c) 2022-present The Bitcoin Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """
 Test stalling logic during IBD
 """
@@ -20,24 +9,24 @@ Test stalling logic during IBD
 import time
 
 from test_framework.blocktools import (
+        add_final_tx,
         create_block,
         create_coinbase,
-        add_final_tx,
 )
 from test_framework.messages import (
         CTxOut,
         MSG_BLOCK,
         MSG_TYPE_MASK,
 )
+from test_framework.script import (
+        CScript,
+        OP_TRUE,
+)
 from test_framework.p2p import (
         CBlockHeader,
         msg_block,
         msg_headers,
         P2PDataStore,
-)
-from test_framework.script import (
-        CScript,
-        OP_TRUE,
 )
 from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
@@ -76,8 +65,10 @@ class P2PIBDStallingTest(FreicoinTestFramework):
         block_time = node.getblock(node.getbestblockhash())['time'] + 1
         self.log.info("Prepare blocks without sending them to the node")
         block_dict = {}
+        final_tx = None
         for _ in range(NUM_BLOCKS):
             block = create_block(tip, create_coinbase(height), block_time)
+            # Freicoin: seed and chain the block-final transaction
             if height == 1:
                 block.vtx[0].vout.insert(0, CTxOut(0, CScript([OP_TRUE])))
                 block.vtx[0].rehash()
@@ -92,13 +83,13 @@ class P2PIBDStallingTest(FreicoinTestFramework):
                 final_tx = add_final_tx(final_tx, block)
             block.solve()
             blocks.append(block)
-            tip = block.sha256
+            tip = block.hash_int
             block_time += 1
             height += 1
-            block_dict[tip] = block
+            block_dict[block.hash_int] = block
         stall_index = 0
         second_stall_index = 500
-        stall_blocks = [blocks[stall_index].sha256, blocks[second_stall_index].sha256]
+        stall_blocks = [blocks[stall_index].hash_int, blocks[second_stall_index].hash_int]
 
         headers_message = msg_headers()
         headers_message.headers = [CBlockHeader(b) for b in blocks[:NUM_BLOCKS-1]]
@@ -112,10 +103,8 @@ class P2PIBDStallingTest(FreicoinTestFramework):
             peers[-1].block_store = block_dict
             peers[-1].send_and_ping(headers_message)
 
-        # Need to wait until 1023 blocks are received - the magic total bytes number is a workaround in lack of an rpc
-        # returning the number of downloaded (but not connected) blocks.
-        bytes_recv = 236913 if not self.options.v2transport else 233844
-        self.wait_until(lambda: self.total_bytes_recv_for_blocks() == bytes_recv)
+        # Wait until all blocks are received (except for the stall blocks), so that no other blocks are in flight.
+        self.wait_until(lambda: sum(len(peer['inflight']) for peer in node.getpeerinfo()) == len(stall_blocks))
 
         self.all_sync_send_with_ping(peers)
         # If there was a peer marked for stalling, it would get disconnected
