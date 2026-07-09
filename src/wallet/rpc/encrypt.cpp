@@ -1,6 +1,17 @@
-// Copyright (c) 2011-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2011-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <rpc/util.h>
 #include <scheduler.h>
@@ -15,7 +26,7 @@ RPCHelpMan walletpassphrase()
     return RPCHelpMan{
         "walletpassphrase",
         "Stores the wallet decryption key in memory for 'timeout' seconds.\n"
-                "This is needed prior to performing transactions related to private keys such as sending bitcoins\n"
+                "This is needed prior to performing transactions related to private keys such as sending freicoins\n"
             "\nNote:\n"
             "Issuing the walletpassphrase command while the wallet is already unlocked will set a new unlock\n"
             "time that overrides the old one.\n",
@@ -77,7 +88,7 @@ RPCHelpMan walletpassphrase()
             } else {
                 throw JSONRPCError(RPC_WALLET_PASSPHRASE_INCORRECT, "Error: The wallet passphrase entered is incorrect. "
                                                                     "It contains a null character (ie - a zero byte). "
-                                                                    "If the passphrase was set with a version of this software prior to 25.0, "
+                                                                    "If the passphrase was set with a version of this software prior to v25, "
                                                                     "please try again with only the characters up to — but not including — "
                                                                     "the first null character. If this is successful, please set a new "
                                                                     "passphrase to avoid this issue in the future.");
@@ -163,7 +174,7 @@ RPCHelpMan walletpassphrasechange()
         } else {
             throw JSONRPCError(RPC_WALLET_PASSPHRASE_INCORRECT, "Error: The old wallet passphrase entered is incorrect. "
                                                                 "It contains a null character (ie - a zero byte). "
-                                                                "If the old passphrase was set with a version of this software prior to 25.0, "
+                                                                "If the old passphrase was set with a version of this software prior to v25, "
                                                                 "please try again with only the characters up to — but not including — "
                                                                 "the first null character.");
         }
@@ -238,7 +249,7 @@ RPCHelpMan encryptwallet()
                 RPCExamples{
             "\nEncrypt your wallet\n"
             + HelpExampleCli("encryptwallet", "\"my pass phrase\"") +
-            "\nNow set the passphrase to use the wallet, such as for signing or sending bitcoin\n"
+            "\nNow set the passphrase to use the wallet, such as for signing or sending freicoin\n"
             + HelpExampleCli("walletpassphrase", "\"my pass phrase\"") +
             "\nNow we can do something like sign\n"
             + HelpExampleCli("signmessage", "\"address\" \"test message\"") +

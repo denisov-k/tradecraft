@@ -1,6 +1,17 @@
-// Copyright (c) 2020-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2020-2021 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <key.h>
 #include <key_io.h>
@@ -23,18 +34,20 @@ BOOST_AUTO_TEST_CASE(DescriptorScriptPubKeyManTests)
     auto key_scriptpath = GenerateRandomKey();
 
     // Verify that a SigningProvider for a pubkey is only returned if its corresponding private key is available
+    // (Freicoin: expressed with wpk() descriptors; upstream uses tr(), which Freicoin removed.)
     auto key_internal = GenerateRandomKey();
-    std::string desc_str = "tr(" + EncodeSecret(key_internal) + ",pk(" + HexStr(key_scriptpath.GetPubKey()) + "))";
-    auto spk_man1 = CreateDescriptor(keystore, desc_str, true);
+    std::string desc_str = "wpk(" + EncodeSecret(key_internal) + ")";
+    auto spk_man1 = dynamic_cast<DescriptorScriptPubKeyMan*>(CreateDescriptor(keystore, desc_str, true));
     BOOST_CHECK(spk_man1 != nullptr);
     auto signprov_keypath_spendable = spk_man1->GetSigningProvider(key_internal.GetPubKey());
     BOOST_CHECK(signprov_keypath_spendable != nullptr);
 
-    desc_str = "tr(" + HexStr(XOnlyPubKey::NUMS_H) + ",pk(" + HexStr(key_scriptpath.GetPubKey()) + "))";
-    auto spk_man2 = CreateDescriptor(keystore, desc_str, true);
+    // A pubkey-only descriptor provides no private key to sign with.
+    desc_str = "wpk(" + HexStr(key_scriptpath.GetPubKey()) + ")";
+    auto spk_man2 = dynamic_cast<DescriptorScriptPubKeyMan*>(CreateDescriptor(keystore, desc_str, true));
     BOOST_CHECK(spk_man2 != nullptr);
-    auto signprov_keypath_nums_h = spk_man2->GetSigningProvider(XOnlyPubKey::NUMS_H.GetEvenCorrespondingCPubKey());
-    BOOST_CHECK(signprov_keypath_nums_h == nullptr);
+    auto signprov_keypath_watchonly = spk_man2->GetSigningProvider(key_scriptpath.GetPubKey());
+    BOOST_CHECK(signprov_keypath_watchonly == nullptr);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

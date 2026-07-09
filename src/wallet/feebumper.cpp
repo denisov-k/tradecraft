@@ -1,6 +1,17 @@
-// Copyright (c) 2017-present The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2017-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2024 The Freicoin Developers
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of version 3 of the GNU Affero General Public License as published
+// by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <common/system.h>
 #include <consensus/validation.h>
@@ -119,7 +130,7 @@ static feebumper::Result CheckFeeRate(const CWallet& wallet, const CMutableTrans
 static CFeeRate EstimateFeeRate(const CWallet& wallet, const CWalletTx& wtx, const CAmount old_fee, const CCoinControl& coin_control)
 {
     // Get the fee rate of the original transaction. This is calculated from
-    // the tx fee/vsize, so it may have been rounded down. Add 1 satoshi to the
+    // the tx fee/vsize, so it may have been rounded down. Add 1 kria to the
     // result.
     int64_t txSize = GetVirtualTransactionSize(*(wtx.tx));
     CFeeRate feerate(old_fee, txSize);
@@ -187,7 +198,7 @@ Result CreateRateBumpTransaction(CWallet& wallet, const Txid& txid, const CCoinC
     // While we're here, calculate the input amount
     std::map<COutPoint, Coin> coins;
     CAmount input_value = 0;
-    std::vector<CTxOut> spent_outputs;
+    std::vector<SpentOutput> spent_outputs;
     for (const CTxIn& txin : wtx.tx->vin) {
         coins[txin.prevout]; // Create empty map entry keyed by prevout.
     }
@@ -200,10 +211,10 @@ Result CreateRateBumpTransaction(CWallet& wallet, const Txid& txid, const CCoinC
         }
         PreselectedInput& preset_txin = new_coin_control.Select(txin.prevout);
         if (!wallet.IsMine(txin.prevout)) {
-            preset_txin.SetTxOut(coin.out);
+            preset_txin.SetSpentOutput(coin.out, coin.refheight);
         }
-        input_value += coin.out.nValue;
-        spent_outputs.push_back(coin.out);
+        input_value += coin.GetPresentValue(wtx.tx->lock_height);
+        spent_outputs.emplace_back(coin.out, coin.refheight);
     }
 
     // Figure out if we need to compute the input weight, and do so if necessary
@@ -221,7 +232,7 @@ Result CreateRateBumpTransaction(CWallet& wallet, const Txid& txid, const CCoinC
             // In order to do this, we verify the script with a special SignatureChecker which
             // will observe the signatures verified and record their sizes.
             SignatureWeights weights;
-            TransactionSignatureChecker tx_checker(wtx.tx.get(), i, coin.out.nValue, txdata, MissingDataBehavior::FAIL);
+            TransactionSignatureChecker tx_checker(wtx.tx.get(), i, coin.out.GetReferenceValue(), coin.refheight, txdata, MissingDataBehavior::FAIL);
             SignatureWeightChecker size_checker(weights, tx_checker);
             VerifyScript(txin.scriptSig, coin.out.scriptPubKey, &txin.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, size_checker);
             // Add the difference between max and current to input_weight so that it represents the largest the input could be
@@ -238,7 +249,7 @@ Result CreateRateBumpTransaction(CWallet& wallet, const Txid& txid, const CCoinC
     // Calculate the old output amount.
     CAmount output_value = 0;
     for (const auto& old_output : wtx.tx->vout) {
-        output_value += old_output.nValue;
+        output_value += old_output.GetReferenceValue();
     }
 
     old_fee = input_value - output_value;
@@ -256,10 +267,10 @@ Result CreateRateBumpTransaction(CWallet& wallet, const Txid& txid, const CCoinC
         if (original_change_index.has_value() ?  original_change_index.value() == i : OutputIsChange(wallet, output)) {
             new_coin_control.destChange = dest;
         } else {
-            CRecipient recipient = {dest, output.nValue, false};
+            CRecipient recipient = {dest, output.GetReferenceValue(), false};
             recipients.push_back(recipient);
         }
-        new_outputs_value += output.nValue;
+        new_outputs_value += output.GetReferenceValue();
     }
 
     // If no recipients, means that we are sending coins to a change address
@@ -311,7 +322,7 @@ Result CreateRateBumpTransaction(CWallet& wallet, const Txid& txid, const CCoinC
     // We cannot source new unconfirmed inputs(bip125 rule 2)
     new_coin_control.m_min_depth = 1;
 
-    auto res = CreateTransaction(wallet, recipients, /*change_pos=*/std::nullopt, new_coin_control, false);
+    auto res = CreateTransaction(wallet, recipients, wtx.tx->lock_height, /*change_pos=*/std::nullopt, new_coin_control, false);
     if (!res) {
         errors.emplace_back(Untranslated("Unable to create transaction.") + Untranslated(" ") + util::ErrorString(res));
         return Result::WALLET_ERROR;
@@ -331,16 +342,16 @@ bool SignTransaction(CWallet& wallet, CMutableTransaction& mtx) {
     LOCK(wallet.cs_wallet);
 
     if (wallet.IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER)) {
-        // Make a blank psbt
-        PartiallySignedTransaction psbtx(mtx);
+        // Make a blank pst
+        PartiallySignedTransaction pstx(mtx);
 
         // First fill transaction with our data without signing,
         // so external signers are not asked to sign more than once.
         bool complete;
-        wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/false, /*bip32derivs=*/true);
-        auto err{wallet.FillPSBT(psbtx, complete, std::nullopt, /*sign=*/true, /*bip32derivs=*/false)};
+        wallet.FillPST(pstx, complete, std::nullopt, /*sign=*/false, /*bip32derivs=*/true);
+        auto err{wallet.FillPST(pstx, complete, std::nullopt, /*sign=*/true, /*bip32derivs=*/false)};
         if (err) return false;
-        complete = FinalizeAndExtractPSBT(psbtx, mtx);
+        complete = FinalizeAndExtractPST(pstx, mtx);
         return complete;
     } else {
         return wallet.SignTransaction(mtx);

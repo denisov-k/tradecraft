@@ -13,6 +13,7 @@ add_library(bitcoin_wallet STATIC EXCLUDE_FROM_ALL
   external_signer_scriptpubkeyman.cpp
   feebumper.cpp
   fees.cpp
+  miner.cpp  # Freicoin: wallet-side coin selection for the block-final tx
   interfaces.cpp
   load.cpp
   migrate.cpp
