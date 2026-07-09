@@ -13,7 +13,7 @@ from test_framework.mempool_util import (
 from test_framework.messages import (
     COIN,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.wallet import (
     MiniWallet,
 )
@@ -39,7 +39,7 @@ def cleanup(func):
             self.wallet.rescan_utxos(include_mempool=True)
     return wrapper
 
-class MempoolClusterTest(BitcoinTestFramework):
+class MempoolClusterTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
