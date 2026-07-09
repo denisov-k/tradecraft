@@ -3,6 +3,15 @@
 #
 # https://github.com/google/sanitizers/wiki/ThreadSanitizerSuppressions
 
+# race (TODO fix)
+race:LoadWallet
+race:WalletBatch::WriteHDChain
+race:BerkeleyBatch
+race:BerkeleyDatabase
+race:DatabaseBatch
+race:zmq::*
+race:freicoin-qt
+
 # deadlock (TODO fix)
 # To reproduce, see:
 # https://github.com/bitcoin/bitcoin/issues/19303#issuecomment-1514926359

@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test generate* RPCs."""
 
 from concurrent.futures import ThreadPoolExecutor
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.wallet import MiniWallet
 from test_framework.util import (
     assert_equal,
@@ -14,7 +25,7 @@ from test_framework.util import (
 )
 
 
-class RPCGenerateTest(BitcoinTestFramework):
+class RPCGenerateTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -40,21 +51,21 @@ class RPCGenerateTest(BitcoinTestFramework):
         self.log.info('Generate an empty block to address')
         hash = self.generateblock(node, output=address, transactions=[])['hash']
         block = node.getblock(blockhash=hash, verbose=2)
-        assert_equal(len(block['tx']), 1)
+        assert_equal(len(block['tx']), 2)
         assert_equal(block['tx'][0]['vout'][0]['scriptPubKey']['address'], address)
 
         self.log.info('Generate an empty block to a descriptor')
         hash = self.generateblock(node, 'addr(' + address + ')', [])['hash']
         block = node.getblock(blockhash=hash, verbosity=2)
-        assert_equal(len(block['tx']), 1)
+        assert_equal(len(block['tx']), 2)
         assert_equal(block['tx'][0]['vout'][0]['scriptPubKey']['address'], address)
 
         self.log.info('Generate an empty block to a combo descriptor with compressed pubkey')
         combo_key = '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'
-        combo_address = 'bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080'
+        combo_address = 'fcrt1q9c2m4uf60087l25c9rkczngmdz6a94ppmwwhau'
         hash = self.generateblock(node, 'combo(' + combo_key + ')', [])['hash']
         block = node.getblock(hash, 2)
-        assert_equal(len(block['tx']), 1)
+        assert_equal(len(block['tx']), 2)
         assert_equal(block['tx'][0]['vout'][0]['scriptPubKey']['address'], combo_address)
 
         self.log.info('Generate an empty block to a combo descriptor with uncompressed pubkey')
@@ -62,7 +73,7 @@ class RPCGenerateTest(BitcoinTestFramework):
         combo_address = 'mkc9STceoCcjoXEXe6cm66iJbmjM6zR9B2'
         hash = self.generateblock(node, 'combo(' + combo_key + ')', [])['hash']
         block = node.getblock(hash, 2)
-        assert_equal(len(block['tx']), 1)
+        assert_equal(len(block['tx']), 2)
         assert_equal(block['tx'][0]['vout'][0]['scriptPubKey']['address'], combo_address)
 
         # Generate some extra mempool transactions to verify they don't get mined
@@ -73,7 +84,7 @@ class RPCGenerateTest(BitcoinTestFramework):
         txid = miniwallet.send_self_transfer(from_node=node)['txid']
         hash = self.generateblock(node, address, [txid])['hash']
         block = node.getblock(hash, 1)
-        assert_equal(len(block['tx']), 2)
+        assert_equal(len(block['tx']), 3)
         assert_equal(block['tx'][1], txid)
 
         self.log.info('Generate block with raw tx')
@@ -81,7 +92,7 @@ class RPCGenerateTest(BitcoinTestFramework):
         hash = self.generateblock(node, address, [rawtx])['hash']
 
         block = node.getblock(hash, 1)
-        assert_equal(len(block['tx']), 2)
+        assert_equal(len(block['tx']), 3)
         txid = block['tx'][1]
         assert_equal(node.getrawtransaction(txid=txid, verbose=False, blockhash=hash), rawtx)
 

@@ -7,10 +7,10 @@
 import shlex
 import subprocess
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 
 
-class BenchSanityCheck(BitcoinTestFramework):
+class BenchSanityCheck(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 0  # No node/datadir needed
 

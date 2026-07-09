@@ -33,7 +33,7 @@ from test_framework.socks5 import (
     start_socks5_server,
 )
 from test_framework.test_framework import (
-    BitcoinTestFramework,
+    FreicoinTestFramework,
 )
 from test_framework.util import (
     assert_equal,
@@ -49,7 +49,7 @@ from test_framework.wallet import (
 NUM_PRIVATE_BROADCAST_PER_TX = 3
 
 
-class P2PPrivateBroadcast(BitcoinTestFramework):
+class P2PPrivateBroadcast(FreicoinTestFramework):
     def set_test_params(self):
         self.disable_autoconnect = False
         self.num_nodes = 2
@@ -249,7 +249,9 @@ class P2PPrivateBroadcast(BitcoinTestFramework):
 
         self.log.info("Sending a malleated transaction with an invalid witness via RPC")
         malleated_invalid = malleate_tx_to_invalid_witness(txs[0])
-        assert_raises_rpc_error(-26, "mempool-script-verify-flag-failed",
+        # Freicoin: a single-element garbage witness on a MAST (witness v0) program
+        # is rejected as non-standard before script execution, unlike bitcoin P2WPKH.
+        assert_raises_rpc_error(-26, "bad-witness-nonstandard",
                                 tx_originator.sendrawtransaction,
                                 hexstring=malleated_invalid.serialize_with_witness().hex(),
                                 maxfeerate=0.1)

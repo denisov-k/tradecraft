@@ -1,15 +1,26 @@
 #!/usr/bin/env python3
-# Copyright (c) 2018-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2018-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the wallet balance RPC methods."""
 from decimal import Decimal
 import time
 
-from test_framework.address import ADDRESS_BCRT1_UNSPENDABLE as ADDRESS_WATCHONLY
-from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.descriptors import descsum_create
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.address import ADDRESS_FCRT1_UNSPENDABLE as ADDRESS_WATCHONLY
+from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_is_hash_string,
@@ -29,7 +40,7 @@ def create_transactions(node, address, amt, fees):
     ins_total = 0
     for utxo in utxos:
         inputs.append({"txid": utxo["txid"], "vout": utxo["vout"]})
-        ins_total += utxo['amount']
+        ins_total += utxo['value']
         if ins_total >= amt + max(fees):
             break
     # make sure there was enough utxos
@@ -41,14 +52,17 @@ def create_transactions(node, address, amt, fees):
         # prevent 0 change output
         if ins_total > amt + fee:
             outputs[node.getrawchangeaddress()] = ins_total - amt - fee
-        raw_tx = node.createrawtransaction(inputs, outputs, 0, True)
+        raw_tx = node.createrawtransaction(inputs, outputs, 0, -1, True)
         raw_tx = node.signrawtransactionwithwallet(raw_tx)
         assert_equal(raw_tx['complete'], True)
         txs.append(raw_tx)
 
     return txs
 
-class WalletTest(BitcoinTestFramework):
+class WalletTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.num_nodes = 2
         self.setup_clean_chain = True
@@ -87,7 +101,7 @@ class WalletTest(BitcoinTestFramework):
         assert_equal(self.nodes[0].getbalance("*", 1, True), 50)
         assert_equal(self.nodes[1].getbalance(minconf=0), 50)
 
-        # Send 40 BTC from 0 to 1 and 60 BTC from 1 to 0.
+        # Send 40 FRC from 0 to 1 and 60 FRC from 1 to 0.
         txs = create_transactions(self.nodes[0], self.nodes[1].getnewaddress(), 40, [Decimal('0.01')])
         self.nodes[0].sendrawtransaction(txs[0]['hex'])
         self.nodes[1].sendrawtransaction(txs[0]['hex'])  # sending on both nodes is faster than waiting for propagation
@@ -137,7 +151,7 @@ class WalletTest(BitcoinTestFramework):
         # 2) Sent 10 from node B to node A with fee 0.01
         #
         # Then our node would report a confirmed balance of 40 + 50 - 10 = 80
-        # BTC, which is more than would be available if transaction 1 were
+        # FRC, which is more than would be available if transaction 1 were
         # replaced.
 
 
@@ -285,10 +299,10 @@ class WalletTest(BitcoinTestFramework):
 
         import_key1 = get_generate_key()
         import_key2 = get_generate_key()
-        wallet.importdescriptors([{"desc": descsum_create(f"wpkh({import_key1.privkey})"), "timestamp": "now"}])
+        wallet.importdescriptors([{"desc": descsum_create(f"wpk({import_key1.privkey})"), "timestamp": "now"}])
 
         amount = 15
-        default.send([{import_key1.p2wpkh_addr: amount},{import_key2.p2wpkh_addr: amount}])
+        default.send([{import_key1.p2wpk_addr: amount},{import_key2.p2wpk_addr: amount}])
         self.generate(self.nodes[0], 1)
         # Mock the time forward by 1 day so that "now" will exclude the block we just mined
         self.nodes[0].setmocktime(int(time.time()) + 86400)
@@ -299,7 +313,7 @@ class WalletTest(BitcoinTestFramework):
         assert_equal(balances["mine"]["trusted"], amount)
 
         # Don't rescan to make sure that the import updates the wallet txos
-        wallet.importdescriptors([{"desc": descsum_create(f"wpkh({import_key2.privkey})"), "timestamp": "now"}])
+        wallet.importdescriptors([{"desc": descsum_create(f"wpk({import_key2.privkey})"), "timestamp": "now"}])
         balances = wallet.getbalances()
         assert_equal(balances["mine"]["trusted"], amount * 2)
 

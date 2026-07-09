@@ -22,6 +22,7 @@ def run_testshell_doc_example(functional_tests_dir):
     sys.path.insert(0, functional_tests_dir)
     from test_framework.test_shell import TestShell
     from test_framework.util import assert_equal
+    from test_framework.wallet import time_adjust_value_forward
 
     test = TestShell().setup(num_nodes=2, setup_clean_chain=True)
     try:
@@ -40,7 +41,11 @@ def run_testshell_doc_example(functional_tests_dir):
             assert_equal(len(res), 101)
             test.sync_blocks()
             assert_equal(test.nodes[1].getblockchaininfo()["blocks"], 101)
-            assert_equal(test.nodes[0].getbalance(), Decimal('50.0'))
+            # In Freicoin the matured block-1 coinbase is subject to
+            # demurrage, so the balance is the demurrage-adjusted present
+            # value of the 50 FRC subsidy rather than its face value.
+            expected_balance = Decimal(time_adjust_value_forward(50 * 100_000_000, 101)) / 100_000_000
+            assert_equal(test.nodes[0].getbalance(), expected_balance)
             test.nodes[0].log.info("Successfully mined regtest chain!")
     finally:
         test.shutdown()

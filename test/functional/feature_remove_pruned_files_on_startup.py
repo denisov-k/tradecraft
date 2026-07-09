@@ -1,15 +1,26 @@
 #!/usr/bin/env python3
-# Copyright (c) 2022-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Tests around pruning rev and blk files on startup."""
+# Copyright (c) 2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Test removing undeleted pruned blk files on startup."""
 
 import platform
-from test_framework.test_framework import BitcoinTestFramework
+import os
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import assert_equal
 
-
-class FeatureRemovePrunedFilesOnStartupTest(BitcoinTestFramework):
+class FeatureRemovePrunedFilesOnStartupTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [["-fastprune", "-prune=1"]]
@@ -61,7 +72,9 @@ class FeatureRemovePrunedFilesOnStartupTest(BitcoinTestFramework):
             ]
             return sorted(ls)
 
-        assert_equal(len(ls_files()), 4)
+        # Freicoin blocks carry a block-final tx, so 800 blocks span one more
+        # -fastprune file pair than upstream (files 2-4 survive the prune).
+        assert_equal(len(ls_files()), 6)
         self.restart_node(0, extra_args=self.extra_args[0] + ["-reindex"])
         assert_equal(self.nodes[0].getblockcount(), 0)
         self.stop_node(0)  # Stop node to flush the two newly created files

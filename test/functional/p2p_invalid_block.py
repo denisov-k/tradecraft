@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2015-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2015-2021 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test node responses to invalid blocks.
 
 In this test we connect to one node over p2p, and test block requests:
@@ -20,18 +31,17 @@ from test_framework.blocktools import (
     create_block,
     create_coinbase,
     create_tx_with_script,
+    get_final_tx_info,
+    add_final_tx,
 )
 from test_framework.messages import COIN
 from test_framework.p2p import P2PDataStore
 from test_framework.script import OP_TRUE
-from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import (
-    assert_equal,
-    assert_not_equal,
-)
+from test_framework.test_framework import FreicoinTestFramework
+from test_framework.util import assert_equal, assert_not_equal
 
 
-class InvalidBlockRequestTest(BitcoinTestFramework):
+class InvalidBlockRequestTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
@@ -42,6 +52,9 @@ class InvalidBlockRequestTest(BitcoinTestFramework):
         # Add p2p connection to node0
         node = self.nodes[0]  # convenience reference to the node
         peer = node.add_p2p_connection(P2PDataStore())
+
+        # Let freicoind handle the block-final initial output logic
+        self.generate(self.nodes[0], 1)
 
         best_block = node.getblock(node.getbestblockhash())
         tip = int(node.getbestblockhash(), 16)
@@ -63,6 +76,7 @@ class InvalidBlockRequestTest(BitcoinTestFramework):
         tip = int(node.getbestblockhash(), 16)
         height = best_block["height"] + 1
         block_time = best_block["time"] + 1
+        final_tx = get_final_tx_info(node)
 
         # Use merkle-root malleability to generate an invalid block with
         # same blockheader (CVE-2012-2459).
@@ -74,14 +88,15 @@ class InvalidBlockRequestTest(BitcoinTestFramework):
 
         tx1 = create_tx_with_script(block1.vtx[0], 0, script_sig=bytes([OP_TRUE]), amount=50 * COIN)
         tx2 = create_tx_with_script(tx1, 0, script_sig=bytes([OP_TRUE]), amount=50 * COIN)
-        block2 = create_block(tip, create_coinbase(height), block_time, txlist=[tx1, tx2])
+        block2 = create_block(tip, create_coinbase(height), block_time, txlist=[tx1])
         block_time += 1
+        add_final_tx(final_tx, block2)
         block2.solve()
         orig_hash = block2.hash_int
         block2_orig = copy.deepcopy(block2)
 
         # Mutate block 2
-        block2.vtx.append(tx2)
+        block2.vtx.append(block2.vtx[-1])
         assert_equal(block2.hashMerkleRoot, block2.calc_merkle_root())
         assert_equal(orig_hash, block2.hash_int)
         assert_not_equal(block2_orig.vtx, block2.vtx)
@@ -92,7 +107,8 @@ class InvalidBlockRequestTest(BitcoinTestFramework):
         self.log.info("Test duplicate input block.")
 
         block2_dup = copy.deepcopy(block2_orig)
-        block2_dup.vtx[2].vin.append(block2_dup.vtx[2].vin[0])
+        block2_dup.vtx[1].vin.append(block2_dup.vtx[1].vin[0])
+        block2_dup.vtx[1].rehash()
         block2_dup.hashMerkleRoot = block2_dup.calc_merkle_root()
         block2_dup.solve()
         peer.send_blocks_and_test([block2_dup], node, success=False, reject_reason='bad-txns-inputs-duplicate')
@@ -101,6 +117,7 @@ class InvalidBlockRequestTest(BitcoinTestFramework):
 
         block3 = create_block(tip, create_coinbase(height, nValue=100), block_time)
         block_time += 1
+        final_tx = add_final_tx(final_tx, block3)
         block3.solve()
 
         peer.send_blocks_and_test([block3], node, success=False, reject_reason='bad-cb-amount')
@@ -122,6 +139,7 @@ class InvalidBlockRequestTest(BitcoinTestFramework):
         tx3 = create_tx_with_script(tx2, 0, script_sig=bytes([OP_TRUE]), amount=50 * COIN)
         tx3.vin.append(tx3.vin[0])  # Duplicates input
         block4 = create_block(tip, create_coinbase(height), block_time, txlist=[tx3])
+        add_final_tx(final_tx, block4)
         block4.solve()
         self.log.info("Test inflation by duplicating input")
         peer.send_blocks_and_test([block4], node, success=False,  reject_reason='bad-txns-inputs-duplicate')
@@ -131,6 +149,7 @@ class InvalidBlockRequestTest(BitcoinTestFramework):
         node.setmocktime(t)
         # Set block time +1 second past max future validity
         block = create_block(tip, create_coinbase(height), t + MAX_FUTURE_BLOCK_TIME + 1)
+        final_tx = add_final_tx(final_tx, block)
         block.solve()
         # Need force_send because the block will get rejected without a getdata otherwise
         peer.send_blocks_and_test([block], node, force_send=True, success=False, reject_reason='time-too-new')

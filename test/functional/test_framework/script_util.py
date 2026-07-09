@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2019-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2019-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Useful Script constants and utils."""
 import unittest
 
@@ -19,9 +30,36 @@ from test_framework.messages import (
 from test_framework.script import (
     CScript,
     OP_0,
+    OP_1NEGATE,
     OP_1,
+    OP_2,
+    OP_3,
+    OP_4,
+    OP_5,
+    OP_6,
+    OP_7,
+    OP_8,
+    OP_9,
+    OP_10,
+    OP_11,
+    OP_12,
+    OP_13,
+    OP_14,
     OP_15,
     OP_16,
+    OP_NOP,
+    OP_DEPTH,
+    OP_CODESEPARATOR,
+    OP_NOP1,
+    OP_CHECKLOCKTIMEVERIFY,
+    OP_CHECKSEQUENCEVERIFY,
+    OP_MERKLEBRANCHVERIFY,
+    OP_NOP5,
+    OP_NOP6,
+    OP_NOP7,
+    OP_NOP8,
+    OP_NOP9,
+    OP_NOP10,
     OP_CHECKMULTISIG,
     OP_CHECKSIG,
     OP_DUP,
@@ -34,6 +72,8 @@ from test_framework.script import (
     OP_RETURN,
     OP_TRUE,
     hash160,
+    hash256,
+    ripemd160,
 )
 
 from test_framework.util import (
@@ -53,23 +93,22 @@ MAX_STD_P2SH_SIGOPS = 15
 # input (blank, empty scriptSig), and with an output omitting the scriptPubKey,
 # we get to a minimum size of 60 bytes:
 #
-# Tx Skeleton: 4 [Version] + 1 [InCount] + 1 [OutCount] + 4 [LockTime] = 10 bytes
+# Tx Skeleton: 4 [Version] + 1 [InCount] + 1 [OutCount] + 4 [LockTime] + 4 [LockHeight] = 14 bytes
 # Blank Input: 32 [PrevTxHash] + 4 [Index] + 1 [scriptSigLen] + 4 [SeqNo] = 41 bytes
 # Output:      8 [Amount] + 1 [scriptPubKeyLen] = 9 bytes
 #
 # Hence, the scriptPubKey of the single output has to have a size of at
-# least 5 bytes.
+# least 1 byte.
 MIN_STANDARD_TX_NONWITNESS_SIZE = 65
-MIN_PADDING = MIN_STANDARD_TX_NONWITNESS_SIZE - 10 - 41 - 9
-assert MIN_PADDING == 5
+MIN_PADDING = MIN_STANDARD_TX_NONWITNESS_SIZE - 14 - 41 - 9
+assert MIN_PADDING == 1
 
 # This script cannot be spent, allowing dust output values under
 # standardness checks
 DUMMY_MIN_OP_RETURN_SCRIPT = CScript([OP_RETURN] + ([OP_0] * (MIN_PADDING - 1)))
 assert len(DUMMY_MIN_OP_RETURN_SCRIPT) == MIN_PADDING
 
-PAY_TO_ANCHOR = CScript([OP_1, bytes.fromhex("4e73")])
-ANCHOR_ADDRESS = "bcrt1pfeesnyr2tx"
+PAY_TO_ANCHOR = CScript([OP_1NEGATE, bytes.fromhex("4e73")])
 
 def key_to_p2pk_script(key):
     key = check_key(key)
@@ -95,6 +134,11 @@ def scripthash_to_p2sh_script(hash):
     return CScript([OP_HASH160, hash, OP_EQUAL])
 
 
+def key_to_p2pk_script(key):
+    key = check_key(key)
+    return CScript([key, OP_CHECKSIG])
+
+
 def key_to_p2pkh_script(key):
     key = check_key(key)
     return keyhash_to_p2pkh_script(hash160(key))
@@ -105,35 +149,64 @@ def script_to_p2sh_script(script):
     return scripthash_to_p2sh_script(hash160(script))
 
 
-def key_to_p2sh_p2wpkh_script(key):
-    key = check_key(key)
-    p2shscript = CScript([OP_0, hash160(key)])
-    return script_to_p2sh_script(p2shscript)
-
-
 def program_to_witness_script(version, program):
     if isinstance(program, str):
         program = bytes.fromhex(program)
-    assert 0 <= version <= 16
-    assert 2 <= len(program) <= 40
-    assert version > 0 or len(program) in [20, 32]
+    assert 0 <= version <= 30
+    assert 2 <= len(program) <= 75
+    version = [
+        OP_0,
+        OP_1NEGATE,
+        OP_1,
+        OP_2,
+        OP_3,
+        OP_4,
+        OP_5,
+        OP_6,
+        OP_7,
+        OP_8,
+        OP_9,
+        OP_10,
+        OP_11,
+        OP_12,
+        OP_13,
+        OP_14,
+        OP_15,
+        OP_16,
+        OP_NOP,
+        OP_DEPTH,
+        OP_CODESEPARATOR,
+        OP_NOP1,
+        OP_CHECKLOCKTIMEVERIFY,
+        OP_CHECKSEQUENCEVERIFY,
+        OP_MERKLEBRANCHVERIFY,
+        OP_NOP5,
+        OP_NOP6,
+        OP_NOP7,
+        OP_NOP8,
+        OP_NOP9,
+        OP_NOP10,
+    ][version]
     return CScript([version, program])
+
+
+def script_to_witness(script):
+    return b'\x00' + script
 
 
 def script_to_p2wsh_script(script):
     script = check_script(script)
-    return program_to_witness_script(0, sha256(script))
+    return program_to_witness_script(0, hash256(script_to_witness(script)))
 
 
-def key_to_p2wpkh_script(key):
-    key = check_key(key)
-    return program_to_witness_script(0, hash160(key))
-
-
-def script_to_p2sh_p2wsh_script(script):
+def script_to_p2wpk_script(script):
     script = check_script(script)
-    p2shscript = CScript([OP_0, sha256(script)])
-    return script_to_p2sh_script(p2shscript)
+    return program_to_witness_script(0, ripemd160(hash256(script_to_witness(script))))
+
+
+def key_to_p2wpk_script(key):
+    key = check_key(key)
+    return script_to_p2wpk_script(CScript([key, OP_CHECKSIG]))
 
 def bulk_vout(tx, target_vsize):
     if target_vsize < tx.get_vsize():
@@ -178,8 +251,8 @@ def build_malleated_tx_package(*, parent: CTransaction, rebalance_parent_output_
         calling this function) or anyone-can-spend (e.g., MiniWallet's OP_TRUE).
     """
     hashlock = hash160(b'Preimage')
-    witness_script = CScript([OP_IF, OP_HASH160, hashlock, OP_EQUAL, OP_ELSE, OP_TRUE, OP_ENDIF])
-    witness_program = sha256(witness_script)
+    witness_script = script_to_witness(CScript([OP_IF, OP_HASH160, hashlock, OP_EQUAL, OP_ELSE, OP_TRUE, OP_ENDIF]))
+    witness_program = hash256(witness_script)
     script_pubkey = CScript([OP_0, witness_program])
 
     # Append to the transaction the vout containing the script supporting 2 spending conditions
@@ -192,18 +265,19 @@ def build_malleated_tx_package(*, parent: CTransaction, rebalance_parent_output_
 
     # Create 2 valid children that differ only in witness data.
     # 1. Create a new transaction with witness solving first branch
-    child_witness_script = CScript([OP_TRUE])
-    child_witness_program = sha256(child_witness_script)
+    child_witness_script = script_to_witness(CScript([OP_TRUE]))
+    child_witness_program = hash256(child_witness_script)
     child_script_pubkey = CScript([OP_0, child_witness_program])
     child_one = CTransaction()
 
     child_one.vin.append(CTxIn(COutPoint(int(parent.txid_hex, 16), len(parent.vout) - 1), b""))
     child_one.vout.append(CTxOut(child_amount, child_script_pubkey))
+    child_one.lock_height = parent.lock_height
     child_one.wit.vtxinwit.append(CTxInWitness())
-    child_one.wit.vtxinwit[0].scriptWitness.stack = [b'Preimage', b'\x01', witness_script]
+    child_one.wit.vtxinwit[0].scriptWitness.stack = [b'Preimage', b'\x01', witness_script, b'']
     # 2. Create another identical transaction with witness solving second branch
     child_two = deepcopy(child_one)
-    child_two.wit.vtxinwit[0].scriptWitness.stack = [b'', witness_script]
+    child_two.wit.vtxinwit[0].scriptWitness.stack = [b'', witness_script, b'']
     return parent, child_one, child_two
 
 

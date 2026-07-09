@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2018-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2018-2021 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Tests the includeconf argument
 
 Verify that:
@@ -14,10 +25,10 @@ Verify that:
 4. multiple includeconf arguments can be specified in the main config
    file.
 """
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 
 
-class IncludeConfTest(BitcoinTestFramework):
+class IncludeConfTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -29,7 +40,7 @@ class IncludeConfTest(BitcoinTestFramework):
         # - tmpdir/node0/relative2.conf
         with open(self.nodes[0].datadir_path / "relative2.conf", "w") as f:
             f.write("uacomment=relative2\n")
-        with open(self.nodes[0].datadir_path / "bitcoin.conf", "a") as f:
+        with open(self.nodes[0].datadir_path / "freicoin.conf", "a", encoding="utf8") as f:
             f.write("uacomment=main\nincludeconf=relative.conf\n")
         self.restart_node(0)
 
@@ -74,7 +85,7 @@ class IncludeConfTest(BitcoinTestFramework):
             # Restore initial file contents
             f.write("uacomment=relative\n")
 
-        with open(self.nodes[0].datadir_path / "bitcoin.conf", "a") as f:
+        with open(self.nodes[0].datadir_path / "freicoin.conf", "a", encoding="utf8") as f:
             f.write("includeconf=relative2.conf\n")
 
         self.start_node(0)

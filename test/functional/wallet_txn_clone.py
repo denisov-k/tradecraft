@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test the wallet accounts properly when there are cloned transactions with malleated scriptsigs."""
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
 )
@@ -14,7 +25,9 @@ from test_framework.messages import (
 )
 
 
-class TxnMallTest(BitcoinTestFramework):
+from struct import pack
+
+class TxnMallTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 3
         self.supports_cli = False
@@ -43,11 +56,11 @@ class TxnMallTest(BitcoinTestFramework):
 
     def run_test(self):
         if self.options.segwit:
-            output_type = "p2sh-segwit"
+            output_type = "bech32"
         else:
             output_type = "legacy"
 
-        # All nodes should start with 1,250 BTC:
+        # All nodes should start with 1,250 FRC:
         starting_balance = 1250
         for i in range(3):
             assert_equal(self.nodes[i].getbalance(), starting_balance)
@@ -77,7 +90,13 @@ class TxnMallTest(BitcoinTestFramework):
         clone_outputs = {rawtx1["vout"][0]["scriptPubKey"]["address"]: rawtx1["vout"][0]["value"],
                          rawtx1["vout"][1]["scriptPubKey"]["address"]: rawtx1["vout"][1]["value"]}
         clone_locktime = rawtx1["locktime"]
-        clone_raw = self.nodes[0].createrawtransaction(clone_inputs, clone_outputs, clone_locktime)
+        clone_lockheight = rawtx1["lockheight"]
+        clone_raw = self.nodes[0].createrawtransaction(clone_inputs, clone_outputs, clone_locktime, clone_lockheight)
+
+        # createrawtransaction will auto-fill the lock_height field if
+        # the value provided is zero, so we manually copy the original
+        # value.
+        clone_raw = clone_raw[:-8] + pack('<I', rawtx1['lockheight']).hex()
 
         # createrawtransaction randomizes the order of its outputs, so swap them if necessary.
         clone_tx = tx_from_hex(clone_raw)
@@ -96,7 +115,7 @@ class TxnMallTest(BitcoinTestFramework):
         tx1 = self.nodes[0].gettransaction(txid1)
         tx2 = self.nodes[0].gettransaction(txid2)
 
-        # Node0's balance should be starting balance, plus 50BTC for another
+        # Node0's balance should be starting balance, plus 50FRC for another
         # matured block, minus tx1 and tx2 amounts, and minus transaction fees:
         expected = starting_balance + node0_tx1["fee"] + node0_tx2["fee"]
         if self.options.mine_block:
@@ -138,7 +157,7 @@ class TxnMallTest(BitcoinTestFramework):
         assert_equal(tx1_clone["confirmations"], 2)
         assert_equal(tx2["confirmations"], 1)
 
-        # Check node0's total balance; should be same as before the clone, + 100 BTC for 2 matured,
+        # Check node0's total balance; should be same as before the clone, + 100 FRC for 2 matured,
         # less possible orphaned matured subsidy
         expected += 100
         if (self.options.mine_block):

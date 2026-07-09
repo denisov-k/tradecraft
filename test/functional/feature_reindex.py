@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test running bitcoind with -reindex and -reindex-chainstate options.
+# Copyright (c) 2014-2021 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Test running freicoind with -reindex and -reindex-chainstate options.
 
 - Start a single node and generate 3 blocks.
 - Stop the node and restart it with -reindex. Verify that the node has reindexed up to block 3.
@@ -10,7 +21,7 @@
 - Verify that out-of-order blocks are correctly processed, see LoadExternalBlockFile()
 """
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.messages import MAGIC_BYTES
 from test_framework.util import (
     assert_equal,
@@ -18,7 +29,7 @@ from test_framework.util import (
 )
 
 
-class ReindexTest(BitcoinTestFramework):
+class ReindexTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -40,7 +51,7 @@ class ReindexTest(BitcoinTestFramework):
 
         # In this test environment, blocks will always be in order (since
         # we're generating them rather than getting them from peers), so to
-        # test out-of-order handling, swap blocks 1 and 2 on disk.
+        # test out-of-order handling, swap blocks 2 and 3 on disk.
         blk0 = self.nodes[0].blocks_path / "blk00000.dat"
         xor_dat = self.nodes[0].read_xor_key()
 
@@ -48,7 +59,7 @@ class ReindexTest(BitcoinTestFramework):
             # Read at least the first few blocks (including genesis)
             b = util_xor(bf.read(2000), xor_dat, offset=0)
 
-            # Find the offsets of blocks 2, 3, and 4 (the first 3 blocks beyond genesis)
+            # Find the offsets of blocks 2, 3, 4, and 5 (the first 4 blocks beyond genesis)
             # by searching for the regtest marker bytes (see pchMessageStart).
             def find_block(b, start):
                 return b.find(MAGIC_BYTES["regtest"], start)+4
@@ -58,14 +69,15 @@ class ReindexTest(BitcoinTestFramework):
             b2_start = find_block(b, genesis_start)
             b3_start = find_block(b, b2_start)
             b4_start = find_block(b, b3_start)
+            b5_start = find_block(b, b4_start)
 
-            # Blocks 2 and 3 should be the same size.
-            assert_equal(b3_start - b2_start, b4_start - b3_start)
+            # Blocks 3 and 4 should be the same size.
+            assert_equal(b4_start - b3_start, b5_start - b4_start)
 
-            # Swap the second and third blocks (don't disturb the genesis block).
-            bf.seek(b2_start)
-            bf.write(util_xor(b[b3_start:b4_start], xor_dat, offset=b2_start))
-            bf.write(util_xor(b[b2_start:b3_start], xor_dat, offset=b3_start))
+            # Swap the third and forth blocks (don't disturb the genesis block).
+            bf.seek(b3_start)
+            bf.write(util_xor(b[b4_start:b5_start], xor_dat, offset=b3_start))
+            bf.write(util_xor(b[b3_start:b4_start], xor_dat, offset=b4_start))
 
         # The reindexing code should detect and accommodate out of order blocks.
         with self.nodes[0].assert_debug_log([

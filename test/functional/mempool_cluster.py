@@ -13,7 +13,7 @@ from test_framework.mempool_util import (
 from test_framework.messages import (
     COIN,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.wallet import (
     MiniWallet,
 )
@@ -39,9 +39,11 @@ def cleanup(func):
             self.wallet.rescan_utxos(include_mempool=True)
     return wrapper
 
-class MempoolClusterTest(BitcoinTestFramework):
+class MempoolClusterTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
+        # Freicoin: target_vsize padding uses large OP_RETURN outputs; datacarrier is off by default
+        self.extra_args = [["-datacarrier=1", "-datacarriersize=100000"]]
 
     def add_chain_cluster(self, node, cluster_count, target_vsize=None):
         """Create a cluster of transactions, with the count specified.
@@ -253,6 +255,18 @@ class MempoolClusterTest(BitcoinTestFramework):
             utxos_to_merge.append(singleton["new_utxo"])
             vsize_remaining -= singleton["tx"].get_vsize()
 
+        # Freicoin: the merger tx is (vsize_remaining + 4) vB and must stay a valid
+        # standard tx (< MAX_STANDARD_TX_WEIGHT/4 = 100000 vB). Freicoin's compact
+        # MAST OP_TRUE spends are smaller than bitcoin's, so for the 101 kvB default
+        # cluster the 10 singletons above leave vsize_remaining > 100000; add more
+        # singletons until the merger fits.
+        while vsize_remaining + 4 >= 100000:
+            confirmed_utxo = self.wallet.get_utxo(confirmed_only=True)
+            singleton = self.wallet.send_self_transfer(from_node=node, utxo_to_spend=confirmed_utxo)
+            assert singleton["txid"] in node.getrawmempool()
+            utxos_to_merge.append(singleton["new_utxo"])
+            vsize_remaining -= singleton["tx"].get_vsize()
+
         assert_greater_than_or_equal(vsize_remaining, 500)
 
         # Create a transaction spending from all clusters that exceeds the cluster size limit.
@@ -398,7 +412,7 @@ class MempoolClusterTest(BitcoinTestFramework):
 
         for cluster_size_limit_kvb in [10, 20, 33, 100, DEFAULT_CLUSTER_SIZE_LIMIT_KVB]:
             self.log.info(f"-> Resetting node with -limitclustersize={cluster_size_limit_kvb}")
-            self.restart_node(0, extra_args=[f"-limitclustersize={cluster_size_limit_kvb}"])
+            self.restart_node(0, extra_args=[f"-limitclustersize={cluster_size_limit_kvb}", "-datacarrier=1", "-datacarriersize=100000"])
 
             cluster_size_limit = cluster_size_limit_kvb * 1000
             self.test_cluster_size_limit(cluster_size_limit)
@@ -406,7 +420,7 @@ class MempoolClusterTest(BitcoinTestFramework):
 
         for cluster_count_limit in [4, 10, 16, 32, DEFAULT_CLUSTER_LIMIT]:
             self.log.info(f"-> Resetting node with -limitclustercount={cluster_count_limit}")
-            self.restart_node(0, extra_args=[f"-limitclustercount={cluster_count_limit}"])
+            self.restart_node(0, extra_args=[f"-limitclustercount={cluster_count_limit}", "-datacarrier=1", "-datacarriersize=100000"])
 
             self.test_cluster_count_limit(cluster_count_limit)
             if cluster_count_limit > 10:

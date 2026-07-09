@@ -1,13 +1,26 @@
 #!/usr/bin/env python3
 # Copyright (c) 2023-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test for assumeutxo wallet related behavior.
 See feature_assumeutxo.py for background.
 """
+from decimal import Decimal
+
 from test_framework.address import address_to_scriptpubkey
 from test_framework.descriptors import descsum_create
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.messages import COIN
 from test_framework.util import (
     assert_equal,
@@ -24,7 +37,7 @@ SNAPSHOT_BASE_HEIGHT = 299
 FINAL_HEIGHT = 399
 
 
-class AssumeutxoTest(BitcoinTestFramework):
+class AssumeutxoTest(FreicoinTestFramework):
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
 
@@ -53,7 +66,8 @@ class AssumeutxoTest(BitcoinTestFramework):
         return wrpc.importdescriptors(import_request)
 
     def validate_snapshot_import(self, node, loaded, base_hash):
-        assert_equal(loaded['coins_loaded'], SNAPSHOT_BASE_HEIGHT)
+        # Freicoin: snapshot carries the block-final anyone-can-spend output too
+        assert_equal(loaded['coins_loaded'], SNAPSHOT_BASE_HEIGHT + 1)
         assert_equal(loaded['base_height'], SNAPSHOT_BASE_HEIGHT)
 
         normal, snapshot = node.getchainstates()["chainstates"]
@@ -105,7 +119,8 @@ class AssumeutxoTest(BitcoinTestFramework):
         n3.restorewallet("w_alt", "backup_w.dat")
         # Check balance of w_alt wallet
         w_alt = n3.get_wallet_rpc("w_alt")
-        assert_equal(w_alt.getbalance(), 34)
+        # Freicoin: demurrage-adjusted present value of the 34 FRC nominal.
+        assert_equal(w_alt.getbalance(), Decimal("33.98341184"))
 
     def run_test(self):
         """
@@ -172,8 +187,8 @@ class AssumeutxoTest(BitcoinTestFramework):
 
         assert_equal(
             dump_output['txoutset_hash'],
-            "d2b051ff5e8eef46520350776f4100dd710a63447a8e01d917e92e79751a63e2")
-        assert_equal(dump_output["nchaintx"], 334)
+            "0979d10b7040b5809a49a8ef89065325adbcc6335b65d108426d5b86c2df471e")
+        assert_equal(dump_output["nchaintx"], 533)
         assert_equal(n0.getblockchaininfo()["blocks"], SNAPSHOT_BASE_HEIGHT)
 
         # Mine more blocks on top of the snapshot that n1 hasn't yet seen. This
@@ -195,7 +210,18 @@ class AssumeutxoTest(BitcoinTestFramework):
         self.log.info(
             f"Loading snapshot into second node from {dump_output['path']}")
         loaded = n1.loadtxoutset(dump_output['path'])
-        self.validate_snapshot_import(n1, loaded, dump_output['base_hash'])
+        assert_equal(loaded['coins_loaded'], SNAPSHOT_BASE_HEIGHT + 1)
+        assert_equal(loaded['base_height'], SNAPSHOT_BASE_HEIGHT)
+
+        normal, snapshot = n1.getchainstates()["chainstates"]
+        assert_equal(normal['blocks'], START_HEIGHT)
+        assert_equal(normal.get('snapshot_blockhash'), None)
+        assert_equal(normal['validated'], True)
+        assert_equal(snapshot['blocks'], SNAPSHOT_BASE_HEIGHT)
+        assert_equal(snapshot['snapshot_blockhash'], dump_output['base_hash'])
+        assert_equal(snapshot['validated'], False)
+
+        assert_equal(n1.getblockchaininfo()["blocks"], SNAPSHOT_BASE_HEIGHT)
 
         self.log.info("Backup from the snapshot height can be loaded during background sync")
         n1.restorewallet("w", "backup_w.dat")
@@ -257,19 +283,23 @@ class AssumeutxoTest(BitcoinTestFramework):
         self.log.info("Ensuring wallet can be restored from a backup that was created before the snapshot height")
         n1.restorewallet("w2", "backup_w2.dat")
         # Check balance of w2 wallet
-        assert_equal(n1.getbalance(), 340)
+        # Freicoin: balances are time-value adjusted (demurrage), so the
+        # present value of the 340 FRC nominal is slightly lower at this height.
+        assert_equal(n1.getbalance(), Decimal("339.89864886"))
 
         # Check balance of w wallet after node is synced
         n1.loadwallet("w")
         w = n1.get_wallet_rpc("w")
-        assert_equal(w.getbalance(), 34)
+        # Freicoin: demurrage-adjusted present value of the 34 FRC nominal.
+        assert_equal(w.getbalance(), Decimal("33.98989430"))
 
         self.log.info("Check balance of a wallet that is active during snapshot completion")
         n2.restorewallet("w", "backup_w.dat")
         loaded = n2.loadtxoutset(dump_output['path'])
         self.connect_nodes(0, 2)
         self.wait_until(lambda: len(n2.getchainstates()['chainstates']) == 1)
-        ensure_for(duration=1, f=lambda: (n2.getbalance() == 34))
+        # Freicoin: demurrage-adjusted present value of the 34 FRC nominal.
+        ensure_for(duration=1, f=lambda: (n2.getbalance() == Decimal("33.98989430")))
 
         self.log.info("Ensuring descriptors can be loaded after background sync")
         n1.loadwallet(wallet_name)

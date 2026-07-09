@@ -24,7 +24,7 @@ from test_framework.script import (
     CScript,
     CScriptNum,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than_or_equal,
@@ -51,7 +51,7 @@ except ModuleNotFoundError:
     pass
 
 
-class IPCMiningTest(BitcoinTestFramework):
+class IPCMiningTest(FreicoinTestFramework):
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_ipc()

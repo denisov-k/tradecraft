@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2019-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2019-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test descriptor wallet function."""
 
 try:
@@ -10,9 +21,11 @@ except ImportError:
     pass
 
 import re
+import concurrent.futures
 
 from test_framework.blocktools import COINBASE_MATURITY
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.descriptors import descsum_create
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_not_equal,
     assert_equal,
@@ -21,7 +34,10 @@ from test_framework.util import (
 from test_framework.wallet_util import WalletUnlock
 
 
-class WalletDescriptorTest(BitcoinTestFramework):
+class WalletDescriptorTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser, legacy=False)
+
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -30,6 +46,41 @@ class WalletDescriptorTest(BitcoinTestFramework):
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
         self.skip_if_no_py_sqlite3()
+
+    def test_concurrent_writes(self):
+        self.log.info("Test sqlite concurrent writes are in the correct order")
+        self.restart_node(0, extra_args=["-unsafesqlitesync=0"])
+        self.nodes[0].createwallet(wallet_name="concurrency", blank=True)
+        wallet = self.nodes[0].get_wallet_rpc("concurrency")
+        # First import a descriptor that uses hardened dervation so that topping up
+        # Will require writing a ton to db
+        wallet.importdescriptors([{"desc":descsum_create("wpk(tprv8ZgxMBicQKsPeuVhWwi6wuMQGfPKi9Li5GtX35jVNknACgqe3CY4g5xgkfDDJcmtF7o1QnxWDRYw4H5P26PXq7sbcUkEqeR4fg3Kxp2tigg/0h/0h/*h)"), "timestamp": "now", "active": True}])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as thread:
+            topup = thread.submit(wallet.keypoolrefill, newsize=1000)
+
+            # Then while the topup is running, we need to do something that will call
+            # ChainStateFlushed which will trigger a write to the db, hopefully at the
+            # same time that the topup still has an open db transaction.
+            self.nodes[0].cli.gettxoutsetinfo()
+            assert_equal(topup.result(), None)
+
+        wallet.unloadwallet()
+
+        # Check that everything was written
+        wallet_db = self.nodes[0].wallets_path / "concurrency" / self.wallet_data_filename
+        conn = sqlite3.connect(wallet_db)
+        with conn:
+            # Retrieve the bestblock_nomerkle record
+            bestblock_rec = conn.execute("SELECT value FROM main WHERE hex(key) = '1262657374626C6F636B5F6E6F6D65726B6C65'").fetchone()[0]
+            # Retrieve the number of descriptor cache records
+            # Since we store binary data, sqlite's comparison operators don't work everywhere
+            # so just retrieve all records and process them ourselves.
+            db_keys = conn.execute("SELECT key FROM main").fetchall()
+            cache_records = len([k[0] for k in db_keys if b"walletdescriptorcache" in k[0]])
+        conn.close()
+
+        assert_equal(bestblock_rec[5:37][::-1].hex(), self.nodes[0].getbestblockhash())
+        assert_equal(cache_records, 1000)
 
     def test_parent_descriptors(self):
         self.log.info("Check that parent_descs is the same for all RPCs and is normalized")
@@ -79,6 +130,7 @@ class WalletDescriptorTest(BitcoinTestFramework):
 
         wallet.unloadwallet()
 
+
     def run_test(self):
         self.generate(self.nodes[0], COINBASE_MATURITY + 1)
 
@@ -91,8 +143,8 @@ class WalletDescriptorTest(BitcoinTestFramework):
         self.log.info("Checking wallet info")
         wallet_info = wallet.getwalletinfo()
         assert_equal(wallet_info['format'], 'sqlite')
-        assert_equal(wallet_info['keypoolsize'], 400)
-        assert_equal(wallet_info['keypoolsize_hd_internal'], 400)
+        assert_equal(wallet_info['keypoolsize'], 200)
+        assert_equal(wallet_info['keypoolsize_hd_internal'], 200)
         assert 'keypoololdest' not in wallet_info
 
         # Check that getnewaddress works
@@ -102,20 +154,10 @@ class WalletDescriptorTest(BitcoinTestFramework):
         assert addr_info['desc'].startswith('pkh(')
         assert_equal(addr_info['hdkeypath'], 'm/44h/1h/0h/0/0')
 
-        addr = wallet.getnewaddress("", "p2sh-segwit")
-        addr_info = wallet.getaddressinfo(addr)
-        assert addr_info['desc'].startswith('sh(wpkh(')
-        assert_equal(addr_info['hdkeypath'], 'm/49h/1h/0h/0/0')
-
         addr = wallet.getnewaddress("", "bech32")
         addr_info = wallet.getaddressinfo(addr)
-        assert addr_info['desc'].startswith('wpkh(')
+        assert addr_info['desc'].startswith('wpk(')
         assert_equal(addr_info['hdkeypath'], 'm/84h/1h/0h/0/0')
-
-        addr = wallet.getnewaddress("", "bech32m")
-        addr_info = wallet.getaddressinfo(addr)
-        assert addr_info['desc'].startswith('tr(')
-        assert_equal(addr_info['hdkeypath'], 'm/86h/1h/0h/0/0')
 
         # Check that getrawchangeaddress works
         addr = wallet.getrawchangeaddress("legacy")
@@ -123,20 +165,10 @@ class WalletDescriptorTest(BitcoinTestFramework):
         assert addr_info['desc'].startswith('pkh(')
         assert_equal(addr_info['hdkeypath'], 'm/44h/1h/0h/1/0')
 
-        addr = wallet.getrawchangeaddress("p2sh-segwit")
-        addr_info = wallet.getaddressinfo(addr)
-        assert addr_info['desc'].startswith('sh(wpkh(')
-        assert_equal(addr_info['hdkeypath'], 'm/49h/1h/0h/1/0')
-
         addr = wallet.getrawchangeaddress("bech32")
         addr_info = wallet.getaddressinfo(addr)
-        assert addr_info['desc'].startswith('wpkh(')
+        assert addr_info['desc'].startswith('wpk(')
         assert_equal(addr_info['hdkeypath'], 'm/84h/1h/0h/1/0')
-
-        addr = wallet.getrawchangeaddress("bech32m")
-        addr_info = wallet.getaddressinfo(addr)
-        assert addr_info['desc'].startswith('tr(')
-        assert_equal(addr_info['hdkeypath'], 'm/86h/1h/0h/1/0')
 
         # Make a wallet to receive coins at
         self.nodes[0].createwallet(wallet_name="desc2")
@@ -172,7 +204,7 @@ class WalletDescriptorTest(BitcoinTestFramework):
         self.log.info("Test that unlock is needed when deriving only hardened keys in an encrypted wallet")
         with WalletUnlock(send_wrpc, "pass"):
             send_wrpc.importdescriptors([{
-                "desc": "wpkh(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/0h/*h)#y4dfsj7n",
+                "desc": "wpk(tprv8ZgxMBicQKsPd7Uf69XL1XwhmjHopUGep8GuEiJDZmbQz6o58LninorQAfcKZWARbtRtfnLcJ5MQ2AtHcQJCCRUcMRvmDUjyEmNUWwx8UbK/0h/*h)#t52vxyrr",
                 "timestamp": "now",
                 "range": [0,10],
                 "active": True
@@ -205,13 +237,9 @@ class WalletDescriptorTest(BitcoinTestFramework):
         imp_rpc = self.nodes[0].get_wallet_rpc('desc_import')
 
         addr_types = [('legacy', False, 'pkh(', '44h/1h/0h', -13),
-                      ('p2sh-segwit', False, 'sh(wpkh(', '49h/1h/0h', -14),
-                      ('bech32', False, 'wpkh(', '84h/1h/0h', -13),
-                      ('bech32m', False, 'tr(', '86h/1h/0h', -13),
+                      ('bech32', False, 'wpk(', '84h/1h/0h', -13),
                       ('legacy', True, 'pkh(', '44h/1h/0h', -13),
-                      ('p2sh-segwit', True, 'sh(wpkh(', '49h/1h/0h', -14),
-                      ('bech32', True, 'wpkh(', '84h/1h/0h', -13),
-                      ('bech32m', True, 'tr(', '86h/1h/0h', -13)]
+                      ('bech32', True, 'wpk(', '84h/1h/0h', -13)]
 
         for addr_type, internal, desc_prefix, deriv_path, int_idx in addr_types:
             int_str = 'internal' if internal else 'external'
@@ -269,6 +297,7 @@ class WalletDescriptorTest(BitcoinTestFramework):
         assert_raises_rpc_error(-4, "Unexpected legacy entry in descriptor wallet found.", self.nodes[0].loadwallet, "crashme")
 
         self.test_parent_descriptors()
+        self.test_concurrent_writes()
 
 if __name__ == '__main__':
     WalletDescriptorTest(__file__).main()

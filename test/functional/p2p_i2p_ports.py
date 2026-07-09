@@ -1,16 +1,28 @@
 #!/usr/bin/env python3
-# Copyright (c) 2021-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2021-2021 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Test ports handling for I2P hosts
 """
 
-from test_framework.test_framework import BitcoinTestFramework
+
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import p2p_port
 
 
-class I2PPorts(BitcoinTestFramework):
+class I2PPorts(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         # Use the p2p port of the non-existing next node as the proxy port
@@ -22,8 +34,8 @@ class I2PPorts(BitcoinTestFramework):
         node = self.nodes[0]
 
         self.log.info("Ensure we don't try to connect if port!=0")
-        addr = "zsxwyo6qcn3chqzwxnseusqgsnuw3maqnztkiypyfxtya4snkoka.b32.i2p:8333"
-        with node.assert_debug_log(expected_msgs=[f"Error connecting to {addr}, connection refused due to arbitrary port 8333"]):
+        addr = "zsxwyo6qcn3chqzwxnseusqgsnuw3maqnztkiypyfxtya4snkoka.b32.i2p:8639"
+        with node.assert_debug_log(expected_msgs=[f"Error connecting to {addr}, connection refused due to arbitrary port 8639"]):
             node.addnode(node=addr, command="onetry")
 
         self.log.info("Ensure we try to connect if port=0 and get an error due to missing I2P proxy")

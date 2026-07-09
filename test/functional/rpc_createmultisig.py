@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2015-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2015-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test multisig RPCs"""
 import decimal
 import itertools
@@ -13,7 +24,7 @@ from test_framework.descriptors import descsum_create
 from test_framework.key import ECPubKey
 from test_framework.messages import COIN
 from test_framework.script_util import keys_to_multisig_script
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_raises_rpc_error,
     assert_equal,
@@ -24,7 +35,10 @@ from test_framework.wallet import (
     getnewdestination,
 )
 
-class RpcCreateMultiSigTest(BitcoinTestFramework):
+class RpcCreateMultiSigTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 3
@@ -47,7 +61,7 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
         self.create_keys(21)  # max number of allowed keys + 1
         m_of_n = [(2, 3), (3, 3), (2, 5), (3, 5), (10, 15), (15, 15)]
         for (sigs, keys) in m_of_n:
-            for output_type in ["bech32", "p2sh-segwit", "legacy"]:
+            for output_type in ["bech32", "legacy"]:
                 self.do_multisig(keys, sigs, output_type)
 
         self.test_multisig_script_limit()
@@ -55,7 +69,7 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
         self.test_sortedmulti_descriptors_bip67()
 
         # Check that bech32m is currently not allowed
-        assert_raises_rpc_error(-5, "createmultisig cannot create bech32m multisig addresses", self.nodes[0].createmultisig, 2, self.pub, "bech32m")
+        assert_raises_rpc_error(-5, "Unknown address type 'bech32m'", self.nodes[0].createmultisig, 2, self.pub, "bech32m")
 
         self.log.info('Check correct encoding of multisig script for all n (1..20)')
         for nkeys in range(1, 20+1):
@@ -67,6 +81,21 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
             res = self.nodes[0].createmultisig(nrequired=nkeys, keys=keys, address_type='bech32')
             assert_equal(res['redeemScript'], expected_ms_script.hex())
 
+    def check_addmultisigaddress_errors(self):
+        if self.options.descriptors:
+            return
+        self.log.info('Check that addmultisigaddress fails when the private keys are missing')
+        addresses = [self.nodes[1].getnewaddress(address_type='legacy') for _ in range(2)]
+        assert_raises_rpc_error(-5, 'no full public key for address', lambda: self.nodes[0].addmultisigaddress(nrequired=1, keys=addresses))
+        for a in addresses:
+            # Importing all addresses should not change the result
+            self.nodes[0].importaddress(a)
+        assert_raises_rpc_error(-5, 'no full public key for address', lambda: self.nodes[0].addmultisigaddress(nrequired=1, keys=addresses))
+
+        # Bech32m address type is disallowed for legacy wallets
+        pubs = [self.nodes[1].getaddressinfo(addr)["pubkey"] for addr in addresses]
+        assert_raises_rpc_error(-5, "Unknown address type 'bech32m'", self.nodes[0].addmultisigaddress, 2, pubs, "", "bech32m")
+
     def test_multisig_script_limit(self):
         node1 = self.nodes[1]
         pubkeys = self.pub[0:20]
@@ -74,13 +103,14 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
         self.log.info('Test legacy redeem script max size limit')
         assert_raises_rpc_error(-8, "redeemScript exceeds size limit: 684 > 520", node1.createmultisig, 16, pubkeys, 'legacy')
 
-        self.log.info('Test valid 16-20 multisig p2sh-legacy and bech32 (no wallet)')
-        self.do_multisig(nkeys=20, nsigs=16, output_type="p2sh-segwit")
+        self.log.info('Test valid 16-20 multisig bech32 (no wallet)')
         self.do_multisig(nkeys=20, nsigs=16, output_type="bech32")
 
-        self.log.info('Test invalid 16-21 multisig p2sh-legacy and bech32 (no wallet)')
-        assert_raises_rpc_error(-8, "Number of keys involved in the multisignature address creation > 20", node1.createmultisig, 16, self.pub, 'p2sh-segwit')
+        self.log.info('Test invalid 16-21 multisig bech32 (no wallet)')
         assert_raises_rpc_error(-8, "Number of keys involved in the multisignature address creation > 20", node1.createmultisig, 16, self.pub, 'bech32')
+
+        # Check legacy wallet related command
+        self.log.info('Test legacy redeem script max size limit (with wallet)')
 
     def do_multisig(self, nkeys, nsigs, output_type):
         node0, _node1, node2 = self.nodes
@@ -91,8 +121,6 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
         desc = 'multi({},{})'.format(nsigs, ','.join(pub_keys))
         if output_type == 'legacy':
             desc = 'sh({})'.format(desc)
-        elif output_type == 'p2sh-segwit':
-            desc = 'sh(wsh({}))'.format(desc)
         elif output_type == 'bech32':
             desc = 'wsh({})'.format(desc)
         desc = descsum_create(desc)
@@ -103,12 +131,12 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
         mredeem = msig["redeemScript"]
         assert_equal(desc, msig['descriptor'])
         if output_type == 'bech32':
-            assert madd[0:4] == "bcrt"  # actually a bech32 address
+            assert madd[0:4] == "fcrt"  # actually a bech32 address
 
         spk = address_to_scriptpubkey(madd)
         value = decimal.Decimal("0.00004000")
         tx = self.wallet.send_to(from_node=self.nodes[0], scriptPubKey=spk, amount=int(value * COIN))
-        prevtxs = [{"txid": tx["txid"], "vout": tx["sent_vout"], "scriptPubKey": spk.hex(), "redeemScript": mredeem, "amount": value}]
+        prevtxs = [{"txid": tx["txid"], "vout": tx["sent_vout"], "scriptPubKey": spk.hex(), "redeemScript": mredeem, "value": value, "refheight": tx["tx"].lock_height}]
 
         self.generate(node0, 1)
 
@@ -122,7 +150,7 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
         assert_raises_rpc_error(-8, "Missing redeemScript/witnessScript", node2.signrawtransactionwithkey, rawtx, priv_keys[0:nsigs-1], [prevtx_err])
 
         # if witnessScript specified, all ok
-        prevtx_err["witnessScript"] = prevtxs[0]["redeemScript"]
+        prevtx_err["witnessScript"] = '00' + prevtxs[0]["redeemScript"]
         node2.signrawtransactionwithkey(rawtx, priv_keys[0:nsigs-1], [prevtx_err])
 
         # both specified, also ok
@@ -138,7 +166,7 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
         assert_raises_rpc_error(-8, "redeemScript/witnessScript does not match scriptPubKey", node2.signrawtransactionwithkey, rawtx, priv_keys[0:nsigs-1], [prevtx_err])
 
         # witnessScript does not match scriptPubKey
-        prevtx_err["witnessScript"] = prevtx_err["redeemScript"]
+        prevtx_err["witnessScript"] = '00' + prevtx_err["redeemScript"]
         del prevtx_err["redeemScript"]
         assert_raises_rpc_error(-8, "redeemScript/witnessScript does not match scriptPubKey", node2.signrawtransactionwithkey, rawtx, priv_keys[0:nsigs-1], [prevtx_err])
 
@@ -177,7 +205,7 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
             # Generate addresses with the segwit types. These should all make legacy addresses
             err_msg = ["Unable to make chosen address type, please ensure no uncompressed public keys are present."]
 
-            for addr_type in ['bech32', 'p2sh-segwit']:
+            for addr_type in ['bech32']:
                 result = self.nodes[0].createmultisig(nrequired=2, keys=keys, address_type=addr_type)
                 assert_equal(legacy_addr, result['address'])
                 assert_equal(result['warnings'], err_msg)

@@ -9,12 +9,18 @@ Test stalling logic during IBD
 import time
 
 from test_framework.blocktools import (
+        add_final_tx,
         create_block,
-        create_coinbase
+        create_coinbase,
 )
 from test_framework.messages import (
+        CTxOut,
         MSG_BLOCK,
         MSG_TYPE_MASK,
+)
+from test_framework.script import (
+        CScript,
+        OP_TRUE,
 )
 from test_framework.p2p import (
         CBlockHeader,
@@ -22,7 +28,7 @@ from test_framework.p2p import (
         msg_headers,
         P2PDataStore,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
         assert_equal,
 )
@@ -44,7 +50,7 @@ class P2PStaller(P2PDataStore):
         pass
 
 
-class P2PIBDStallingTest(BitcoinTestFramework):
+class P2PIBDStallingTest(FreicoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -59,13 +65,28 @@ class P2PIBDStallingTest(BitcoinTestFramework):
         block_time = node.getblock(node.getbestblockhash())['time'] + 1
         self.log.info("Prepare blocks without sending them to the node")
         block_dict = {}
+        final_tx = None
         for _ in range(NUM_BLOCKS):
-            blocks.append(create_block(tip, create_coinbase(height), block_time))
-            blocks[-1].solve()
-            tip = blocks[-1].hash_int
+            block = create_block(tip, create_coinbase(height), block_time)
+            # Freicoin: seed and chain the block-final transaction
+            if height == 1:
+                block.vtx[0].vout.insert(0, CTxOut(0, CScript([OP_TRUE])))
+                block.vtx[0].rehash()
+                final_tx = [{
+                    'txid': block.vtx[0].hash,
+                    'vout': 0,
+                    'amount': 0,
+                }]
+                block.hashMerkleRoot = block.calc_merkle_root()
+                block.rehash()
+            if height > 100:
+                final_tx = add_final_tx(final_tx, block)
+            block.solve()
+            blocks.append(block)
+            tip = block.hash_int
             block_time += 1
             height += 1
-            block_dict[blocks[-1].hash_int] = blocks[-1]
+            block_dict[block.hash_int] = block
         stall_index = 0
         second_stall_index = 500
         stall_blocks = [blocks[stall_index].hash_int, blocks[second_stall_index].hash_int]

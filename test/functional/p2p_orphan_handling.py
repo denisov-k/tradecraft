@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2023-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2023 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import time
 
@@ -36,7 +47,7 @@ from test_framework.util import (
     assert_not_equal,
     assert_equal,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.wallet import (
     MiniWallet,
     MiniWalletMode,
@@ -60,7 +71,7 @@ def cleanup(func):
             self.wait_until(lambda: len(self.nodes[0].getorphantxs()) == 0)
             assert_equal(0, len(self.nodes[0].getrawmempool()))
 
-            self.restart_node(0, extra_args=["-persistmempool=0"])
+            self.restart_node(0, extra_args=["-persistmempool=0", "-datacarrier=1", "-datacarriersize=100000"])
             # Allow use of bumpmocktime again
             self.nodes[0].setmocktime(int(time.time()))
             self.wallet.rescan_utxos(include_mempool=True)
@@ -120,10 +131,11 @@ class PeerTxRelayer(P2PTxInvStore):
             for request in getdata.inv:
                 assert_not_equal(request.hash, txhash)
 
-class OrphanHandlingTest(BitcoinTestFramework):
+class OrphanHandlingTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
-        self.extra_args = [[]]
+        # Freicoin: create_large_orphan uses an OP_RETURN output; datacarrier is off by default
+        self.extra_args = [["-datacarrier=1", "-datacarriersize=100000"]]
 
     def create_parent_and_child(self):
         """Create package with 1 parent and 1 child, normal fees (no cpfp)."""
@@ -147,8 +159,8 @@ class OrphanHandlingTest(BitcoinTestFramework):
         tx_parent_doesnt_arrive = self.wallet.create_self_transfer()
         # Fake orphan spends nonexistent outputs of the two parents
         tx_fake_orphan = self.wallet.create_self_transfer_multi(utxos_to_spend=[
-            {"txid": tx_parent_doesnt_arrive["txid"], "vout": 10, "value": tx_parent_doesnt_arrive["new_utxo"]["value"]},
-            {"txid": tx_parent_arrives["txid"], "vout": 10, "value": tx_parent_arrives["new_utxo"]["value"]}
+            {"txid": tx_parent_doesnt_arrive["txid"], "vout": 10, "value": tx_parent_doesnt_arrive["new_utxo"]["value"], "refheight": 1},
+            {"txid": tx_parent_arrives["txid"], "vout": 10, "value": tx_parent_arrives["new_utxo"]["value"], "refheight": 1}
         ])
 
         peer_spy = node.add_p2p_connection(PeerTxRelayer())

@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2023-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2023 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Test sigop limit mempool policy (`-bytespersigop` parameter)"""
 from copy import deepcopy
 from decimal import Decimal
@@ -36,7 +47,7 @@ from test_framework.script_util import (
     MAX_STD_LEGACY_SIGOPS,
     MAX_STD_P2SH_SIGOPS,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -49,9 +60,11 @@ from test_framework.wallet_util import generate_keypair
 DEFAULT_BYTES_PER_SIGOP = 20  # default setting
 MAX_PUBKEYS_PER_MULTISIG = 20
 
-class BytesPerSigOpTest(BitcoinTestFramework):
+class BytesPerSigOpTest(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
+        # allow large datacarrier output to pad transactions
+        self.extra_args = [['-datacarrier=1', '-datacarriersize=100000']]
 
     def create_p2wsh_spending_tx(self, witness_script, output_script):
         """Create a 1-input-1-output P2WSH spending transaction with only the
@@ -67,7 +80,7 @@ class BytesPerSigOpTest(BitcoinTestFramework):
         tx = CTransaction()
         tx.vin = [CTxIn(COutPoint(int(fund["txid"], 16), fund["sent_vout"]))]
         tx.wit.vtxinwit = [CTxInWitness()]
-        tx.wit.vtxinwit[0].scriptWitness.stack = [bytes(witness_script)]
+        tx.wit.vtxinwit[0].scriptWitness.stack = [b"\x00" + bytes(witness_script), b""]
         tx.vout = [CTxOut(500000, output_script)]
         return tx
 
@@ -114,7 +127,7 @@ class BytesPerSigOpTest(BitcoinTestFramework):
         tx.vout[0].scriptPubKey = CScript([OP_RETURN, b'X'*(256+vsize_to_pad-1)])
         res = self.nodes[0].testmempoolaccept([tx.serialize().hex()])[0]
         assert_equal(res['allowed'], True)
-        assert_equal(res['vsize'], sigop_equivalent_vsize)
+        assert_equal(res['vsize'], sigop_equivalent_vsize-1)
 
         # check that the ancestor and descendant size calculations in the mempool
         # also use the same max(sigop_equivalent_vsize, serialized_vsize) logic
@@ -131,15 +144,15 @@ class BytesPerSigOpTest(BitcoinTestFramework):
 
         entry_child = self.nodes[0].getmempoolentry(tx.txid_hex)
         assert_equal(entry_child['descendantcount'], 1)
-        assert_equal(entry_child['descendantsize'], sigop_equivalent_vsize)
+        assert_equal(entry_child['descendantsize'], tx.get_vsize())
         assert_equal(entry_child['ancestorcount'], 2)
-        assert_equal(entry_child['ancestorsize'], sigop_equivalent_vsize + parent_tx.get_vsize())
+        assert_equal(entry_child['ancestorsize'], parent_tx.get_vsize() + tx.get_vsize())
 
         entry_parent = self.nodes[0].getmempoolentry(parent_tx.txid_hex)
         assert_equal(entry_parent['ancestorcount'], 1)
         assert_equal(entry_parent['ancestorsize'], parent_tx.get_vsize())
         assert_equal(entry_parent['descendantcount'], 2)
-        assert_equal(entry_parent['descendantsize'], parent_tx.get_vsize() + sigop_equivalent_vsize)
+        assert_equal(entry_parent['descendantsize'], parent_tx.get_vsize() + tx.get_vsize())
 
     def test_sigops_package(self):
         self.log.info("Test a overly-large sigops-vbyte hits package limits")
@@ -185,8 +198,9 @@ class BytesPerSigOpTest(BitcoinTestFramework):
     def test_legacy_sigops_stdness(self):
         self.log.info("Test a transaction with too many legacy sigops in its inputs is non-standard.")
 
-        # Restart with the default settings
-        self.restart_node(0)
+        # Restart with the default settings (except -datacarrier, which is
+        # needed for the OP_RETURN outputs below)
+        self.restart_node(0, extra_args=['-datacarrier=1'])
 
         # Create a P2SH script with 15 sigops.
         _, dummy_pubkey = generate_keypair()
@@ -227,7 +241,8 @@ class BytesPerSigOpTest(BitcoinTestFramework):
             else:
                 bytespersigop_parameter = f"-bytespersigop={bytes_per_sigop}"
                 self.log.info(f"Test sigops limit setting {bytespersigop_parameter}...")
-                self.restart_node(0, extra_args=[bytespersigop_parameter])
+                # restart_node replaces extra_args, so re-add the datacarrier settings
+                self.restart_node(0, extra_args=[bytespersigop_parameter, '-datacarrier=1', '-datacarriersize=100000'])
 
             for num_sigops in (69, 101, 142, 183, 222):
                 self.test_sigops_limit(bytes_per_sigop, num_sigops)

@@ -9,14 +9,14 @@ went wrong. We should maintain this bar of only raising one exception as
 long as additional maintenance and complexity is low.
 
 Test relaunches itself into child processes in order to trigger failures
-without the parent process' BitcoinTestFramework also failing.
+without the parent process' FreicoinTestFramework also failing.
 """
 
 from test_framework.util import (
     assert_raises_message,
     rpc_port,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import FreicoinTestFramework
 
 from hashlib import md5
 from os import linesep
@@ -25,7 +25,7 @@ import subprocess
 import sys
 import time
 
-class FeatureFrameworkStartupFailures(BitcoinTestFramework):
+class FeatureFrameworkStartupFailures(FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -52,7 +52,7 @@ class FeatureFrameworkStartupFailures(BitcoinTestFramework):
         except subprocess.TimeoutExpired as e:
             sys.exit("Unexpected child process timeout!\n"
                      "WARNING: Timeouts like this halt execution of TestNode logic, "
-                     "meaning dangling bitcoind processes are to be expected.\n" +
+                     "meaning dangling freicoind processes are to be expected.\n" +
                      (format_child_output(e.output.decode("utf-8")) if e.output else "<EMPTY OUTPUT>"))
 
         errors = []
@@ -90,22 +90,22 @@ class FeatureFrameworkStartupFailures(BitcoinTestFramework):
         self.nodes[0].stop_node()
         self.log.info(f"...measured {node_start_duration:.1f}s.")
 
-        self.log.info("Verifying inability to connect to bitcoind's RPC interface due to wrong port results in one exception containing at least one OSError.")
+        self.log.info("Verifying inability to connect to freicoind's RPC interface due to wrong port results in one exception containing at least one OSError.")
         self._verify_startup_failure(
             TestWrongRpcPortStartupFailure, [f"--internal_node_start_duration={node_start_duration}"],
-            r"AssertionError: \[node 0\] Unable to connect to bitcoind after \d+s \(ignored errors: {[^}]*'OSError \w+'?: \d+[^}]*}, latest: '[\w ]+'/\w+\([^)]+\)\)"
+            r"AssertionError: \[node 0\] Unable to connect to freicoind after \d+s \(ignored errors: {[^}]*'OSError \w+'?: \d+[^}]*}, latest: '[\w ]+'/\w+\([^)]+\)\)"
         )
 
         self.log.info("Verifying timeout while waiting for init errors that do not occur results in only one exception.")
         self._verify_startup_failure(
             TestMissingInitErrorTimeout, [f"--internal_node_start_duration={node_start_duration}"],
-            r"AssertionError: \[node 0\] bitcoind should have exited within \d+s with an error \(cmd:"
+            r"AssertionError: \[node 0\] freicoind should have exited within \d+s with an error \(cmd:"
         )
 
         self.log.info("Verifying startup failure due to invalid arg results in only one exception.")
         self._verify_startup_failure(
             TestInitErrorStartupFailure, [],
-            r"FailedToStartError: \[node 0\] bitcoind exited with status 1 during initialization\. Error: Error parsing command line arguments: Invalid parameter -nonexistentarg"
+            r"FailedToStartError: \[node 0\] freicoind exited with status 1 during initialization\. Error: Error parsing command line arguments: Invalid parameter -nonexistentarg"
         )
 
         self.log.info("Verifying start() then stop_node() on a node without wait_for_rpc_connection() in between raises an assert.")
@@ -127,10 +127,10 @@ class InternalDurationTestMixin(InternalTestMixin):
 
     def get_reasonable_rpc_timeout(self):
         # 2 * the measured test startup duration should be enough.
-        # Divide by timeout_factor to counter multiplication in BitcoinTestFramework.
+        # Divide by timeout_factor to counter multiplication in FreicoinTestFramework.
         return max(3, 2 * self.options.node_start_duration) / self.options.timeout_factor
 
-class TestWrongRpcPortStartupFailure(InternalDurationTestMixin, BitcoinTestFramework):
+class TestWrongRpcPortStartupFailure(InternalDurationTestMixin, FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         # Override RPC listen port to something TestNode isn't expecting so that
@@ -143,7 +143,7 @@ class TestWrongRpcPortStartupFailure(InternalDurationTestMixin, BitcoinTestFrame
     def run_test(self):
         assert False, "Should have failed earlier during startup."
 
-class TestMissingInitErrorTimeout(InternalDurationTestMixin, BitcoinTestFramework):
+class TestMissingInitErrorTimeout(InternalDurationTestMixin, FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         # Override the timeout to avoid waiting unnecessarily long for an init
@@ -158,7 +158,7 @@ class TestMissingInitErrorTimeout(InternalDurationTestMixin, BitcoinTestFramewor
     def run_test(self):
         assert False, "Should have failed earlier during startup."
 
-class TestInitErrorStartupFailure(InternalTestMixin, BitcoinTestFramework):
+class TestInitErrorStartupFailure(InternalTestMixin, FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [["-nonexistentarg"]]
@@ -166,7 +166,7 @@ class TestInitErrorStartupFailure(InternalTestMixin, BitcoinTestFramework):
     def run_test(self):
         assert False, "Should have failed earlier during startup."
 
-class TestStartStopStartupFailure(InternalTestMixin, BitcoinTestFramework):
+class TestStartStopStartupFailure(InternalTestMixin, FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -179,7 +179,7 @@ class TestStartStopStartupFailure(InternalTestMixin, BitcoinTestFramework):
     def run_test(self):
         assert False, "Should have failed earlier during startup."
 
-class TestSuccess(InternalTestMixin, BitcoinTestFramework):
+class TestSuccess(InternalTestMixin, FreicoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 

@@ -37,7 +37,7 @@ from test_framework.socks5 import (
     start_socks5_server,
 )
 from test_framework.test_framework import (
-    BitcoinTestFramework,
+    FreicoinTestFramework,
 )
 from test_framework.v2_p2p import (
     EncryptedP2PState,
@@ -64,7 +64,7 @@ class P2PDetermineV2or1AndClose(P2PConnection):
     def on_close(self):
         pass
 
-class P2PPrivateBroadcastRetryV1(BitcoinTestFramework):
+class P2PPrivateBroadcastRetryV1(FreicoinTestFramework):
     def set_test_params(self):
         self.disable_autoconnect = False
         self.num_nodes = 1
