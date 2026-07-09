@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2018-present The Bitcoin Core developers
-# Distributed under the MIT software license, see the accompanying
-# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+# Copyright (c) 2018-2022 The Bitcoin Core developers
+# Copyright (c) 2010-2024 The Freicoin Developers
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 3 of the GNU Affero General Public License as published
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Verify commits against a trusted keys list."""
 import argparse
 import hashlib
@@ -17,7 +28,7 @@ GIT = os.getenv('GIT', 'git')
 def tree_sha512sum(commit='HEAD'):
     """Calculate the Tree-sha512 for the commit.
 
-    This is copied from github-merge.py. See https://github.com/bitcoin-core/bitcoin-maintainer-tools."""
+    This is copied from github-merge.py. See https://github.com/tradecraftio/tradecraft-maintainer-tools."""
 
     # request metadata for entire tree, recursively
     files = []
@@ -130,7 +141,7 @@ def main():
                     no_sha1 = False
 
 
-        os.environ['BITCOIN_VERIFY_COMMITS_ALLOW_SHA1'] = "0" if no_sha1 else "1"
+        os.environ['FREICOIN_VERIFY_COMMITS_ALLOW_SHA1'] = "0" if no_sha1 else "1"
         allow_revsig = current_commit in revsig_allowed
 
         # Check that the commit (and parents) was signed with a trusted key

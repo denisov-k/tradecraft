@@ -1,6 +1,6 @@
 UNIX BUILD NOTES
 ====================
-Some notes on how to build Bitcoin Core in Unix.
+Some notes on how to build Freicoin in Unix.
 
 (For BSD specific instructions, see `build-*bsd.md` in this directory.)
 
@@ -24,7 +24,7 @@ distributions](#linux-distribution-specific-instructions), or the
 ## Memory Requirements
 
 C++ compilers are memory-hungry. It is recommended to have at least 1.5 GB of
-memory available when compiling Bitcoin Core. On systems with less, gcc can be
+memory available when compiling Freicoin. On systems with less, gcc can be
 tuned to conserve memory with additional `CMAKE_CXX_FLAGS`:
 
 
@@ -64,7 +64,7 @@ SQLite is required for the wallet:
 
 To build Bitcoin Core without the wallet, see [*Disable-wallet mode*](#disable-wallet-mode)
 
-Cap'n Proto is needed for IPC functionality (see [multiprocess.md](multiprocess.md)):
+To build Freicoin without wallet, see [*Disable-wallet mode*](#disable-wallet-mode)
 
     sudo apt-get install libcapnp-dev capnproto
 
@@ -80,7 +80,7 @@ User-Space, Statically Defined Tracing (USDT) dependencies:
 
 GUI dependencies:
 
-Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
+Freicoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
 the necessary parts of Qt, the libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the GUI.
 
     sudo apt-get install qt6-base-dev qt6-tools-dev qt6-l10n-tools qt6-tools-dev-tools libgl-dev
@@ -114,7 +114,9 @@ SQLite is required for the wallet:
 
 To build Bitcoin Core without the wallet, see [*Disable-wallet mode*](#disable-wallet-mode)
 
-ZMQ-enabled binaries are compiled with `-DWITH_ZMQ=ON` and require the following dependency:
+To build Freicoin without wallet, see [*Disable-wallet mode*](#disable-wallet-mode)
+
+ZMQ dependencies (provides ZMQ API):
 
     sudo dnf install zeromq-devel
 
@@ -130,7 +132,7 @@ Compile with `-DENABLE_IPC=OFF` if you do not need IPC functionality.
 
 GUI dependencies:
 
-Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
+Freicoin includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
 the necessary parts of Qt, the libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the GUI.
 
     sudo dnf install qt6-qtbase-devel qt6-qttools-devel
@@ -194,9 +196,30 @@ See [dependencies.md](dependencies.md) for a complete overview, and
 [depends](/depends/README.md) on how to compile them yourself, if you wish to
 not use the packages of your Linux distribution.
 
+### Berkeley DB
+
+The legacy wallet uses Berkeley DB. To ensure backwards compatibility it is
+recommended to use Berkeley DB 4.8. If you have to build it yourself, and don't
+want to use any other libraries built in depends, you can do:
+```bash
+make -C depends NO_BOOST=1 NO_LIBEVENT=1 NO_QT=1 NO_SQLITE=1 NO_ZMQ=1 NO_USDT=1
+...
+to: /path/to/freicoin/depends/x86_64-pc-linux-gnu
+```
+and configure using the following:
+```bash
+export BDB_PREFIX="/path/to/freicoin/depends/x86_64-pc-linux-gnu"
+
+cmake -B build -DBerkeleyDB_INCLUDE_DIR:PATH="${BDB_PREFIX}/include" -DWITH_BDB=ON
+```
+
+**Note**: Make sure that `BDB_PREFIX` is an absolute path.
+
+**Note**: You only need Berkeley DB if the legacy wallet is enabled (see [*Disable-wallet mode*](#disable-wallet-mode)).
+
 Disable-wallet mode
 --------------------
-When the intention is to only run a P2P node, without a wallet, Bitcoin Core can
+When the intention is to only run a P2P node, without a wallet, Freicoin can
 be compiled in disable-wallet mode with:
 
     cmake -B build -DENABLE_WALLET=OFF
@@ -215,6 +238,5 @@ This example lists the steps necessary to setup and build a command line only di
     cmake -B build
     cmake --build build
     ctest --test-dir build
-    ./build/bin/bitcoind
-    ./build/bin/bitcoin help
+    ./build/bin/freicoind
 
