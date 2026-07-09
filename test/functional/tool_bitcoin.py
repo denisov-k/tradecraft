@@ -105,7 +105,14 @@ def get_node_output(node):
 
 
 def get_exe_name(version_str):
-    """Get exe name from last word of first line of version string."""
+    """Identify which binary the wrapper launched from its -version banner.
+    Freicoin prints 'Freicoin daemon version ...' / 'Freicoin node version ...',
+    unlike bitcoin whose banner's last word is the executable name."""
+    first = version_str.strip().split(b"\n")[0]
+    if b"node" in first:
+        return b"freicoin-node"
+    if b"daemon" in first:
+        return b"freicoind"
     return re.match(rb".*?(\S+)\s*?(?:\n|$)", version_str.strip()).group(1)
 
 
