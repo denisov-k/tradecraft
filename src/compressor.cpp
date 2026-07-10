@@ -63,6 +63,11 @@ static bool IsToPubKey(const CScript& script, CPubKey &pubkey)
     return false;
 }
 
+// nVersion=3-lite: whether to persist the per-output asset tag in the UTXO set. Off by default
+// so every existing chain (mainnet/testnet/regtest) keeps its exact chainstate format and hashes;
+// set true only for the dedicated nV3 chain, whose chainstate is built from genesis.
+bool g_txout_serialize_asset_tag = false;
+
 bool CompressScript(const CScript& script, CompressedScript& out)
 {
     CKeyID keyID;

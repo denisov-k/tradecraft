@@ -9,6 +9,7 @@
 // and unknown assets are rejected, and with no registry a non-host input is unknown.
 
 #include <coins.h>
+#include <compressor.h>
 #include <consensus/amount.h>
 #include <consensus/asset.h>
 #include <consensus/tx_verify.h>
@@ -16,6 +17,8 @@
 #include <chainparams.h>
 #include <primitives/transaction.h>
 #include <script/script.h>
+#include <serialize.h>
+#include <streams.h>
 #include <test/util/setup_common.h>
 #include <uint256.h>
 
@@ -140,6 +143,35 @@ BOOST_AUTO_TEST_CASE(asset_issuance)
     TxValidationState state; CAmount fee = -1;
     BOOST_CHECK(Consensus::CheckTxInputs(tx, state, view, consensus, 0, (int)H + 100, Consensus::NONE, fee, nullptr));
     BOOST_CHECK_EQUAL(fee, 2000);
+}
+
+BOOST_AUTO_TEST_CASE(asset_tag_utxo_persistence)
+{
+    std::vector<unsigned char> def(Consensus::ASSET_DEF_SIZE, 0); def[0] = 18;
+    const uint160 tag = Consensus::AssetIdFromDef(def);
+    CTxOut out(500, CScript() << OP_TRUE);
+    out.assetTag = tag;
+
+    // gate OFF (every existing chain): the tag is NOT persisted — a coin round-trips to the host
+    // currency, and the serialized bytes are identical to before nV3.
+    g_txout_serialize_asset_tag = false;
+    {
+        DataStream ss;
+        ss << Using<TxOutCompression>(out);
+        CTxOut back;
+        ss >> Using<TxOutCompression>(back);
+        BOOST_CHECK(back.assetTag.IsNull());
+    }
+    // gate ON (the nV3 chain): the tag survives the UTXO serialization round-trip
+    g_txout_serialize_asset_tag = true;
+    {
+        DataStream ss;
+        ss << Using<TxOutCompression>(out);
+        CTxOut back;
+        ss >> Using<TxOutCompression>(back);
+        BOOST_CHECK(back.assetTag == tag);
+    }
+    g_txout_serialize_asset_tag = false;   // restore the global for other tests
 }
 
 BOOST_AUTO_TEST_SUITE_END()
