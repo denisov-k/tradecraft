@@ -916,7 +916,7 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     }
 
     // The mempool holds txs for the next block, so pass height+1 to CheckTxInputs
-    if (!Consensus::CheckTxInputs(tx, state, m_view, chainparams.GetConsensus(), /* per_input_adjustment = */ 0, m_active_chainstate.m_chain.Height() + 1, Consensus::NONE, ws.m_base_fees)) {
+    if (!Consensus::CheckTxInputs(tx, state, m_view, chainparams.GetConsensus(), /* per_input_adjustment = */ 0, m_active_chainstate.m_chain.Height() + 1, Consensus::NONE, ws.m_base_fees, &m_active_chainstate.m_asset_registry)) {
         return false; // state filled in by CheckTxInputs
     }
 
@@ -2288,6 +2288,11 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
         bool is_coinbase = tx.IsCoinBase();
         bool is_bip30_exception = (is_coinbase && !fEnforceBIP30);
 
+        // nVersion=3-lite: roll back any asset this tx defined.
+        if (const auto d = Consensus::ParseAssetDefinition(tx)) {
+            m_asset_registry.Undefine(d->first);
+        }
+
         // Check that all outputs are available and match the outputs in the block itself
         // exactly.
         for (size_t o = 0; o < tx.vout.size(); o++) {
@@ -2685,12 +2690,17 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         {
             CAmount txfee = 0;
             TxValidationState tx_state;
-            if (!Consensus::CheckTxInputs(tx, tx_state, view, params.GetConsensus(), !truncate_inputs + !use_alu, pindex->nHeight, rules, txfee)) {
+            if (!Consensus::CheckTxInputs(tx, tx_state, view, params.GetConsensus(), !truncate_inputs + !use_alu, pindex->nHeight, rules, txfee, &m_asset_registry)) {
                 // Any transaction validation failure in ConnectBlock is a block consensus failure
                 state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
                               tx_state.GetRejectReason(),
                               tx_state.GetDebugMessage() + " in transaction " + tx.GetHash().ToString());
                 break;
+            }
+            // nVersion=3-lite: register any asset this tx defines, so later txs (this block and
+            // beyond) can spend it. Rolled back in DisconnectBlock.
+            if (const auto d = Consensus::ParseAssetDefinition(tx)) {
+                m_asset_registry.Define(d->first, d->second);
             }
             nFees += GetTimeAdjustedValue(txfee, pindex->nHeight - (int)tx.lock_height) + !use_alu;
 

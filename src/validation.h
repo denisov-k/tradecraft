@@ -23,6 +23,7 @@
 #include <checkqueue.h>
 #include <coins.h>
 #include <consensus/amount.h>
+#include <consensus/asset.h>
 #include <consensus/consensus.h>
 #include <cuckoocache.h>
 #include <deploymentstatus.h>
@@ -794,6 +795,11 @@ protected:
     std::optional<const char*> m_last_script_check_reason_logged GUARDED_BY(::cs_main){};
 
 public:
+    //! nVersion=3-lite: user-issued asset registry (tag -> monetary policy), populated from
+    //! asset-definition txs as blocks connect. In-memory for now — rebuilt by a reindex; a
+    //! restart without reindex would need a persistent index (deferred).
+    Consensus::AssetRegistry m_asset_registry;
+
     //! Reference to a BlockManager instance which itself is shared across all
     //! Chainstate instances.
     node::BlockManager& m_blockman;
