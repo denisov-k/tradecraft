@@ -172,7 +172,7 @@ public:
 
     /* nVersion=3-lite: the 20-byte asset tag identifying which asset this output holds. A null
      * (all-zero) tag denotes the host currency (freicoin). NOT part of CTxOut's own
-     * serialization — it is written/read at the transaction level only for version>=3 txs, so
+     * serialization — it is written/read at the transaction level only for version==3 txs, so
      * version<3 serialization stays byte-identical. See SerializeTransaction. */
     uint160 assetTag;
 
@@ -387,7 +387,7 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
     // nVersion=3-lite: each output carries a 20-byte asset tag, serialized as a parallel
     // block right after vout so that version<3 encodings are unchanged. version<3 outputs are
     // implicitly the host currency (null tag, already set by CTxOut::SetNull).
-    if (tx.version >= 3) {
+    if (tx.version == 3) {
         for (CTxOut& txout : tx.vout) {
             s >> txout.assetTag;
         }
@@ -438,7 +438,7 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
     s << tx.vin;
     s << tx.vout;
     // nVersion=3-lite: asset tags as a parallel block after vout (see UnserializeTransaction).
-    if (tx.version >= 3) {
+    if (tx.version == 3) {
         for (const CTxOut& txout : tx.vout) {
             s << txout.assetTag;
         }

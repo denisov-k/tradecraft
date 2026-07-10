@@ -123,10 +123,7 @@ struct AmountCompression
 /** wrapper for CTxOut that provides a more compact serialization */
 struct TxOutCompression
 {
-    // nVersion=3-lite: persist the asset tag with each UTXO so a coin knows its asset across
-    // restarts. Always written here — this is for the dedicated nV3 testnet whose chainstate
-    // is created from genesis; the mainnet soak node runs the rebase-31 binary, not this one.
-    FORMATTER_METHODS(CTxOut, obj) { READWRITE(Using<AmountCompression>(obj.nValue), Using<ScriptCompression>(obj.scriptPubKey), obj.assetTag); }
+    FORMATTER_METHODS(CTxOut, obj) { READWRITE(Using<AmountCompression>(obj.nValue), Using<ScriptCompression>(obj.scriptPubKey)); }
 };
 
 #endif // FREICOIN_COMPRESSOR_H
