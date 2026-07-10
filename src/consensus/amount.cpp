@@ -195,6 +195,65 @@ CAmount TimeAdjustValueForward(const CAmount& initial_value, uint32_t distance)
     return sign * CAmount(static_cast<int64_t>(sum));
 }
 
+/* nVersion=3-lite: per-asset demurrage at rate 2^-k per block. Structurally identical to
+ * TimeAdjustValueForward, except the exponentiation ladder of (1 - 2^-k)^(2^bit) is generated
+ * on the fly (the host currency's k32 table is only for k=20). The ladder MUST be generated
+ * with >=96 fractional guard bits: naive 64-bit squaring drifts a few ULPs and does not match
+ * the canonical k=20 table. Proof + golden vectors: research/nversion3/. */
+CAmount TimeAdjustValueForwardK(const CAmount& initial_value, uint32_t distance, unsigned k)
+{
+    if (disable_time_adjust)
+        return initial_value;
+    if (k == 20)
+        return TimeAdjustValueForward(initial_value, distance);   /* host currency: canonical path */
+    if (distance == 0)
+        return initial_value;
+    if (distance >= ((uint32_t)1 << 26))
+        return 0;
+
+    const int sign = (initial_value > 0) - (initial_value < 0);
+    const uint64_t value = std::abs(initial_value);
+
+    /* Build the 64-bit-fraction ladder for shift k, squaring the base (1 - 2^-k) with 96
+     * guard bits. The exact (a*a) >> 96 for a < 2^96 is done by 64-bit split to avoid the
+     * 192-bit intermediate overflowing __int128. */
+    typedef unsigned __int128 u128;
+    std::array<uint32_t, 2*26> lk;
+    {
+        const int P = 96;
+        u128 c = ((u128)1 << P) - ((u128)1 << (P - (int)k));
+        for (int bit = 0; bit < 26; ++bit) {
+            uint64_t e = (uint64_t)(c >> (P - 64));
+            lk[2*bit]   = (uint32_t)(e >> 32);
+            lk[2*bit+1] = (uint32_t)e;
+            uint64_t aH = (uint64_t)(c >> 64), aL = (uint64_t)c;
+            u128 X = (u128)2 * aH * aL;                 /* < 2^97 */
+            u128 Y = (u128)aL * aL;                     /* < 2^128 */
+            c = ((u128)aH * aH << 32) + (X >> 32) + (((( X & 0xffffffffULL) << 64) + Y) >> 96);
+        }
+    }
+
+    /* Identical accumulation + final multiply to TimeAdjustValueForward, using lk. */
+    uint64_t sum = 0, overflow = 0;
+    auto shift32 = [&]() { sum = (overflow << 32) + (sum >> 32); overflow = 0; };
+    auto term = [&](uint64_t val) { overflow += (sum + val) < sum; sum += val; };
+
+    std::array<uint32_t, 2> w = { 0, 0 };
+    bool first = true;
+    for (int bit = 0; distance; distance >>= 1, ++bit) {
+        if (distance & 1) {
+            if (first) { first = false; w[0] = lk[2*bit]; w[1] = lk[2*bit+1]; continue; }
+            const uint64_t w0 = w[0], w1 = w[1], k0 = lk[2*bit], k1 = lk[2*bit+1];
+            overflow = 0; sum = k1 * w0; term(k0 * w1); shift32(); term(k0 * w0);
+            w[1] = static_cast<uint32_t>(sum); shift32(); w[0] = static_cast<uint32_t>(sum);
+        }
+    }
+
+    const uint64_t v0 = value >> 32, v1 = static_cast<uint32_t>(value);
+    overflow = 0; sum = (w[1] * v1) >> 32; term(w[1] * v0); term(w[0] * v1); shift32(); term(w[0] * v0);
+    return sign * CAmount(static_cast<int64_t>(sum));
+}
+
 CAmount TimeAdjustValueReverse(const CAmount& initial_value, uint32_t distance)
 {
     /* If we're in bitcoin unit test compatibility mode, return our

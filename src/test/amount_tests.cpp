@@ -153,4 +153,28 @@ BOOST_AUTO_TEST_CASE(ToStringTest)
     BOOST_CHECK_EQUAL(feeRate.ToString(FeeRateFormat::SAT_VB), "0.001 sat/vB");
 }
 
+BOOST_AUTO_TEST_CASE(TimeAdjustValueForwardK_test)
+{
+    // nVersion=3-lite per-asset demurrage: at k=20 it must be bit-identical to the host
+    // currency, and it must match the reference model's golden vectors for other rates.
+    // Golden values from research/nversion3/verify_kernel.py (96-guard-bit ladder).
+    for (uint32_t d : {1u, 2u, 96u, 1000u, 52560u, 485000u}) {
+        BOOST_CHECK_EQUAL(TimeAdjustValueForwardK(1234567890LL, d, 20),
+                          TimeAdjustValueForward(1234567890LL, d));
+    }
+    // k=18 (faster demurrage) and k=22 (slower), value 100000000 (1 FRC nominal):
+    BOOST_CHECK_EQUAL(TimeAdjustValueForwardK(100000000LL, 1,      18), 99999618LL);
+    BOOST_CHECK_EQUAL(TimeAdjustValueForwardK(100000000LL, 96,     18), 99963385LL);
+    BOOST_CHECK_EQUAL(TimeAdjustValueForwardK(100000000LL, 1000,   18), 99619256LL);
+    // faster rate melts more than the host currency at the same distance
+    BOOST_CHECK(TimeAdjustValueForwardK(100000000LL, 1000, 18) <
+                TimeAdjustValueForward(100000000LL, 1000));
+    // slower rate melts less
+    BOOST_CHECK(TimeAdjustValueForwardK(100000000LL, 1000, 22) >
+                TimeAdjustValueForward(100000000LL, 1000));
+    // distance 0 and the decay-to-zero cutoff behave like the host kernel
+    BOOST_CHECK_EQUAL(TimeAdjustValueForwardK(100000000LL, 0, 18), 100000000LL);
+    BOOST_CHECK_EQUAL(TimeAdjustValueForwardK(100000000LL, (uint32_t)1 << 26, 18), 0LL);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

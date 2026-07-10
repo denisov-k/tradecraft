@@ -46,6 +46,11 @@ inline bool MoneyRange(const CAmount& nValue) { return (nValue >= 0 && nValue <=
 static const bool DEFAULT_DISABLE_TIME_ADJUST = false;
 extern bool disable_time_adjust;
 CAmount TimeAdjustValueForward(const CAmount& initial_value, uint32_t distance);
+/** nVersion=3-lite: per-asset demurrage. Generalises TimeAdjustValueForward to an arbitrary
+ *  rate 2^-k per block (k=20 is the host currency and is bit-identical to it). The ladder is
+ *  regenerated with 96 fractional guard bits — naive 64-bit squaring drifts and mismatches the
+ *  canonical table. See research/nversion3/ for the proof and golden vectors. */
+CAmount TimeAdjustValueForwardK(const CAmount& initial_value, uint32_t distance, unsigned k);
 CAmount TimeAdjustValueReverse(const CAmount& initial_value, uint32_t distance);
 CAmount GetTimeAdjustedValue(const CAmount& initial_value, int relative_depth);
 
