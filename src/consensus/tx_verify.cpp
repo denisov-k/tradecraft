@@ -185,8 +185,20 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
     // nVersion=3-lite: balances are tallied PER ASSET (keyed by the 20-byte tag; the null tag is
     // the host currency). With no registry every output is the host currency, so this reduces
     // exactly to the single-asset rule below. Each asset's demurrage rate comes from the registry.
-    auto asset_known = [&](const uint160& tag) { return tag.IsNull() || (registry && registry->IsKnown(tag)); };
-    auto asset_shift = [&](const uint160& tag) -> unsigned { return registry ? registry->Get(tag).shift : 20; };
+    // This tx may DEFINE a new asset (an OP_RETURN definition); that asset is minted from
+    // nothing, so its params come from the definition and its balance rule is exempted below.
+    const auto def = Consensus::ParseAssetDefinition(tx);
+    const bool has_minted = def.has_value();
+    const uint160 minted = has_minted ? def->first : uint160();
+    auto params_of = [&](const uint160& tag) -> Consensus::AssetParams {
+        if (tag.IsNull()) return Consensus::AssetParams{20, false, 1};
+        if (has_minted && tag == minted) return def->second;
+        return registry ? registry->Get(tag) : Consensus::AssetParams{};
+    };
+    auto asset_known = [&](const uint160& tag) {
+        return tag.IsNull() || (has_minted && tag == minted) || (registry && registry->IsKnown(tag));
+    };
+    auto asset_shift = [&](const uint160& tag) -> unsigned { return params_of(tag).shift; };
 
     std::map<uint160, CAmount> in_pv;   // present value of inputs, per asset, at tx.lock_height
     for (unsigned int i = 0; i < tx.vin.size(); ++i) {
@@ -227,7 +239,7 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
         if (!asset_known(o.assetTag)) {
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-unknown-asset");
         }
-        const uint64_t g = registry ? registry->Get(o.assetTag).granularity : 1;
+        const uint64_t g = params_of(o.assetTag).granularity;
         if (g > 1 && (o.GetReferenceValue() % (CAmount)g) != 0) {
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-granularity");
         }
@@ -241,6 +253,7 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
     for (const auto& kv : out_sum) tags.insert(kv.first);
     CAmount txfee_aux = 0;
     for (const uint160& tag : tags) {
+        if (has_minted && tag == minted) continue;   // the newly-defined asset is minted from nothing
         const CAmount in = in_pv.count(tag) ? in_pv[tag] : 0;
         const CAmount out = out_sum.count(tag) ? out_sum[tag] : 0;
         if (out > in) {

@@ -98,4 +98,48 @@ BOOST_AUTO_TEST_CASE(per_asset_check_tx_inputs)
     }
 }
 
+BOOST_AUTO_TEST_CASE(asset_issuance)
+{
+    const Consensus::Params& consensus = Params().GetConsensus();
+    CCoinsView base;
+    CCoinsViewCache view(&base);
+
+    // A definition for a shift=18 asset; the tag is Hash160(def).
+    std::vector<unsigned char> def(Consensus::ASSET_DEF_SIZE, 0);
+    def[0] = 18;
+    const uint160 tag = Consensus::AssetIdFromDef(def);
+
+    std::vector<unsigned char> payload(std::begin(Consensus::ASSET_DEF_MAGIC), std::end(Consensus::ASSET_DEF_MAGIC));
+    payload.insert(payload.end(), def.begin(), def.end());
+    const CScript opret = CScript() << OP_RETURN << payload;
+
+    // an FRC coin to pay the fee; lock_height == refheight so nothing melts
+    const uint32_t H = 1000;
+    const COutPoint opHost(Txid::FromUint256(m_rng.rand256()), 0);
+    view.AddCoin(opHost, Coin(CTxOut(1000000, CScript() << OP_TRUE), H, 1, false), false);
+
+    // definition tx: OP_RETURN def + mint 100 units + FRC change (2000-kria fee)
+    CMutableTransaction mtx;
+    mtx.version = 3;
+    mtx.lock_height = H;
+    mtx.vin.emplace_back(opHost);
+    CTxOut mint(10000000000, CScript() << OP_TRUE); mint.assetTag = tag;
+    CTxOut marker(0, opret);                                   // definition marker (host, value 0)
+    CTxOut change(998000, CScript() << OP_TRUE);               // FRC change
+    mtx.vout = {mint, marker, change};
+    const CTransaction tx(mtx);
+
+    const auto parsed = Consensus::ParseAssetDefinition(tx);
+    BOOST_REQUIRE(parsed.has_value());
+    BOOST_CHECK(parsed->first == tag);
+    BOOST_CHECK_EQUAL(parsed->second.shift, 18);
+    BOOST_CHECK_EQUAL(parsed->second.granularity, 1U);
+
+    // issuance validates with NO registry: the minted asset is known via the definition and is
+    // exempt from the input>=output rule; the host currency still pays the 2000-kria fee.
+    TxValidationState state; CAmount fee = -1;
+    BOOST_CHECK(Consensus::CheckTxInputs(tx, state, view, consensus, 0, (int)H + 100, Consensus::NONE, fee, nullptr));
+    BOOST_CHECK_EQUAL(fee, 2000);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
