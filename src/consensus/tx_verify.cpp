@@ -18,6 +18,10 @@
 #include <chain.h>
 #include <coins.h>
 #include <consensus/amount.h>
+#include <consensus/asset.h>
+
+#include <map>
+#include <set>
 #include <consensus/consensus.h>
 #include <consensus/params.h>
 #include <consensus/validation.h>
@@ -170,7 +174,7 @@ int64_t GetTransactionSigOpCost(const CTransaction& tx, const CCoinsViewCache& i
     return nSigOps;
 }
 
-bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, const Consensus::Params& params, int per_input_adjustment, int nSpendHeight, Consensus::RuleSet rules, CAmount& txfee)
+bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, const Consensus::Params& params, int per_input_adjustment, int nSpendHeight, Consensus::RuleSet rules, CAmount& txfee, const Consensus::AssetRegistry* registry)
 {
     // are the actual inputs available?
     if (!inputs.HaveInputs(tx)) {
@@ -178,7 +182,13 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
                          strprintf("%s: inputs missing/spent", __func__));
     }
 
-    CAmount nValueIn = 0;
+    // nVersion=3-lite: balances are tallied PER ASSET (keyed by the 20-byte tag; the null tag is
+    // the host currency). With no registry every output is the host currency, so this reduces
+    // exactly to the single-asset rule below. Each asset's demurrage rate comes from the registry.
+    auto asset_known = [&](const uint160& tag) { return tag.IsNull() || (registry && registry->IsKnown(tag)); };
+    auto asset_shift = [&](const uint160& tag) -> unsigned { return registry ? registry->Get(tag).shift : 20; };
+
+    std::map<uint160, CAmount> in_pv;   // present value of inputs, per asset, at tx.lock_height
     for (unsigned int i = 0; i < tx.vin.size(); ++i) {
         const COutPoint &prevout = tx.vin[i].prevout;
         const Coin& coin = inputs.AccessCoin(prevout);
@@ -197,32 +207,53 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
                 strprintf("tx.lock_height < coin.refheight (%d < %d)", tx.lock_height, coin.refheight));
         }
 
-        // Check for negative or overflow input values
-        CAmount nInput = coin.GetPresentValue(tx.lock_height) + per_input_adjustment;
-        nValueIn += nInput;
-        if (!MoneyRange(coin.out.GetReferenceValue()) || !MoneyRange(nInput) || !MoneyRange(nValueIn)) {
+        const uint160& tag = coin.out.assetTag;
+        if (!asset_known(tag)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-unknown-asset");
+        }
+        // Check for negative or overflow input values. Present value uses the asset's own rate.
+        CAmount nInput = TimeAdjustValueForwardK(coin.out.GetReferenceValue(), (uint32_t)(tx.lock_height - coin.refheight), asset_shift(tag)) + per_input_adjustment;
+        CAmount& acc = in_pv[tag];
+        acc += nInput;
+        if (!MoneyRange(coin.out.GetReferenceValue()) || !MoneyRange(nInput) || !MoneyRange(acc)) {
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-inputvalues-outofrange");
         }
     }
 
-    // `tx.GetValueOut()` won't throw in validation paths because output-range checks run first
-    // (`bad-txns-vout-negative`, `bad-txns-vout-toolarge`, `bad-txns-txouttotal-toolarge`):
-    // * `MemPoolAccept::PreChecks`: `CheckTransaction()` is called before this method;
-    // * `Chainstate::ConnectBlock`: `CheckTransaction()` is called via `CheckBlock()` before this method.
-    const CAmount value_out = tx.GetValueOut();
-    if (nValueIn < value_out) {
-        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-in-belowout",
-            strprintf("value in (%s) < value out (%s)", FormatMoney(nValueIn), FormatMoney(value_out)));
+    // Outputs are minted at tx.lock_height, so their present value equals their nominal value.
+    // Range checks (bad-txns-vout-*) already ran in CheckTransaction before this method.
+    std::map<uint160, CAmount> out_sum;
+    for (const CTxOut& o : tx.vout) {
+        if (!asset_known(o.assetTag)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-unknown-asset");
+        }
+        const uint64_t g = registry ? registry->Get(o.assetTag).granularity : 1;
+        if (g > 1 && (o.GetReferenceValue() % (CAmount)g) != 0) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-granularity");
+        }
+        out_sum[o.assetTag] += o.GetReferenceValue();
     }
 
-    // Tally transaction fees
-    const CAmount txfee_aux = nValueIn - value_out;
+    // Per-asset balance: for each asset, inputs' present value must cover the outputs. The host
+    // currency leaves the miner fee; every other asset must be conserved exactly.
+    std::set<uint160> tags;
+    for (const auto& kv : in_pv) tags.insert(kv.first);
+    for (const auto& kv : out_sum) tags.insert(kv.first);
+    CAmount txfee_aux = 0;
+    for (const uint160& tag : tags) {
+        const CAmount in = in_pv.count(tag) ? in_pv[tag] : 0;
+        const CAmount out = out_sum.count(tag) ? out_sum[tag] : 0;
+        if (out > in) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-in-belowout",
+                strprintf("value in (%s) < value out (%s)", FormatMoney(in), FormatMoney(out)));
+        }
+        if (tag.IsNull()) {
+            txfee_aux = in - out;   // the fee is denominated in the host currency
+        } else if (in != out) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-not-conserved");
+        }
+    }
     if (!MoneyRange(txfee_aux)) {
-        // Unreachable, given the following preconditions:
-        // * `value_out` comes from `tx.GetValueOut()`, which throws unless `MoneyRange(value_out)` and asserts `MoneyRange(nValueOut)` on return.
-        // * `MoneyRange(nValueIn)` was enforced in the input loop.
-        // * `nValueIn < value_out` was handled above, so `nValueIn >= value_out` here (and `txfee_aux >= 0`).
-        // Therefore `0 <= txfee_aux = nValueIn - value_out <= nValueIn <= MAX_MONEY`.
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-fee-outofrange");
     }
 
