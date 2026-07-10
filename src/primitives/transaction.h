@@ -170,6 +170,12 @@ protected:
 public:
     CScript scriptPubKey;
 
+    /* nVersion=3-lite: the 20-byte asset tag identifying which asset this output holds. A null
+     * (all-zero) tag denotes the host currency (freicoin). NOT part of CTxOut's own
+     * serialization — it is written/read at the transaction level only for version>=3 txs, so
+     * version<3 serialization stays byte-identical. See SerializeTransaction. */
+    uint160 assetTag;
+
     CTxOut()
     {
         SetNull();
@@ -179,10 +185,14 @@ public:
 
     SERIALIZE_METHODS(CTxOut, obj) { READWRITE(obj.nValue, obj.scriptPubKey); }
 
+    /* A null tag means the host currency (freicoin). */
+    bool IsHostCurrency() const { return assetTag.IsNull(); }
+
     void SetNull()
     {
         nValue = -1;
         scriptPubKey.clear();
+        assetTag.SetNull();
     }
 
     bool IsNull() const
@@ -254,7 +264,8 @@ public:
     friend bool operator==(const CTxOut& a, const CTxOut& b)
     {
         return (a.nValue       == b.nValue &&
-                a.scriptPubKey == b.scriptPubKey);
+                a.scriptPubKey == b.scriptPubKey &&
+                a.assetTag     == b.assetTag);
     }
 
     std::string ToString() const;
@@ -373,6 +384,14 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
     }
     // Reading vout requires no special handling.
     s >> tx.vout;
+    // nVersion=3-lite: each output carries a 20-byte asset tag, serialized as a parallel
+    // block right after vout so that version<3 encodings are unchanged. version<3 outputs are
+    // implicitly the host currency (null tag, already set by CTxOut::SetNull).
+    if (tx.version >= 3) {
+        for (CTxOut& txout : tx.vout) {
+            s >> txout.assetTag;
+        }
+    }
     if ((flags & 1) && fAllowWitness) {
         /* The witness flag is present, and we support witnesses. */
         flags ^= 1;
@@ -418,6 +437,12 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
     }
     s << tx.vin;
     s << tx.vout;
+    // nVersion=3-lite: asset tags as a parallel block after vout (see UnserializeTransaction).
+    if (tx.version >= 3) {
+        for (const CTxOut& txout : tx.vout) {
+            s << txout.assetTag;
+        }
+    }
     if (flags & 1) {
         for (size_t i = 0; i < tx.vin.size(); i++) {
             s << tx.vin[i].scriptWitness.stack;
