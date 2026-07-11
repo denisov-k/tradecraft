@@ -1985,7 +1985,7 @@ void Chainstate::InitCoinsCache(size_t cache_size_bytes)
 // when an asset-definition tx connects or disconnects, so it is rewritten whole, atomically
 // (temp file + rename), on every change. If the node crashes between a block write and the
 // registry write, -reindex rebuilds the registry from the definition txs.
-static constexpr std::array<char, 5> ASSET_REGISTRY_MAGIC{'F', 'R', 'A', 'R', '1'};
+static constexpr std::array<char, 5> ASSET_REGISTRY_MAGIC{'F', 'R', 'A', 'R', '2'};
 
 void Chainstate::PersistAssetRegistry() const
 {

@@ -413,6 +413,15 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
             throw std::ios_base::failure("Superfluous witness record");
         }
     }
+    // nVersion=3-lite: authorizer approvals ride witness-side (flag bit 2) — they are OUTSIDE
+    // the txid, so an approval signature over the txid is not circular. v3 only.
+    if ((flags & 2) && fAllowWitness && tx.version == 3) {
+        flags ^= 2;
+        s >> tx.approvals;
+        if (tx.approvals.empty()) {
+            throw std::ios_base::failure("Superfluous approvals record");
+        }
+    }
     if (flags) {
         /* Unknown flag in the serialization */
         throw std::ios_base::failure("Unknown transaction optional data");
@@ -439,6 +448,10 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
         if (tx.HasWitness()) {
             flags |= 1;
         }
+        // nVersion=3-lite: approvals are witness-side data (excluded from the txid).
+        if (tx.version == 3 && !tx.approvals.empty()) {
+            flags |= 2;
+        }
     }
     if (flags) {
         /* Use extended format in case witnesses are to be serialized. */
@@ -461,6 +474,9 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
         for (size_t i = 0; i < tx.vin.size(); i++) {
             s << tx.vin[i].scriptWitness.stack;
         }
+    }
+    if (flags & 2) {
+        s << tx.approvals;
     }
     s << tx.nLockTime;
     if (tx.version != 1 || tx.vin.size() != 1 || !tx.vin[0].prevout.IsNull()) {
@@ -496,6 +512,10 @@ public:
     const uint32_t nLockTime;
     const uint32_t lock_height;
     const uint32_t nExpireTime;   // nVersion=3-lite: tx invalid after this height (0 = never)
+    /** nVersion=3-lite: authorizer approvals, one per authorized asset moved — (asset tag,
+     *  DER signature over SHA256d("FRAPPROV" || txid || tag)). Witness-side: serialized under
+     *  flag bit 2, excluded from the txid (so the signature is not circular). */
+    const std::vector<std::pair<uint160, std::vector<unsigned char>>> approvals;
 
 private:
     /** Memory only. */
@@ -574,6 +594,8 @@ struct CMutableTransaction
     uint32_t nLockTime;
     uint32_t lock_height;
     uint32_t nExpireTime{0};   // nVersion=3-lite: tx invalid after this height (0 = never)
+    /** nVersion=3-lite: authorizer approvals (see CTransaction::approvals). */
+    std::vector<std::pair<uint160, std::vector<unsigned char>>> approvals;
 
     explicit CMutableTransaction();
     explicit CMutableTransaction(const CTransaction& tx);

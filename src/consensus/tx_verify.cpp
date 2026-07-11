@@ -25,6 +25,8 @@
 #include <consensus/consensus.h>
 #include <consensus/params.h>
 #include <consensus/validation.h>
+#include <hash.h>
+#include <pubkey.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <util/check.h>
@@ -302,6 +304,30 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
             if (input_tokens.count(key) == 0 && !(has_minted && o.assetTag == minted)) {
                 return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-token-created");
             }
+        }
+    }
+
+    // nVersion=3-lite: authorizers. If a moved asset's definition names an authorizer, the tx
+    // must carry that authorizer's ECDSA approval — a DER signature over
+    // SHA256d("FRAPPROV" || txid || tag). Approvals ride witness-side (outside the txid), so
+    // the signature is not circular; the txid commits to every output, tag, token and expiry.
+    // Minting is exempt: the issuer chooses the authorizer in the definition itself.
+    for (const uint160& tag : tags) {
+        if (tag.IsNull() || (has_minted && tag == minted)) continue;
+        const Consensus::AssetParams ap = params_of(tag);
+        if (ap.authorizer.empty()) continue;
+        const auto appr = std::find_if(tx.approvals.begin(), tx.approvals.end(),
+                                       [&](const auto& a) { return a.first == tag; });
+        if (appr == tx.approvals.end()) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-not-authorized");
+        }
+        HashWriter ss{};
+        ss << std::span{Consensus::ASSET_APPROVAL_TAG};
+        ss << tx.GetHash();
+        ss << tag;
+        const CPubKey pubkey(ap.authorizer);
+        if (!pubkey.IsFullyValid() || !pubkey.Verify(ss.GetHash(), appr->second)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-authorization-invalid");
         }
     }
 

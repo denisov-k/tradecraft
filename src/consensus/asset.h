@@ -41,8 +41,11 @@ struct AssetParams {
     uint8_t shift{20};
     bool interest{false};
     uint64_t granularity{1};
+    /** Compressed pubkey (33 bytes) whose ECDSA approval every movement of this asset
+     *  requires; empty = permissionless. Committed in the asset id (part of the def). */
+    std::vector<unsigned char> authorizer;
 
-    SERIALIZE_METHODS(AssetParams, obj) { READWRITE(obj.shift, obj.interest, obj.granularity); }
+    SERIALIZE_METHODS(AssetParams, obj) { READWRITE(obj.shift, obj.interest, obj.granularity, obj.authorizer); }
 };
 
 /** Canonical asset id = RIPEMD160(SHA256(canonical definition bytes)) — matches the model. */
@@ -69,10 +72,15 @@ public:
     SERIALIZE_METHODS(AssetRegistry, obj) { READWRITE(obj.m_defs); }
 };
 
-// The canonical definition byte string: shift(1) | flags(1) | granularity(8, LE) | contractHash(32).
+// The canonical definition byte string: shift(1) | flags(1) | granularity(8, LE) |
+// contractHash(32) | [authorizer pubkey(33), only when flags bit 2 is set]. The id hashes the
+// WHOLE def, so the authorizer is committed in the asset id (changing it = another asset).
 static constexpr size_t ASSET_DEF_SIZE = 1 + 1 + 8 + 32;
+static constexpr size_t ASSET_AUTHORIZER_SIZE = 33;
 // Magic prefix marking an asset-definition OP_RETURN payload.
 inline const unsigned char ASSET_DEF_MAGIC[4] = { 'F', 'R', 'A', '1' };
+// Prefix of the digest an authorizer signs: SHA256d("FRAPPROV" || txid || tag).
+inline const unsigned char ASSET_APPROVAL_TAG[8] = { 'F', 'R', 'A', 'P', 'P', 'R', 'O', 'V' };
 
 /** If this tx declares a new asset (an OP_RETURN output carrying the magic + a canonical
  *  definition), return its {tag, params}. A tx defines at most one asset (first match wins). */
@@ -84,7 +92,7 @@ inline std::optional<std::pair<uint160, AssetParams>> ParseAssetDefinition(const
         std::vector<unsigned char> data;
         if (!o.scriptPubKey.GetOp(pc, op) || op != OP_RETURN) continue;
         if (!o.scriptPubKey.GetOp(pc, op, data)) continue;
-        if (data.size() != 4 + ASSET_DEF_SIZE) continue;
+        if (data.size() != 4 + ASSET_DEF_SIZE && data.size() != 4 + ASSET_DEF_SIZE + ASSET_AUTHORIZER_SIZE) continue;
         if (!std::equal(std::begin(ASSET_DEF_MAGIC), std::end(ASSET_DEF_MAGIC), data.begin())) continue;
         const std::vector<unsigned char> def(data.begin() + 4, data.end());   // the canonical def bytes
         AssetParams p;
@@ -93,6 +101,14 @@ inline std::optional<std::pair<uint160, AssetParams>> ParseAssetDefinition(const
         // The kernels are only defined for 1 <= shift <= 64 (a larger shift under-shifts the
         // fixed-point base — UB). A payload outside the range is simply not a definition.
         if (p.shift < 1 || p.shift > 64) continue;
+        // Authorizer flag (bit 2) and the appended pubkey must agree, or it's not a definition.
+        const bool has_auth = (def[1] & 2) != 0;
+        if (has_auth != (def.size() == ASSET_DEF_SIZE + ASSET_AUTHORIZER_SIZE)) continue;
+        if (has_auth) {
+            // Only compressed pubkeys (0x02/0x03) name an authorizer.
+            if (def[ASSET_DEF_SIZE] != 0x02 && def[ASSET_DEF_SIZE] != 0x03) continue;
+            p.authorizer.assign(def.begin() + ASSET_DEF_SIZE, def.end());
+        }
         uint64_t g = 0;
         for (int i = 0; i < 8; ++i) g |= static_cast<uint64_t>(def[2 + i]) << (8 * i);
         p.granularity = g ? g : 1;
