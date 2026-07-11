@@ -174,4 +174,40 @@ BOOST_AUTO_TEST_CASE(asset_tag_utxo_persistence)
     g_txout_serialize_asset_tag = false;   // restore the global for other tests
 }
 
+BOOST_AUTO_TEST_CASE(unique_tokens)
+{
+    const Consensus::Params& consensus = Params().GetConsensus();
+    CCoinsView base;
+    CCoinsViewCache view(&base);
+
+    std::vector<unsigned char> def(Consensus::ASSET_DEF_SIZE, 0); def[0] = 20;
+    const uint160 tag = Consensus::AssetIdFromDef(def);
+    Consensus::AssetRegistry reg;
+    reg.Define(tag, Consensus::AssetParams{20, false, 1});
+
+    const std::vector<unsigned char> tokenA = {0xde, 0xad, 0xbe, 0xef};
+    // input coin holds asset `tag` (value 0) carrying tokenA
+    const COutPoint op(Txid::FromUint256(m_rng.rand256()), 0);
+    CTxOut in(0, CScript() << OP_TRUE); in.assetTag = tag; in.tokens = {tokenA};
+    view.AddCoin(op, Coin(in, 1000, 1, false), false);
+
+    auto tx_with = [&](std::vector<std::vector<unsigned char>> out_tokens, int nout) {
+        CMutableTransaction m; m.version = 3; m.lock_height = 1000; m.vin.emplace_back(op);
+        for (int i = 0; i < nout; ++i) { CTxOut o(0, CScript() << OP_TRUE); o.assetTag = tag; o.tokens = out_tokens; m.vout.push_back(o); }
+        return CTransaction(m);
+    };
+
+    // valid: the token is conserved (moved to a fresh output)
+    { const CTransaction tx = tx_with({tokenA}, 1); TxValidationState st; CAmount f = 0;
+      BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1100, Consensus::NONE, f, &reg)); }
+    // forge: an output token that was never in the inputs is rejected
+    { const CTransaction tx = tx_with({{0xca, 0xfe}}, 1); TxValidationState st; CAmount f = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1100, Consensus::NONE, f, &reg));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-token-created"); }
+    // duplicate: the same token in two outputs is rejected (uniqueness)
+    { const CTransaction tx = tx_with({tokenA}, 2); TxValidationState st; CAmount f = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1100, Consensus::NONE, f, &reg));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-token-duplicate"); }
+}
+
 BOOST_AUTO_TEST_SUITE_END()

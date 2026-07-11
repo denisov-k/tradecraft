@@ -130,7 +130,7 @@ struct TxOutCompression
         READWRITE(Using<AmountCompression>(obj.nValue), Using<ScriptCompression>(obj.scriptPubKey));
         // The 20-byte asset tag is persisted only on the nV3 chain (gate off elsewhere ->
         // identical chainstate format/hashes as before). version<3 coins are the host currency.
-        if (g_txout_serialize_asset_tag) READWRITE(obj.assetTag);
+        if (g_txout_serialize_asset_tag) { READWRITE(obj.assetTag); READWRITE(obj.tokens); }
     }
 };
 

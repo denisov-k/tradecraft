@@ -270,6 +270,27 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-fee-outofrange");
     }
 
+    // nVersion=3-lite: unique tokens are conserved per asset — every output token must come from
+    // an input of the SAME asset (or be minted by a definition tx), and no token may appear in
+    // two outputs. Unspent input tokens are simply destroyed.
+    std::set<std::pair<uint160, std::vector<unsigned char>>> input_tokens;
+    for (const CTxIn& txin : tx.vin) {
+        const Coin& coin = inputs.AccessCoin(txin.prevout);
+        for (const auto& tok : coin.out.tokens) input_tokens.emplace(coin.out.assetTag, tok);
+    }
+    std::set<std::pair<uint160, std::vector<unsigned char>>> seen_out;
+    for (const CTxOut& o : tx.vout) {
+        for (const auto& tok : o.tokens) {
+            auto key = std::make_pair(o.assetTag, tok);
+            if (!seen_out.insert(key).second) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-token-duplicate");
+            }
+            if (input_tokens.count(key) == 0 && !(has_minted && o.assetTag == minted)) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-token-created");
+            }
+        }
+    }
+
     txfee = txfee_aux;
     return true;
 }

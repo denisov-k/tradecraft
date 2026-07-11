@@ -176,6 +176,11 @@ public:
      * version<3 serialization stays byte-identical. See SerializeTransaction. */
     uint160 assetTag;
 
+    /* nVersion=3-lite: unique, indivisible tokens of this output's asset (smart property —
+     * memberships, tickets, keys). Each is an arbitrary bitstring; serialized (like assetTag)
+     * only for version==3 txs. */
+    std::vector<std::vector<unsigned char>> tokens;
+
     CTxOut()
     {
         SetNull();
@@ -193,6 +198,7 @@ public:
         nValue = -1;
         scriptPubKey.clear();
         assetTag.SetNull();
+        tokens.clear();
     }
 
     bool IsNull() const
@@ -265,7 +271,8 @@ public:
     {
         return (a.nValue       == b.nValue &&
                 a.scriptPubKey == b.scriptPubKey &&
-                a.assetTag     == b.assetTag);
+                a.assetTag     == b.assetTag &&
+                a.tokens       == b.tokens);
     }
 
     std::string ToString() const;
@@ -391,6 +398,9 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
         for (CTxOut& txout : tx.vout) {
             s >> txout.assetTag;
         }
+        for (CTxOut& txout : tx.vout) {
+            s >> txout.tokens;
+        }
     }
     if ((flags & 1) && fAllowWitness) {
         /* The witness flag is present, and we support witnesses. */
@@ -441,6 +451,9 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
     if (tx.version == 3) {
         for (const CTxOut& txout : tx.vout) {
             s << txout.assetTag;
+        }
+        for (const CTxOut& txout : tx.vout) {
+            s << txout.tokens;
         }
     }
     if (flags & 1) {
