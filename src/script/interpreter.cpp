@@ -1979,37 +1979,62 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
         // slice of vin/vout per the tx's bundle partition — plus the bundle expiry and the tx
         // lock_height. Splice-safe by construction: nothing outside the bundle enters the
         // preimage. Mirrors the model's bundleSighash (core/sighash.mjs) bit for bit.
-        if ((nHashType & SIGHASH_BUNDLE) && txTo.version == 3 && !txTo.bundles.empty()) {
+        if ((nHashType & SIGHASH_BUNDLE) && txTo.version == 3 && (!txTo.bundles.empty() || !txTo.ranged.empty())) {
+            // Shared preimage skeleton: BIP143 with the prevouts/sequences hashes over the
+            // bundle's slice; `commit` is the outputs hash (fixed bundles) or the descriptor
+            // hash (ranged bundles); then the mandatory lock_height pin + the bundle expiry.
+            auto bundle_digest = [&](size_t in0, size_t in1, const uint256& commit, uint32_t expire) {
+                HashWriter prevs{}, seqs{};
+                for (size_t i = in0; i < in1; ++i) {
+                    prevs << txTo.vin[i].prevout;
+                    seqs << txTo.vin[i].nSequence;
+                }
+                HashWriter ss{};
+                ss << txTo.version;
+                ss << prevs.GetHash();
+                ss << seqs.GetHash();
+                ss << txTo.vin[nIn].prevout;
+                ss << scriptCode;
+                ss << amount;
+                ss << refheight;
+                ss << txTo.vin[nIn].nSequence;
+                ss << commit;
+                ss << txTo.nLockTime;
+                ss << txTo.lock_height;
+                ss << expire;
+                ss << (nHashType & ~SIGHASH_NO_LOCK_HEIGHT);
+                return ss.GetHash();
+            };
             size_t in0 = 0, out0 = 0;
             for (const CBundle& b : txTo.bundles) {
                 const size_t in1 = in0 + b.nIn, out1 = out0 + b.nOut;
-                if (in1 > txTo.vin.size() || out1 > txTo.vout.size()) break;   // bad partition: no digest match possible
+                if (in1 > txTo.vin.size() || out1 > txTo.vout.size()) return uint256::ONE;
                 if (nIn >= in0 && nIn < in1) {
-                    HashWriter prevs{}, seqs{}, outs{};
-                    for (size_t i = in0; i < in1; ++i) {
-                        prevs << txTo.vin[i].prevout;
-                        seqs << txTo.vin[i].nSequence;
-                    }
+                    HashWriter outs{};
                     for (size_t i = out0; i < out1; ++i) {
                         outs << txTo.vout[i];
                         outs << txTo.vout[i].assetTag;
                         outs << txTo.vout[i].tokens;
                     }
-                    HashWriter ss{};
-                    ss << txTo.version;
-                    ss << prevs.GetHash();
-                    ss << seqs.GetHash();
-                    ss << txTo.vin[nIn].prevout;
-                    ss << scriptCode;
-                    ss << amount;
-                    ss << refheight;
-                    ss << txTo.vin[nIn].nSequence;
-                    ss << outs.GetHash();
-                    ss << txTo.nLockTime;
-                    ss << txTo.lock_height;      // mandatory pin — the maker's valuation height
-                    ss << b.nExpireTime;         // the bundle's own expiry (0 = never)
-                    ss << (nHashType & ~SIGHASH_NO_LOCK_HEIGHT);
-                    return ss.GetHash();
+                    return bundle_digest(in0, in1, outs.GetHash(), b.nExpireTime);
+                }
+                in0 = in1; out0 = out1;
+            }
+            // ranged bundles claim inputs after the fixed ones, two outputs each; the digest
+            // commits the maker's DESCRIPTOR, not the miner-chosen outputs.
+            for (const CRangedBundle& r : txTo.ranged) {
+                const size_t in1 = in0 + r.nIn, out1 = out0 + 2;
+                if (in1 > txTo.vin.size() || out1 > txTo.vout.size()) return uint256::ONE;
+                if (nIn >= in0 && nIn < in1) {
+                    HashWriter desc{};
+                    desc << r.payoutAsset;
+                    desc << r.payoutScript;
+                    desc << r.priceNum;
+                    desc << r.priceDen;
+                    desc << r.changeScript;
+                    desc << r.minFill;
+                    desc << r.maxFill;
+                    return bundle_digest(in0, in1, desc.GetHash(), r.nExpireTime);
                 }
                 in0 = in1; out0 = out1;
             }

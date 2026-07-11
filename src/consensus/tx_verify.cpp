@@ -195,7 +195,7 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
     // vin/vout), and every bundle must be unexpired — a maker's stale offer only invalidates
     // a composite that INCLUDES it. The per-asset conservation below runs over the flat
     // transaction, so composites inherit every balance rule unchanged.
-    if (tx.version == 3 && !tx.bundles.empty()) {
+    if (tx.version == 3 && (!tx.bundles.empty() || !tx.ranged.empty())) {
         uint64_t bin = 0, bout = 0;
         for (const CBundle& b : tx.bundles) {
             if (b.nIn == 0 || b.nOut == 0) {
@@ -205,6 +205,17 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
             if (b.nExpireTime != 0 && nSpendHeight > 0 && (uint32_t)nSpendHeight > b.nExpireTime) {
                 return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-bundle-expired",
                     strprintf("bundle expired (nExpireTime %u < height %d)", b.nExpireTime, nSpendHeight));
+            }
+        }
+        // ranged bundles (2b) follow the fixed ones: nIn inputs, exactly two outputs each
+        for (const CRangedBundle& r : tx.ranged) {
+            if (r.nIn == 0 || r.priceNum == 0 || r.priceDen == 0 || r.minFill < 0 || r.maxFill < r.minFill) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-ranged-descriptor");
+            }
+            bin += r.nIn; bout += 2;
+            if (r.nExpireTime != 0 && nSpendHeight > 0 && (uint32_t)nSpendHeight > r.nExpireTime) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-bundle-expired",
+                    strprintf("ranged bundle expired (nExpireTime %u < height %d)", r.nExpireTime, nSpendHeight));
             }
         }
         if (bin > tx.vin.size() || bout > tx.vout.size()) {
@@ -266,6 +277,40 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
         acc += nInput;
         if (!MoneyRange(coin.out.GetReferenceValue()) || !MoneyRange(nInput) || !MoneyRange(acc)) {
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-inputvalues-outofrange");
+        }
+    }
+
+    // nVersion=3 DEX 2b: the miner materialized each ranged bundle's [payout, change] — check
+    // them against the maker-signed descriptor. Give coins must be one asset; the fill is the
+    // present value parted with:  fill = givePV(lock_height) − change.value.
+    if (tx.version == 3 && !tx.ranged.empty()) {
+        size_t in0 = 0, out0 = 0;
+        for (const CBundle& b : tx.bundles) { in0 += b.nIn; out0 += b.nOut; }
+        for (const CRangedBundle& r : tx.ranged) {
+            const CTxOut& pay = tx.vout[out0];
+            const CTxOut& change = tx.vout[out0 + 1];
+            const uint160 give_asset = inputs.AccessCoin(tx.vin[in0].prevout).out.assetTag;
+            CAmount give_pv = 0;
+            for (size_t i = in0; i < in0 + r.nIn; ++i) {
+                const Coin& coin = inputs.AccessCoin(tx.vin[i].prevout);
+                if (coin.out.assetTag != give_asset) {
+                    return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-ranged-mixed-give");
+                }
+                give_pv += asset_pv(give_asset, coin.out.GetReferenceValue(), (uint32_t)(tx.lock_height - coin.refheight));
+            }
+            if (pay.assetTag != r.payoutAsset || pay.scriptPubKey != r.payoutScript
+                || change.assetTag != give_asset || change.scriptPubKey != r.changeScript) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-ranged-destination");
+            }
+            const CAmount fill = give_pv - change.GetReferenceValue();
+            if (fill < r.minFill || fill > r.maxFill) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-ranged-fill-bounds");
+            }
+            // rounding favors the maker: 128-bit cross-multiply avoids overflow
+            if ((unsigned __int128)pay.GetReferenceValue() * r.priceDen < (unsigned __int128)fill * r.priceNum) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-ranged-price");
+            }
+            in0 += r.nIn; out0 += 2;
         }
     }
 

@@ -431,6 +431,14 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
             throw std::ios_base::failure("Superfluous bundles record");
         }
     }
+    // nVersion=3 DEX 2b: ranged bundles (flag bit 8).
+    if ((flags & 8) && fAllowWitness && tx.version == 3) {
+        flags ^= 8;
+        s >> tx.ranged;
+        if (tx.ranged.empty()) {
+            throw std::ios_base::failure("Superfluous ranged record");
+        }
+    }
     if (flags) {
         /* Unknown flag in the serialization */
         throw std::ios_base::failure("Unknown transaction optional data");
@@ -465,6 +473,10 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
         if (tx.version == 3 && !tx.bundles.empty()) {
             flags |= 4;
         }
+        // nVersion=3 DEX 2b: and the ranged bundles.
+        if (tx.version == 3 && !tx.ranged.empty()) {
+            flags |= 8;
+        }
     }
     if (flags) {
         /* Use extended format in case witnesses are to be serialized. */
@@ -493,6 +505,9 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
     }
     if (flags & 4) {
         s << tx.bundles;
+    }
+    if (flags & 8) {
+        s << tx.ranged;
     }
     s << tx.nLockTime;
     if (tx.version != 1 || tx.vin.size() != 1 || !tx.vin[0].prevout.IsNull()) {
@@ -525,6 +540,37 @@ struct CBundle {
     }
 };
 
+/** nVersion=3 DEX phase 2b: a RANGED maker bundle — a signed CONSTRAINT instead of amounts.
+ *  Claims nIn inputs (all one asset, after the fixed bundles) and exactly TWO outputs
+ *  [payout, change]; the miner picks the fill, consensus checks:
+ *      payout.value * priceDen >= fill * priceNum,  fill = givePV(lock_height) - change,
+ *      minFill <= fill <= maxFill, destinations and assets exactly as signed.
+ *  The maker's SIGHASH_BUNDLE digest commits this descriptor (not the outputs), so one
+ *  signature serves every admissible fill. */
+struct CRangedBundle {
+    uint32_t nIn{0};
+    uint160 payoutAsset;         //!< null = the host currency
+    CScript payoutScript;
+    uint64_t priceNum{0};        //!< payout kria per give kria, as a ratio
+    uint64_t priceDen{1};
+    CScript changeScript;
+    CAmount minFill{0};
+    CAmount maxFill{0};
+    uint32_t nExpireTime{0};
+
+    SERIALIZE_METHODS(CRangedBundle, obj)
+    {
+        READWRITE(obj.nIn, obj.payoutAsset, obj.payoutScript, obj.priceNum, obj.priceDen,
+                  obj.changeScript, obj.minFill, obj.maxFill, obj.nExpireTime);
+    }
+    friend bool operator==(const CRangedBundle& a, const CRangedBundle& b)
+    {
+        return a.nIn == b.nIn && a.payoutAsset == b.payoutAsset && a.payoutScript == b.payoutScript
+            && a.priceNum == b.priceNum && a.priceDen == b.priceDen && a.changeScript == b.changeScript
+            && a.minFill == b.minFill && a.maxFill == b.maxFill && a.nExpireTime == b.nExpireTime;
+    }
+};
+
 /** The basic transaction that is broadcasted on the network and contained in
  * blocks.  A transaction can contain multiple inputs and outputs.
  */
@@ -551,6 +597,9 @@ public:
     const std::vector<std::pair<uint160, std::vector<unsigned char>>> approvals;
     /** nVersion=3 DEX: the bundle partition (witness-side, flag bit 4; see CBundle). */
     const std::vector<CBundle> bundles;
+    /** nVersion=3 DEX 2b: ranged bundles (witness-side, flag bit 8; see CRangedBundle).
+     *  They claim inputs after the fixed bundles, two outputs each. */
+    const std::vector<CRangedBundle> ranged;
 
 private:
     /** Memory only. */
@@ -633,6 +682,8 @@ struct CMutableTransaction
     std::vector<std::pair<uint160, std::vector<unsigned char>>> approvals;
     /** nVersion=3 DEX: the bundle partition (see CBundle). */
     std::vector<CBundle> bundles;
+    /** nVersion=3 DEX 2b: ranged bundles (see CRangedBundle). */
+    std::vector<CRangedBundle> ranged;
 
     explicit CMutableTransaction();
     explicit CMutableTransaction(const CTransaction& tx);

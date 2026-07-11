@@ -75,7 +75,7 @@ std::string CTxOut::ToString() const
 }
 
 CMutableTransaction::CMutableTransaction() : version{CTransaction::CURRENT_VERSION}, nLockTime{0}, lock_height{0}, nExpireTime{0} {}
-CMutableTransaction::CMutableTransaction(const CTransaction& tx) : vin(tx.vin), vout(tx.vout), version{tx.version}, nLockTime{tx.nLockTime}, lock_height{tx.lock_height}, nExpireTime{tx.nExpireTime}, approvals(tx.approvals), bundles(tx.bundles) {}
+CMutableTransaction::CMutableTransaction(const CTransaction& tx) : vin(tx.vin), vout(tx.vout), version{tx.version}, nLockTime{tx.nLockTime}, lock_height{tx.lock_height}, nExpireTime{tx.nExpireTime}, approvals(tx.approvals), bundles(tx.bundles), ranged(tx.ranged) {}
 
 Txid CMutableTransaction::GetHash() const
 {
@@ -98,15 +98,15 @@ Wtxid CTransaction::ComputeWitnessHash() const
 {
     // nVersion=3-lite: approvals are witness-side data too — a tx carrying only approvals
     // (no witness stacks) still needs its wtxid to commit them.
-    if (!HasWitness() && approvals.empty() && bundles.empty()) {
+    if (!HasWitness() && approvals.empty() && bundles.empty() && ranged.empty()) {
         return Wtxid::FromUint256(hash.ToUint256());
     }
 
     return Wtxid::FromUint256((HashWriter{} << TX_WITH_WITNESS(*this)).GetHash());
 }
 
-CTransaction::CTransaction(const CMutableTransaction& tx) : vin(tx.vin), vout(tx.vout), version{tx.version}, nLockTime{tx.nLockTime}, lock_height{tx.lock_height}, nExpireTime{tx.nExpireTime}, approvals(tx.approvals), bundles(tx.bundles), m_has_witness{ComputeHasWitness()}, hash{ComputeHash()}, m_witness_hash{ComputeWitnessHash()} {}
-CTransaction::CTransaction(CMutableTransaction&& tx) : vin(std::move(tx.vin)), vout(std::move(tx.vout)), version{tx.version}, nLockTime{tx.nLockTime}, lock_height{tx.lock_height}, nExpireTime{tx.nExpireTime}, approvals(std::move(tx.approvals)), bundles(std::move(tx.bundles)), m_has_witness{ComputeHasWitness()}, hash{ComputeHash()}, m_witness_hash{ComputeWitnessHash()} {}
+CTransaction::CTransaction(const CMutableTransaction& tx) : vin(tx.vin), vout(tx.vout), version{tx.version}, nLockTime{tx.nLockTime}, lock_height{tx.lock_height}, nExpireTime{tx.nExpireTime}, approvals(tx.approvals), bundles(tx.bundles), ranged(tx.ranged), m_has_witness{ComputeHasWitness()}, hash{ComputeHash()}, m_witness_hash{ComputeWitnessHash()} {}
+CTransaction::CTransaction(CMutableTransaction&& tx) : vin(std::move(tx.vin)), vout(std::move(tx.vout)), version{tx.version}, nLockTime{tx.nLockTime}, lock_height{tx.lock_height}, nExpireTime{tx.nExpireTime}, approvals(std::move(tx.approvals)), bundles(std::move(tx.bundles)), ranged(std::move(tx.ranged)), m_has_witness{ComputeHasWitness()}, hash{ComputeHash()}, m_witness_hash{ComputeWitnessHash()} {}
 
 CAmount CTransaction::GetValueOut() const
 {
