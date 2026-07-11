@@ -422,6 +422,15 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
             throw std::ios_base::failure("Superfluous approvals record");
         }
     }
+    // nVersion=3 DEX: the bundle partition (flag bit 4) — witness-side for the same reason:
+    // SIGHASH_BUNDLE digests pin the partition, so repartitioning breaks the signatures.
+    if ((flags & 4) && fAllowWitness && tx.version == 3) {
+        flags ^= 4;
+        s >> tx.bundles;
+        if (tx.bundles.empty()) {
+            throw std::ios_base::failure("Superfluous bundles record");
+        }
+    }
     if (flags) {
         /* Unknown flag in the serialization */
         throw std::ios_base::failure("Unknown transaction optional data");
@@ -452,6 +461,10 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
         if (tx.version == 3 && !tx.approvals.empty()) {
             flags |= 2;
         }
+        // nVersion=3 DEX: so is the bundle partition.
+        if (tx.version == 3 && !tx.bundles.empty()) {
+            flags |= 4;
+        }
     }
     if (flags) {
         /* Use extended format in case witnesses are to be serialized. */
@@ -478,6 +491,9 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
     if (flags & 2) {
         s << tx.approvals;
     }
+    if (flags & 4) {
+        s << tx.bundles;
+    }
     s << tx.nLockTime;
     if (tx.version != 1 || tx.vin.size() != 1 || !tx.vin[0].prevout.IsNull()) {
         s << tx.lock_height;
@@ -491,6 +507,23 @@ inline CAmount CalculateOutputValue(const TxType& tx)
     return std::accumulate(tx.vout.cbegin(), tx.vout.cend(), CAmount{0}, [](CAmount sum, const auto& txout) { return sum + txout.GetReferenceValue(); });
 }
 
+
+/** nVersion=3 DEX phase 2a: one maker BUNDLE inside a composite transaction. Bundles claim
+ *  the transaction's first inputs/outputs in order, bundle by bundle; whatever remains is the
+ *  matcher's. The maker's signatures use SIGHASH_BUNDLE — scoped to exactly this slice (plus
+ *  the tx lock_height and this expiry) — so the partition itself can ride witness-side: any
+ *  repartition changes the digests and breaks the signatures. */
+struct CBundle {
+    uint32_t nIn{0};          //!< how many inputs this bundle claims
+    uint32_t nOut{0};         //!< how many outputs this bundle claims
+    uint32_t nExpireTime{0};  //!< bundle invalid past this height (0 = never)
+
+    SERIALIZE_METHODS(CBundle, obj) { READWRITE(obj.nIn, obj.nOut, obj.nExpireTime); }
+    friend bool operator==(const CBundle& a, const CBundle& b)
+    {
+        return a.nIn == b.nIn && a.nOut == b.nOut && a.nExpireTime == b.nExpireTime;
+    }
+};
 
 /** The basic transaction that is broadcasted on the network and contained in
  * blocks.  A transaction can contain multiple inputs and outputs.
@@ -516,6 +549,8 @@ public:
      *  DER signature over SHA256d("FRAPPROV" || txid || tag)). Witness-side: serialized under
      *  flag bit 2, excluded from the txid (so the signature is not circular). */
     const std::vector<std::pair<uint160, std::vector<unsigned char>>> approvals;
+    /** nVersion=3 DEX: the bundle partition (witness-side, flag bit 4; see CBundle). */
+    const std::vector<CBundle> bundles;
 
 private:
     /** Memory only. */
@@ -596,6 +631,8 @@ struct CMutableTransaction
     uint32_t nExpireTime{0};   // nVersion=3-lite: tx invalid after this height (0 = never)
     /** nVersion=3-lite: authorizer approvals (see CTransaction::approvals). */
     std::vector<std::pair<uint160, std::vector<unsigned char>>> approvals;
+    /** nVersion=3 DEX: the bundle partition (see CBundle). */
+    std::vector<CBundle> bundles;
 
     explicit CMutableTransaction();
     explicit CMutableTransaction(const CTransaction& tx);

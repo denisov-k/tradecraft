@@ -191,6 +191,27 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
             strprintf("tx expired (nExpireTime %u < height %d)", tx.nExpireTime, nSpendHeight));
     }
 
+    // nVersion=3 DEX: the bundle partition must be sane (non-empty bundles that fit inside
+    // vin/vout), and every bundle must be unexpired — a maker's stale offer only invalidates
+    // a composite that INCLUDES it. The per-asset conservation below runs over the flat
+    // transaction, so composites inherit every balance rule unchanged.
+    if (tx.version == 3 && !tx.bundles.empty()) {
+        uint64_t bin = 0, bout = 0;
+        for (const CBundle& b : tx.bundles) {
+            if (b.nIn == 0 || b.nOut == 0) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-bundle-empty");
+            }
+            bin += b.nIn; bout += b.nOut;
+            if (b.nExpireTime != 0 && nSpendHeight > 0 && (uint32_t)nSpendHeight > b.nExpireTime) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-bundle-expired",
+                    strprintf("bundle expired (nExpireTime %u < height %d)", b.nExpireTime, nSpendHeight));
+            }
+        }
+        if (bin > tx.vin.size() || bout > tx.vout.size()) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-bundle-partition");
+        }
+    }
+
     // nVersion=3-lite: balances are tallied PER ASSET (keyed by the 20-byte tag; the null tag is
     // the host currency). With no registry every output is the host currency, so this reduces
     // exactly to the single-asset rule below. Each asset's demurrage rate comes from the registry.

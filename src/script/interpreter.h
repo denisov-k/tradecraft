@@ -44,6 +44,10 @@ enum
     SIGHASH_NONE = 2,
     SIGHASH_SINGLE = 3,
     SIGHASH_ANYONECANPAY = 0x80,
+    /** nVersion=3 DEX: the digest is scoped to the input's BUNDLE (its slice of vin/vout per
+     *  the tx's bundle partition, plus the bundle expiry and the tx lock_height), not the
+     *  whole transaction — what makes maker bundles splice-safe. v3 WITNESS_V0 only. */
+    SIGHASH_BUNDLE = 0x40,
 
     SIGHASH_DEFAULT = 0, //!< Taproot only; implied when sighash byte is missing, and equivalent to SIGHASH_ALL
     SIGHASH_OUTPUT_MASK = 3,

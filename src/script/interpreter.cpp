@@ -210,7 +210,8 @@ bool static IsDefinedHashtypeSignature(const valtype &vchSig) {
     if (vchSig.size() == 0) {
         return false;
     }
-    unsigned char nHashType = vchSig[vchSig.size() - 1] & (~(SIGHASH_ANYONECANPAY));
+    // nVersion=3 DEX: the SIGHASH_BUNDLE bit composes with the base types.
+    unsigned char nHashType = vchSig[vchSig.size() - 1] & (~(SIGHASH_ANYONECANPAY | SIGHASH_BUNDLE));
     if (nHashType < SIGHASH_ALL || nHashType > SIGHASH_SINGLE)
         return false;
 
@@ -1974,6 +1975,47 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
     assert(nIn < txTo.vin.size());
 
     if (sigversion == SigVersion::WITNESS_V0) {
+        // nVersion=3 DEX (SIGHASH_BUNDLE): the digest is scoped to the input's bundle — its
+        // slice of vin/vout per the tx's bundle partition — plus the bundle expiry and the tx
+        // lock_height. Splice-safe by construction: nothing outside the bundle enters the
+        // preimage. Mirrors the model's bundleSighash (core/sighash.mjs) bit for bit.
+        if ((nHashType & SIGHASH_BUNDLE) && txTo.version == 3 && !txTo.bundles.empty()) {
+            size_t in0 = 0, out0 = 0;
+            for (const CBundle& b : txTo.bundles) {
+                const size_t in1 = in0 + b.nIn, out1 = out0 + b.nOut;
+                if (in1 > txTo.vin.size() || out1 > txTo.vout.size()) break;   // bad partition: no digest match possible
+                if (nIn >= in0 && nIn < in1) {
+                    HashWriter prevs{}, seqs{}, outs{};
+                    for (size_t i = in0; i < in1; ++i) {
+                        prevs << txTo.vin[i].prevout;
+                        seqs << txTo.vin[i].nSequence;
+                    }
+                    for (size_t i = out0; i < out1; ++i) {
+                        outs << txTo.vout[i];
+                        outs << txTo.vout[i].assetTag;
+                        outs << txTo.vout[i].tokens;
+                    }
+                    HashWriter ss{};
+                    ss << txTo.version;
+                    ss << prevs.GetHash();
+                    ss << seqs.GetHash();
+                    ss << txTo.vin[nIn].prevout;
+                    ss << scriptCode;
+                    ss << amount;
+                    ss << refheight;
+                    ss << txTo.vin[nIn].nSequence;
+                    ss << outs.GetHash();
+                    ss << txTo.nLockTime;
+                    ss << txTo.lock_height;      // mandatory pin — the maker's valuation height
+                    ss << b.nExpireTime;         // the bundle's own expiry (0 = never)
+                    ss << (nHashType & ~SIGHASH_NO_LOCK_HEIGHT);
+                    return ss.GetHash();
+                }
+                in0 = in1; out0 = out1;
+            }
+            return uint256::ONE;   // input not covered by any bundle: no signature can match
+        }
+
         uint256 hashPrevouts;
         uint256 hashSequence;
         uint256 hashOutputs;

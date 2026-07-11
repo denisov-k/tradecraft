@@ -541,4 +541,92 @@ BOOST_AUTO_TEST_CASE(authorizers)
       BOOST_CHECK(back.approvals == with.approvals); }
 }
 
+BOOST_AUTO_TEST_CASE(dex_bundles)
+{
+    // -- serialization: the partition rides witness-side (txid unchanged, wtxid distinct) --
+    CMutableTransaction m;
+    m.version = 3;
+    m.lock_height = 1234;
+    m.vin.resize(2);
+    m.vin[0].prevout = COutPoint(Txid::FromUint256(uint256{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}), 1);
+    m.vin[0].nSequence = 0xffffffff;
+    m.vin[1].prevout = COutPoint(Txid::FromUint256(uint256{"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}), 0);
+    m.vin[1].nSequence = 0xfffffffd;
+    m.vout.emplace_back(5000, CScript() << OP_0 << std::vector<unsigned char>(20, 0x22));
+    {
+        const std::vector<unsigned char> tag_bytes = ParseHex("61d2187b9154614c2d5e29cef7cbfdd38f5b1156");
+        std::copy(tag_bytes.begin(), tag_bytes.end(), m.vout[0].assetTag.begin());
+    }
+    m.vout.emplace_back(700, CScript() << OP_0 << std::vector<unsigned char>(20, 0x44));
+    m.bundles.push_back(CBundle{2, 2, 1300});
+
+    { const CTransaction with{m};
+      CMutableTransaction bare = m; bare.bundles.clear();
+      const CTransaction without{bare};
+      BOOST_CHECK(with.GetHash() == without.GetHash());
+      BOOST_CHECK(with.GetWitnessHash() != without.GetWitnessHash());
+      DataStream ds; ds << TX_WITH_WITNESS(with);
+      CMutableTransaction back; ds >> TX_WITH_WITNESS(back);
+      BOOST_CHECK(back.bundles == m.bundles); }
+
+    // -- SIGHASH_BUNDLE digests: bit-for-bit against the model (core/sighash.mjs bundleSighash) --
+    const CScript code0 = CScript() << OP_DUP << OP_HASH160 << std::vector<unsigned char>(20, 0x33) << OP_EQUALVERIFY << OP_CHECKSIG;
+    const CScript code1 = CScript() << OP_DUP << OP_HASH160 << std::vector<unsigned char>(20, 0x55) << OP_EQUALVERIFY << OP_CHECKSIG;
+    const int HT = SIGHASH_ALL | SIGHASH_BUNDLE;
+    BOOST_CHECK_EQUAL(HexStr(SignatureHash(code0, m, 0, HT, 7000, 1200, SigVersion::WITNESS_V0)),
+                      "a297ea1533725a872a03b358c3ccee681ebd2ef5aea8249e7eded87b8d02876f");
+    BOOST_CHECK_EQUAL(HexStr(SignatureHash(code1, m, 1, HT, 900, 1100, SigVersion::WITNESS_V0)),
+                      "ddcec2104d7c2d018048738567883b41327cab9a5abb262ac327dfe0d234a956");
+    { CMutableTransaction m0 = m; m0.bundles[0].nExpireTime = 0;
+      BOOST_CHECK_EQUAL(HexStr(SignatureHash(code0, m0, 0, HT, 7000, 1200, SigVersion::WITNESS_V0)),
+                        "a34f16db34596188424d933ad8a5074249e932cb7c6430d7708b0c1dc70ddf92"); }
+
+    // -- splice-invariance: graft a matcher leg after the bundle — the digest MUST not move --
+    { CMutableTransaction big = m;
+      big.vin.resize(3);
+      big.vin[2].prevout = COutPoint(Txid::FromUint256(uint256{"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}), 7);
+      big.vout.emplace_back(123456, CScript() << OP_0 << std::vector<unsigned char>(20, 0x66));
+      BOOST_CHECK_EQUAL(HexStr(SignatureHash(code0, big, 0, HT, 7000, 1200, SigVersion::WITNESS_V0)),
+                        "a297ea1533725a872a03b358c3ccee681ebd2ef5aea8249e7eded87b8d02876f");
+      // …while tampering INSIDE the bundle moves it
+      CMutableTransaction bad = big; bad.vout[1] = CTxOut(701, bad.vout[1].scriptPubKey);
+      BOOST_CHECK(SignatureHash(code0, bad, 0, HT, 7000, 1200, SigVersion::WITNESS_V0)
+                  != SignatureHash(code0, big, 0, HT, 7000, 1200, SigVersion::WITNESS_V0));
+      // an input OUTSIDE every bundle has no bundle digest
+      BOOST_CHECK(SignatureHash(code0, big, 2, HT, 1, 1, SigVersion::WITNESS_V0) == uint256::ONE); }
+
+    // -- consensus: per-bundle expiry + partition sanity (flat conservation is unchanged) --
+    const Consensus::Params& consensus = Params().GetConsensus();
+    CCoinsView base;
+    CCoinsViewCache view(&base);
+    const uint32_t refheight = 1000;
+    auto add = [&](CAmount amt) {
+        const COutPoint op(Txid::FromUint256(m_rng.rand256()), 0);
+        view.AddCoin(op, Coin(CTxOut(amt, CScript() << OP_TRUE), refheight, 1, false), false);
+        return op;
+    };
+    auto comp = [&](uint32_t expire, uint32_t nIn, uint32_t nOut) {
+        CMutableTransaction c;
+        c.version = 3;
+        c.lock_height = refheight;
+        c.vin.emplace_back(add(100000));
+        c.vin.emplace_back(add(200000));
+        c.vout.emplace_back(90000, CScript() << OP_TRUE);   // bundle: 1 in, 1 out
+        c.vout.emplace_back(150000, CScript() << OP_TRUE);  // matcher change; rest = fee
+        c.bundles.push_back(CBundle{nIn, nOut, expire});
+        return CTransaction(c);
+    };
+    { const CTransaction tx = comp(0, 1, 1); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1500, Consensus::NONE, fee, nullptr)); }
+    { const CTransaction tx = comp(1400, 1, 1); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1500, Consensus::NONE, fee, nullptr));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-bundle-expired"); }
+    { const CTransaction tx = comp(0, 3, 1); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1500, Consensus::NONE, fee, nullptr));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-bundle-partition"); }
+    { const CTransaction tx = comp(0, 0, 1); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1500, Consensus::NONE, fee, nullptr));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-bundle-empty"); }
+}
+
 BOOST_AUTO_TEST_SUITE_END()
