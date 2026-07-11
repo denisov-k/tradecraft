@@ -65,7 +65,7 @@ BOOST_AUTO_TEST_CASE(per_asset_check_tx_inputs)
 
     auto make = [&](CAmount coopOut, CAmount hostOut, const uint160& coopTag) {
         CMutableTransaction mtx;
-        mtx.version = 3;
+        mtx.version = NV3_TX_VERSION;
         mtx.lock_height = H;
         mtx.vin.emplace_back(opHost);
         mtx.vin.emplace_back(opCoop);
@@ -128,7 +128,7 @@ BOOST_AUTO_TEST_CASE(asset_issuance)
 
     // definition tx: OP_RETURN def + mint 100 units + FRC change (2000-kria fee)
     CMutableTransaction mtx;
-    mtx.version = 3;
+    mtx.version = NV3_TX_VERSION;
     mtx.lock_height = H;
     mtx.vin.emplace_back(opHost);
     CTxOut mint(10000000000, CScript() << OP_TRUE); mint.assetTag = tag;
@@ -197,7 +197,7 @@ BOOST_AUTO_TEST_CASE(unique_tokens)
     view.AddCoin(op, Coin(in, 1000, 1, false), false);
 
     auto tx_with = [&](std::vector<std::vector<unsigned char>> out_tokens, int nout) {
-        CMutableTransaction m; m.version = 3; m.lock_height = 1000; m.vin.emplace_back(op);
+        CMutableTransaction m; m.version = NV3_TX_VERSION; m.lock_height = 1000; m.vin.emplace_back(op);
         for (int i = 0; i < nout; ++i) { CTxOut o(0, CScript() << OP_TRUE); o.assetTag = tag; o.tokens = out_tokens; m.vout.push_back(o); }
         return CTransaction(m);
     };
@@ -224,7 +224,7 @@ BOOST_AUTO_TEST_CASE(tx_expiry)
     view.AddCoin(op, Coin(CTxOut(1000000, CScript() << OP_TRUE), 1000, 1, false), false);
 
     auto tx_exp = [&](uint32_t expire) {
-        CMutableTransaction m; m.version = 3; m.lock_height = 1000; m.nExpireTime = expire;
+        CMutableTransaction m; m.version = NV3_TX_VERSION; m.lock_height = 1000; m.nExpireTime = expire;
         m.vin.emplace_back(op); m.vout.emplace_back(998000, CScript() << OP_TRUE);
         return CTransaction(m);
     };
@@ -296,7 +296,7 @@ BOOST_AUTO_TEST_CASE(interest_assets)
 
     auto tx_with_bond_out = [&](CAmount bond_out) {
         CMutableTransaction m;
-        m.version = 3;
+        m.version = NV3_TX_VERSION;
         m.lock_height = 2000;
         m.vin.emplace_back(opHost);
         m.vin.emplace_back(opBond);
@@ -317,7 +317,7 @@ BOOST_AUTO_TEST_CASE(interest_assets)
     std::vector<unsigned char> bad(2 + 8 + 32, 0);
     bad[0] = 200;
     CMutableTransaction dm;
-    dm.version = 3;
+    dm.version = NV3_TX_VERSION;
     std::vector<unsigned char> payload;
     payload.insert(payload.end(), std::begin(Consensus::ASSET_DEF_MAGIC), std::end(Consensus::ASSET_DEF_MAGIC));
     payload.insert(payload.end(), bad.begin(), bad.end());
@@ -395,23 +395,26 @@ BOOST_AUTO_TEST_CASE(sighash_commits_asset_tag)
     };
 
     // v3: a different asset tag -> a different sighash (tag-swap breaks the signature).
-    BOOST_CHECK(H(at(3, tagA, {})) != H(at(3, tagB, {})));
+    BOOST_CHECK(H(at(NV3_TX_VERSION, tagA, {})) != H(at(NV3_TX_VERSION, tagB, {})));
     // v3: a different token set -> a different sighash.
-    BOOST_CHECK(H(at(3, tagA, {{1, 2, 3}})) != H(at(3, tagA, {{4, 5, 6}})));
+    BOOST_CHECK(H(at(NV3_TX_VERSION, tagA, {{1, 2, 3}})) != H(at(NV3_TX_VERSION, tagA, {{4, 5, 6}})));
     // Legacy (BASE) sighash of a v3 tx commits to the tag too.
     auto Hbase = [&](const CMutableTransaction& m) {
         return SignatureHash(code, m, 0, SIGHASH_ALL, 50000, 1000, SigVersion::BASE);
     };
-    BOOST_CHECK(Hbase(at(3, tagA, {})) != Hbase(at(3, tagB, {})));
+    BOOST_CHECK(Hbase(at(NV3_TX_VERSION, tagA, {})) != Hbase(at(NV3_TX_VERSION, tagB, {})));
     // Non-v3: the asset tag is NOT part of the sighash — existing sighashes are byte-identical.
     BOOST_CHECK(H(at(1, tagA, {})) == H(at(1, tagB, {})));
     BOOST_CHECK(H(at(2, tagA, {})) == H(at(2, tagB, {})));
+    // …and crucially version 3 — that's TRUC (BIP431), a PLAIN standard version on ordinary
+    // chains. nV3 rules must never touch it: the extended format lives at NV3_TX_VERSION.
+    BOOST_CHECK(H(at(3, tagA, {})) == H(at(3, tagB, {})));
 
     // Cross-check against the reference model (core/sighash.mjs): the v3 SINGLE|ANYONECANPAY
     // digest — the DEX offer signature — must match bit-for-bit, tag+tokens committed.
     {
         CMutableTransaction m;
-        m.version = 3;
+        m.version = NV3_TX_VERSION;
         m.nLockTime = 0;
         m.lock_height = 1234;
         m.vin.resize(1);
@@ -427,13 +430,13 @@ BOOST_AUTO_TEST_CASE(sighash_commits_asset_tag)
             << std::vector<unsigned char>(20, 0x33) << OP_EQUALVERIFY << OP_CHECKSIG;
         const uint256 got = SignatureHash(script_code, m, 0, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY,
                                           7000, 1200, SigVersion::WITNESS_V0);
-        BOOST_CHECK_EQUAL(HexStr(got), "09bf227022e208bf0fe210bea0849e99763dd252d7de4ab42573b6d298dc70dc");
+        BOOST_CHECK_EQUAL(HexStr(got), "c0329e909de28871e77e79f4d3128d6849561acd3e30b7612b757722020e851f");
         // nExpireTime is committed: a different expiry is a different digest (and matches
         // the model's vector for expire=777) — no one can impose an expiry on a signed tx.
         m.nExpireTime = 777;
         const uint256 got777 = SignatureHash(script_code, m, 0, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY,
                                              7000, 1200, SigVersion::WITNESS_V0);
-        BOOST_CHECK_EQUAL(HexStr(got777), "46dae2ef21f0fe7ac2c594941ee5ea7bc0d0c9787325e5b859ceca1cf576e6a1");
+        BOOST_CHECK_EQUAL(HexStr(got777), "1e8997a38a60008a2873114812ff5f3b30f93b04d545ea87e32ebbd1e92d2013");
     }
 }
 
@@ -464,7 +467,7 @@ BOOST_AUTO_TEST_CASE(authorizers)
     def.insert(def.end(), auth_pub.begin(), auth_pub.end());
     // the def parses, carries the authorizer, and the authorizer is committed in the id
     CMutableTransaction dm;
-    dm.version = 3;
+    dm.version = NV3_TX_VERSION;
     std::vector<unsigned char> payload(std::begin(Consensus::ASSET_DEF_MAGIC), std::end(Consensus::ASSET_DEF_MAGIC));
     payload.insert(payload.end(), def.begin(), def.end());
     dm.vout.emplace_back(0, CScript() << OP_RETURN << payload);
@@ -501,7 +504,7 @@ BOOST_AUTO_TEST_CASE(authorizers)
 
     auto make_tx = [&](bool approve, const CKey& key) {
         CMutableTransaction m;
-        m.version = 3;
+        m.version = NV3_TX_VERSION;
         m.lock_height = refheight;   // distance 0: conserve nominal exactly
         m.vin.emplace_back(opHost);
         m.vin.emplace_back(opStock);
@@ -545,7 +548,7 @@ BOOST_AUTO_TEST_CASE(dex_bundles)
 {
     // -- serialization: the partition rides witness-side (txid unchanged, wtxid distinct) --
     CMutableTransaction m;
-    m.version = 3;
+    m.version = NV3_TX_VERSION;
     m.lock_height = 1234;
     m.vin.resize(2);
     m.vin[0].prevout = COutPoint(Txid::FromUint256(uint256{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}), 1);
@@ -574,12 +577,12 @@ BOOST_AUTO_TEST_CASE(dex_bundles)
     const CScript code1 = CScript() << OP_DUP << OP_HASH160 << std::vector<unsigned char>(20, 0x55) << OP_EQUALVERIFY << OP_CHECKSIG;
     const int HT = SIGHASH_ALL | SIGHASH_BUNDLE;
     BOOST_CHECK_EQUAL(HexStr(SignatureHash(code0, m, 0, HT, 7000, 1200, SigVersion::WITNESS_V0)),
-                      "a297ea1533725a872a03b358c3ccee681ebd2ef5aea8249e7eded87b8d02876f");
+                      "2969b071631b93a05f3cfeb6d5d8664babbedc6fda0b63caeafd91c1a56e6410");
     BOOST_CHECK_EQUAL(HexStr(SignatureHash(code1, m, 1, HT, 900, 1100, SigVersion::WITNESS_V0)),
-                      "ddcec2104d7c2d018048738567883b41327cab9a5abb262ac327dfe0d234a956");
+                      "f3fe649f0e3d2072d551369a7e35f6a757b9652624cf4e836f311c55c6f9adfa");
     { CMutableTransaction m0 = m; m0.bundles[0].nExpireTime = 0;
       BOOST_CHECK_EQUAL(HexStr(SignatureHash(code0, m0, 0, HT, 7000, 1200, SigVersion::WITNESS_V0)),
-                        "a34f16db34596188424d933ad8a5074249e932cb7c6430d7708b0c1dc70ddf92"); }
+                        "c77fedb6a3bcb15f2f40222db7edf4de2292e4576a4350534f43195ffbe40d44"); }
 
     // -- splice-invariance: graft a matcher leg after the bundle — the digest MUST not move --
     { CMutableTransaction big = m;
@@ -587,7 +590,7 @@ BOOST_AUTO_TEST_CASE(dex_bundles)
       big.vin[2].prevout = COutPoint(Txid::FromUint256(uint256{"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}), 7);
       big.vout.emplace_back(123456, CScript() << OP_0 << std::vector<unsigned char>(20, 0x66));
       BOOST_CHECK_EQUAL(HexStr(SignatureHash(code0, big, 0, HT, 7000, 1200, SigVersion::WITNESS_V0)),
-                        "a297ea1533725a872a03b358c3ccee681ebd2ef5aea8249e7eded87b8d02876f");
+                        "2969b071631b93a05f3cfeb6d5d8664babbedc6fda0b63caeafd91c1a56e6410");
       // …while tampering INSIDE the bundle moves it
       CMutableTransaction bad = big; bad.vout[1] = CTxOut(701, bad.vout[1].scriptPubKey);
       BOOST_CHECK(SignatureHash(code0, bad, 0, HT, 7000, 1200, SigVersion::WITNESS_V0)
@@ -607,7 +610,7 @@ BOOST_AUTO_TEST_CASE(dex_bundles)
     };
     auto comp = [&](uint32_t expire, uint32_t nIn, uint32_t nOut) {
         CMutableTransaction c;
-        c.version = 3;
+        c.version = NV3_TX_VERSION;
         c.lock_height = refheight;
         c.vin.emplace_back(add(100000));
         c.vin.emplace_back(add(200000));
@@ -634,7 +637,7 @@ BOOST_AUTO_TEST_CASE(dex_ranged)
     // -- digest cross-vectors: the SIGHASH_BUNDLE digest of a RANGED input commits the
     // descriptor (not the outputs); generated by the model (core/sighash.mjs rangedSighash) --
     CMutableTransaction m;
-    m.version = 3;
+    m.version = NV3_TX_VERSION;
     m.lock_height = 1234;
     m.vin.resize(1);
     m.vin[0].prevout = COutPoint(Txid::FromUint256(uint256{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}), 1);
@@ -654,17 +657,17 @@ BOOST_AUTO_TEST_CASE(dex_ranged)
     const CScript code = CScript() << OP_DUP << OP_HASH160 << std::vector<unsigned char>(20, 0x33) << OP_EQUALVERIFY << OP_CHECKSIG;
     const int HT = SIGHASH_ALL | SIGHASH_BUNDLE;
     BOOST_CHECK_EQUAL(HexStr(SignatureHash(code, m, 0, HT, 7000, 1200, SigVersion::WITNESS_V0)),
-                      "43dd53252987a9f9fd35b68d48a12bc61aeb117646cd209d9536ee497eb0f395");
+                      "cbaf83adeab9277e44c4055b3f93447706afde5ace562988fb1117e867c27071");
     { CMutableTransaction m2 = m; m2.ranged[0].priceNum = 29999;
       BOOST_CHECK_EQUAL(HexStr(SignatureHash(code, m2, 0, HT, 7000, 1200, SigVersion::WITNESS_V0)),
-                        "e5349acda2a887798ea4c34a69f696a5321dc6d746e1f89fe63b22d35449348c"); }
+                        "8afda870c437f359cb99ff7f4362aef5ffaf3700e9771479762076f5cf9d4164"); }
     // the digest does NOT move when the miner changes the fill (outputs) — one signature,
     // any admissible fill
     { CMutableTransaction m3 = m;
       m3.vout[0] = CTxOut(15000000, r.payoutScript);
       m3.vout[1] = CTxOut(500, r.changeScript);
       BOOST_CHECK_EQUAL(HexStr(SignatureHash(code, m3, 0, HT, 7000, 1200, SigVersion::WITNESS_V0)),
-                        "43dd53252987a9f9fd35b68d48a12bc61aeb117646cd209d9536ee497eb0f395"); }
+                        "cbaf83adeab9277e44c4055b3f93447706afde5ace562988fb1117e867c27071"); }
 
     // -- serialization round-trip (witness-side, txid unchanged) --
     { const CTransaction with{m};
@@ -698,7 +701,7 @@ BOOST_AUTO_TEST_CASE(dex_ranged)
 
     auto comp = [&](CAmount pay_val, CAmount change_val, CAmount maxFill) {
         CMutableTransaction c;
-        c.version = 3;
+        c.version = NV3_TX_VERSION;
         c.lock_height = refheight;
         c.vin.emplace_back(opCoop);
         c.vin.emplace_back(opFrc);

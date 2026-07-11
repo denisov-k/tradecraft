@@ -450,7 +450,7 @@ void TxToUniv(const CTransaction& tx, const uint256& block_hash, UniValue& entry
     entry.pushKV("weight", GetTransactionWeight(tx));
     entry.pushKV("locktime", (int64_t)tx.nLockTime);
     entry.pushKV("lockheight", (int64_t)tx.lock_height);
-    if (tx.version == 3 && tx.nExpireTime != 0) {
+    if (tx.version == NV3_TX_VERSION && tx.nExpireTime != 0) {
         entry.pushKV("expiretime", (int64_t)tx.nExpireTime);
     }
 
@@ -524,7 +524,7 @@ void TxToUniv(const CTransaction& tx, const uint256& block_hash, UniValue& entry
 
         out.pushKV("value", ValueFromAmount(txout.GetReferenceValue()));
         out.pushKV("n", (int64_t)i);
-        if (tx.version == 3 && !txout.assetTag.IsNull()) {
+        if (tx.version == NV3_TX_VERSION && !txout.assetTag.IsNull()) {
             out.pushKV("assetTag", txout.assetTag.GetHex());
             if (!txout.tokens.empty()) {
                 UniValue toks(UniValue::VARR);

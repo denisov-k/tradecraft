@@ -37,6 +37,15 @@
 #include <utility>
 #include <vector>
 
+/** nVersion=3-lite: the transaction version carrying the extended (asset-tagged) format.
+ *  The 2013 whitepaper called it nVersion=3, but upstream Core has since assigned tx v3 to
+ *  TRUC (BIP431) — a plain standard version that circulates on ordinary chains, which our
+ *  extended serialization must NOT reinterpret. The top bit marks the Freicoin extension
+ *  namespace: upstream keeps tx versions small non-negative ints (the field was historically
+ *  int32 on the wire), so this can never collide at a future rebase; the low bits keep the
+ *  whitepaper's "3". Every nV3 rule checks EXACT equality with this constant. */
+static constexpr uint32_t NV3_TX_VERSION = 0x80000003;
+
 /** An outpoint - a combination of a transaction hash and an index n into its vout */
 class COutPoint
 {
@@ -394,7 +403,7 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
     // nVersion=3-lite: each output carries a 20-byte asset tag, serialized as a parallel
     // block right after vout so that version<3 encodings are unchanged. version<3 outputs are
     // implicitly the host currency (null tag, already set by CTxOut::SetNull).
-    if (tx.version == 3) {
+    if (tx.version == NV3_TX_VERSION) {
         for (CTxOut& txout : tx.vout) {
             s >> txout.assetTag;
         }
@@ -415,7 +424,7 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
     }
     // nVersion=3-lite: authorizer approvals ride witness-side (flag bit 2) — they are OUTSIDE
     // the txid, so an approval signature over the txid is not circular. v3 only.
-    if ((flags & 2) && fAllowWitness && tx.version == 3) {
+    if ((flags & 2) && fAllowWitness && tx.version == NV3_TX_VERSION) {
         flags ^= 2;
         s >> tx.approvals;
         if (tx.approvals.empty()) {
@@ -424,7 +433,7 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
     }
     // nVersion=3 DEX: the bundle partition (flag bit 4) — witness-side for the same reason:
     // SIGHASH_BUNDLE digests pin the partition, so repartitioning breaks the signatures.
-    if ((flags & 4) && fAllowWitness && tx.version == 3) {
+    if ((flags & 4) && fAllowWitness && tx.version == NV3_TX_VERSION) {
         flags ^= 4;
         s >> tx.bundles;
         if (tx.bundles.empty()) {
@@ -432,7 +441,7 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
         }
     }
     // nVersion=3 DEX 2b: ranged bundles (flag bit 8).
-    if ((flags & 8) && fAllowWitness && tx.version == 3) {
+    if ((flags & 8) && fAllowWitness && tx.version == NV3_TX_VERSION) {
         flags ^= 8;
         s >> tx.ranged;
         if (tx.ranged.empty()) {
@@ -449,7 +458,7 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
     } else {
         tx.lock_height = 0;
     }
-    if (tx.version == 3) { s >> tx.nExpireTime; } else { tx.nExpireTime = 0; }
+    if (tx.version == NV3_TX_VERSION) { s >> tx.nExpireTime; } else { tx.nExpireTime = 0; }
 }
 
 template<typename Stream, typename TxType>
@@ -466,15 +475,15 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
             flags |= 1;
         }
         // nVersion=3-lite: approvals are witness-side data (excluded from the txid).
-        if (tx.version == 3 && !tx.approvals.empty()) {
+        if (tx.version == NV3_TX_VERSION && !tx.approvals.empty()) {
             flags |= 2;
         }
         // nVersion=3 DEX: so is the bundle partition.
-        if (tx.version == 3 && !tx.bundles.empty()) {
+        if (tx.version == NV3_TX_VERSION && !tx.bundles.empty()) {
             flags |= 4;
         }
         // nVersion=3 DEX 2b: and the ranged bundles.
-        if (tx.version == 3 && !tx.ranged.empty()) {
+        if (tx.version == NV3_TX_VERSION && !tx.ranged.empty()) {
             flags |= 8;
         }
     }
@@ -487,7 +496,7 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
     s << tx.vin;
     s << tx.vout;
     // nVersion=3-lite: asset tags as a parallel block after vout (see UnserializeTransaction).
-    if (tx.version == 3) {
+    if (tx.version == NV3_TX_VERSION) {
         for (const CTxOut& txout : tx.vout) {
             s << txout.assetTag;
         }
@@ -513,7 +522,7 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
     if (tx.version != 1 || tx.vin.size() != 1 || !tx.vin[0].prevout.IsNull()) {
         s << tx.lock_height;
     }
-    if (tx.version == 3) { s << tx.nExpireTime; }
+    if (tx.version == NV3_TX_VERSION) { s << tx.nExpireTime; }
 }
 
 template<typename TxType>

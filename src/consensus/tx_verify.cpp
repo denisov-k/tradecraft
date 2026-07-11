@@ -195,7 +195,7 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
     // vin/vout), and every bundle must be unexpired — a maker's stale offer only invalidates
     // a composite that INCLUDES it. The per-asset conservation below runs over the flat
     // transaction, so composites inherit every balance rule unchanged.
-    if (tx.version == 3 && (!tx.bundles.empty() || !tx.ranged.empty())) {
+    if (tx.version == NV3_TX_VERSION && (!tx.bundles.empty() || !tx.ranged.empty())) {
         uint64_t bin = 0, bout = 0;
         for (const CBundle& b : tx.bundles) {
             if (b.nIn == 0 || b.nOut == 0) {
@@ -283,7 +283,7 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
     // nVersion=3 DEX 2b: the miner materialized each ranged bundle's [payout, change] — check
     // them against the maker-signed descriptor. Give coins must be one asset; the fill is the
     // present value parted with:  fill = givePV(lock_height) − change.value.
-    if (tx.version == 3 && !tx.ranged.empty()) {
+    if (tx.version == NV3_TX_VERSION && !tx.ranged.empty()) {
         size_t in0 = 0, out0 = 0;
         for (const CBundle& b : tx.bundles) { in0 += b.nIn; out0 += b.nOut; }
         for (const CRangedBundle& r : tx.ranged) {

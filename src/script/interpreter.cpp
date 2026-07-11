@@ -1659,7 +1659,7 @@ public:
             ::Serialize(s, txTo.vout[nOutput]);
             // nVersion=3-lite: legacy (BASE) sighash must also bind the asset tag + tokens,
             // else a v3 tx spending a non-witness input would be tag-swap malleable.
-            if (txTo.version == 3) {
+            if (txTo.version == NV3_TX_VERSION) {
                 ::Serialize(s, txTo.vout[nOutput].assetTag);
                 ::Serialize(s, txTo.vout[nOutput].tokens);
             }
@@ -1688,7 +1688,7 @@ public:
             ::Serialize(s, txTo.lock_height);
         }
         // nVersion=3-lite: commit nExpireTime (see the WITNESS_V0 path).
-        if (txTo.version == 3) {
+        if (txTo.version == NV3_TX_VERSION) {
             ::Serialize(s, txTo.nExpireTime);
         }
     }
@@ -1729,7 +1729,7 @@ uint256 GetOutputsSHA256(const T& txTo)
         // Commit to them here so a third party cannot swap an output's asset tag (or its
         // tokens) after signing — tag-swap malleability that conservation does not always
         // catch. Only for version==3 outputs, leaving every existing sighash byte-identical.
-        if (txTo.version == 3) {
+        if (txTo.version == NV3_TX_VERSION) {
             ss << txout.assetTag;
             ss << txout.tokens;
         }
@@ -1883,7 +1883,7 @@ bool SignatureHashSchnorr(uint256& hash_out, ScriptExecutionData& execdata, cons
     ss << tx_to.nLockTime;
     ss << tx_to.lock_height;
     // nVersion=3-lite: commit nExpireTime (see the WITNESS_V0 path).
-    if (tx_to.version == 3) {
+    if (tx_to.version == NV3_TX_VERSION) {
         ss << tx_to.nExpireTime;
     }
     if (input_type != SIGHASH_ANYONECANPAY) {
@@ -1920,7 +1920,7 @@ bool SignatureHashSchnorr(uint256& hash_out, ScriptExecutionData& execdata, cons
             HashWriter sha_single_output{};
             sha_single_output << tx_to.vout[in_pos];
             // nVersion=3-lite: bind the asset tag + tokens of the single signed output.
-            if (tx_to.version == 3) {
+            if (tx_to.version == NV3_TX_VERSION) {
                 sha_single_output << tx_to.vout[in_pos].assetTag;
                 sha_single_output << tx_to.vout[in_pos].tokens;
             }
@@ -1979,7 +1979,7 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
         // slice of vin/vout per the tx's bundle partition — plus the bundle expiry and the tx
         // lock_height. Splice-safe by construction: nothing outside the bundle enters the
         // preimage. Mirrors the model's bundleSighash (core/sighash.mjs) bit for bit.
-        if ((nHashType & SIGHASH_BUNDLE) && txTo.version == 3 && (!txTo.bundles.empty() || !txTo.ranged.empty())) {
+        if ((nHashType & SIGHASH_BUNDLE) && txTo.version == NV3_TX_VERSION && (!txTo.bundles.empty() || !txTo.ranged.empty())) {
             // Shared preimage skeleton: BIP143 with the prevouts/sequences hashes over the
             // bundle's slice; `commit` is the outputs hash (fixed bundles) or the descriptor
             // hash (ranged bundles); then the mandatory lock_height pin + the bundle expiry.
@@ -2062,7 +2062,7 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
             ss << txTo.vout[nIn];
             // nVersion=3-lite: commit to the signed output's asset tag + tokens (see
             // GetOutputsSHA256) so SIGHASH_SINGLE binds which asset/tokens it pays.
-            if (txTo.version == 3) {
+            if (txTo.version == NV3_TX_VERSION) {
                 ss << txTo.vout[nIn].assetTag;
                 ss << txTo.vout[nIn].tokens;
             }
@@ -2095,7 +2095,7 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
         }
         // nVersion=3-lite: commit nExpireTime (the mirror of nLockTime) — without this a
         // third party could impose an expiry on a signed tx without breaking any signature.
-        if (txTo.version == 3) {
+        if (txTo.version == NV3_TX_VERSION) {
             ss << txTo.nExpireTime;
         }
         // Sighash type
