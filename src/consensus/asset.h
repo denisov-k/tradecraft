@@ -90,6 +90,9 @@ inline std::optional<std::pair<uint160, AssetParams>> ParseAssetDefinition(const
         AssetParams p;
         p.shift = def[0];
         p.interest = (def[1] & 1) != 0;
+        // The kernels are only defined for 1 <= shift <= 64 (a larger shift under-shifts the
+        // fixed-point base — UB). A payload outside the range is simply not a definition.
+        if (p.shift < 1 || p.shift > 64) continue;
         uint64_t g = 0;
         for (int i = 0; i < 8; ++i) g |= static_cast<uint64_t>(def[2 + i]) << (8 * i);
         p.granularity = g ? g : 1;

@@ -254,6 +254,57 @@ CAmount TimeAdjustValueForwardK(const CAmount& initial_value, uint32_t distance,
     return sign * CAmount(static_cast<int64_t>(sum));
 }
 
+/* nVersion=3-lite: INTEREST (a growing bond) at rate (1 + 2^-k) per block, the mirror image
+ * of per-asset demurrage. The factor is computed in 64.64 fixed point by square-and-multiply
+ * with truncation after every multiply — the EXACT operation sequence of the reference model
+ * (freicoin-wallet core/assets.mjs interestPV), so the two agree bit-for-bit. The factor is
+ * unbounded but amounts are not: the present value SATURATES at MAX_MONEY, with the running
+ * product and the squared base capped the moment their integer part reaches 2^53−1. Products
+ * of two 117-bit fixed-point numbers are formed from 64-bit halves so no intermediate
+ * overflows the 128-bit accumulator. */
+CAmount TimeAdjustValueForwardInterestK(const CAmount& initial_value, uint32_t distance, unsigned k)
+{
+    if (disable_time_adjust)
+        return initial_value;
+    if (distance == 0 || initial_value == 0)
+        return initial_value;
+
+    const int sign = (initial_value > 0) - (initial_value < 0);
+    const uint64_t value = std::abs(initial_value);
+
+    typedef unsigned __int128 u128;
+    const int P = 64;
+    const u128 CAP = (u128)MAX_MONEY << P;   /* factor cap: integer part = MAX_MONEY */
+
+    /* (a*b) >> 64 for a,b < 2^117, saturated at CAP. Split into 64-bit halves:
+     * (a*b)>>64 = (aH*bH)<<64 + aH*bL + aL*bH + ((aL*bL)>>64); each addend < 2^117,
+     * so the sum < 2^119 fits u128. If aH*bH alone reaches 2^53 the result is >= CAP. */
+    auto mulshift = [&](u128 a, u128 b) -> u128 {
+        const uint64_t aH = (uint64_t)(a >> P), aL = (uint64_t)a;
+        const uint64_t bH = (uint64_t)(b >> P), bL = (uint64_t)b;
+        const u128 hh = (u128)aH * bH;
+        if (hh >> 53) return CAP;
+        const u128 r = (hh << P) + (u128)aH * bL + (u128)aL * bH + (((u128)aL * bL) >> P);
+        return r >= CAP ? CAP : r;
+    };
+
+    u128 acc = (u128)1 << P;
+    u128 base = ((u128)1 << P) + ((u128)1 << (P - (int)k));
+    uint32_t e = distance;
+    while (e > 0) {
+        if (e & 1) {
+            acc = mulshift(acc, base);
+            if (acc >= CAP) return sign * MAX_MONEY;
+        }
+        e >>= 1;
+        if (e > 0) base = mulshift(base, base);   /* saturates at CAP internally */
+    }
+
+    /* pv = (value * acc) >> 64 with value < 2^53: value*accH < 2^106, fits exactly. */
+    const u128 pv = (u128)value * (uint64_t)(acc >> P) + (((u128)value * (uint64_t)acc) >> P);
+    return sign * (pv > (u128)MAX_MONEY ? MAX_MONEY : (CAmount)(int64_t)pv);
+}
+
 CAmount TimeAdjustValueReverse(const CAmount& initial_value, uint32_t distance)
 {
     /* If we're in bitcoin unit test compatibility mode, return our

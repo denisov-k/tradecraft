@@ -205,7 +205,14 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
     auto asset_known = [&](const uint160& tag) {
         return tag.IsNull() || (has_minted && tag == minted) || (registry && registry->IsKnown(tag));
     };
-    auto asset_shift = [&](const uint160& tag) -> unsigned { return params_of(tag).shift; };
+    // Present value of one coin at tx.lock_height under its asset's own monetary policy:
+    // demurrage melts at 2^-shift per block, interest (a bond) grows at 2^-shift per block
+    // saturating at MAX_MONEY.
+    auto asset_pv = [&](const uint160& tag, CAmount value, uint32_t dist) -> CAmount {
+        const Consensus::AssetParams ap = params_of(tag);
+        return ap.interest ? TimeAdjustValueForwardInterestK(value, dist, ap.shift)
+                           : TimeAdjustValueForwardK(value, dist, ap.shift);
+    };
 
     std::map<uint160, CAmount> in_pv;   // present value of inputs, per asset, at tx.lock_height
     for (unsigned int i = 0; i < tx.vin.size(); ++i) {
@@ -231,7 +238,7 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-unknown-asset");
         }
         // Check for negative or overflow input values. Present value uses the asset's own rate.
-        CAmount nInput = TimeAdjustValueForwardK(coin.out.GetReferenceValue(), (uint32_t)(tx.lock_height - coin.refheight), asset_shift(tag)) + per_input_adjustment;
+        CAmount nInput = asset_pv(tag, coin.out.GetReferenceValue(), (uint32_t)(tx.lock_height - coin.refheight)) + per_input_adjustment;
         CAmount& acc = in_pv[tag];
         acc += nInput;
         if (!MoneyRange(coin.out.GetReferenceValue()) || !MoneyRange(nInput) || !MoneyRange(acc)) {

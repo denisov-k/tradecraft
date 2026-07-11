@@ -51,6 +51,10 @@ CAmount TimeAdjustValueForward(const CAmount& initial_value, uint32_t distance);
  *  regenerated with 96 fractional guard bits — naive 64-bit squaring drifts and mismatches the
  *  canonical table. See research/nversion3/ for the proof and golden vectors. */
 CAmount TimeAdjustValueForwardK(const CAmount& initial_value, uint32_t distance, unsigned k);
+/** nVersion=3-lite: interest (a growing bond) at rate (1 + 2^-k) per block, saturating at
+ *  MAX_MONEY. 64.64 fixed point, bit-identical to the reference model (assets.mjs interestPV).
+ *  Callers must guarantee 1 <= k <= 64 (enforced at asset-definition parse time). */
+CAmount TimeAdjustValueForwardInterestK(const CAmount& initial_value, uint32_t distance, unsigned k);
 CAmount TimeAdjustValueReverse(const CAmount& initial_value, uint32_t distance);
 CAmount GetTimeAdjustedValue(const CAmount& initial_value, int relative_depth);
 
