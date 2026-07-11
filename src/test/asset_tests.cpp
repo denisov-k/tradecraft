@@ -427,7 +427,13 @@ BOOST_AUTO_TEST_CASE(sighash_commits_asset_tag)
             << std::vector<unsigned char>(20, 0x33) << OP_EQUALVERIFY << OP_CHECKSIG;
         const uint256 got = SignatureHash(script_code, m, 0, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY,
                                           7000, 1200, SigVersion::WITNESS_V0);
-        BOOST_CHECK_EQUAL(HexStr(got), "4bac639ca23e2c4098d48b67e7bdf6d9667f4060e318761d21a7316f34e330dd");
+        BOOST_CHECK_EQUAL(HexStr(got), "09bf227022e208bf0fe210bea0849e99763dd252d7de4ab42573b6d298dc70dc");
+        // nExpireTime is committed: a different expiry is a different digest (and matches
+        // the model's vector for expire=777) — no one can impose an expiry on a signed tx.
+        m.nExpireTime = 777;
+        const uint256 got777 = SignatureHash(script_code, m, 0, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY,
+                                             7000, 1200, SigVersion::WITNESS_V0);
+        BOOST_CHECK_EQUAL(HexStr(got777), "46dae2ef21f0fe7ac2c594941ee5ea7bc0d0c9787325e5b859ceca1cf576e6a1");
     }
 }
 

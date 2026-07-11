@@ -1686,6 +1686,10 @@ public:
         if (!no_lock_height && (txTo.version != 1 || txTo.vin.size() != 1 || !txTo.vin[0].prevout.IsNull())) {
             ::Serialize(s, txTo.lock_height);
         }
+        // nVersion=3-lite: commit nExpireTime (see the WITNESS_V0 path).
+        if (txTo.version == 3) {
+            ::Serialize(s, txTo.nExpireTime);
+        }
     }
 };
 
@@ -1877,6 +1881,10 @@ bool SignatureHashSchnorr(uint256& hash_out, ScriptExecutionData& execdata, cons
     ss << tx_to.version;
     ss << tx_to.nLockTime;
     ss << tx_to.lock_height;
+    // nVersion=3-lite: commit nExpireTime (see the WITNESS_V0 path).
+    if (tx_to.version == 3) {
+        ss << tx_to.nExpireTime;
+    }
     if (input_type != SIGHASH_ANYONECANPAY) {
         ss << cache.m_prevouts_single_hash;
         ss << cache.m_spent_amounts_single_hash;
@@ -2017,6 +2025,11 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
         // Lockheight
         if (!(nHashType & SIGHASH_NO_LOCK_HEIGHT)) {
             ss << txTo.lock_height;
+        }
+        // nVersion=3-lite: commit nExpireTime (the mirror of nLockTime) — without this a
+        // third party could impose an expiry on a signed tx without breaking any signature.
+        if (txTo.version == 3) {
+            ss << txTo.nExpireTime;
         }
         // Sighash type
         ss << (nHashType & ~SIGHASH_NO_LOCK_HEIGHT);
