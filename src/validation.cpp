@@ -22,6 +22,7 @@
 #include <chain.h>
 #include <checkqueue.h>
 #include <clientversion.h>
+#include <compressor.h>
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
@@ -1980,6 +1981,59 @@ void Chainstate::InitCoinsCache(size_t cache_size_bytes)
     m_coins_views->InitCache();
 }
 
+// nVersion=3-lite: the asset registry is tiny (one entry per defined asset) and changes only
+// when an asset-definition tx connects or disconnects, so it is rewritten whole, atomically
+// (temp file + rename), on every change. If the node crashes between a block write and the
+// registry write, -reindex rebuilds the registry from the definition txs.
+static constexpr std::array<char, 5> ASSET_REGISTRY_MAGIC{'F', 'R', 'A', 'R', '1'};
+
+void Chainstate::PersistAssetRegistry() const
+{
+    if (!g_txout_serialize_asset_tag || m_asset_registry_no_persist) return;
+    const fs::path path = m_chainman.m_options.datadir / "assets.dat";
+    const fs::path tmp = m_chainman.m_options.datadir / "assets.dat.new";
+    try {
+        AutoFile file{fsbridge::fopen(tmp, "wb")};
+        if (file.IsNull()) {
+            LogWarning("nVersion=3-lite: unable to open %s for writing\n", fs::PathToString(tmp));
+            return;
+        }
+        file << ASSET_REGISTRY_MAGIC << m_asset_registry;
+        if (!file.Commit()) {
+            LogWarning("nVersion=3-lite: failed to commit %s\n", fs::PathToString(tmp));
+            return;
+        }
+        file.fclose();
+        if (!RenameOver(tmp, path)) {
+            LogWarning("nVersion=3-lite: failed to rename %s\n", fs::PathToString(tmp));
+        }
+    } catch (const std::exception& e) {
+        LogWarning("nVersion=3-lite: failed to persist asset registry: %s\n", e.what());
+    }
+}
+
+bool Chainstate::LoadAssetRegistry()
+{
+    if (!g_txout_serialize_asset_tag) return true;
+    const fs::path path = m_chainman.m_options.datadir / "assets.dat";
+    AutoFile file{fsbridge::fopen(path, "rb")};
+    if (file.IsNull()) return true;   // no definitions persisted yet
+    try {
+        std::array<char, 5> magic;
+        file >> magic;
+        if (magic != ASSET_REGISTRY_MAGIC) {
+            LogError("nVersion=3-lite: %s has wrong magic\n", fs::PathToString(path));
+            return false;
+        }
+        file >> m_asset_registry;
+    } catch (const std::exception& e) {
+        LogError("nVersion=3-lite: failed to load asset registry: %s\n", e.what());
+        return false;
+    }
+    LogInfo("nVersion=3-lite: loaded %u asset definition(s) from %s", m_asset_registry.Size(), fs::PathToString(path));
+    return true;
+}
+
 // Lock-free: depends on `m_cached_is_ibd`, which is latched by `UpdateIBDStatus()`.
 bool ChainstateManager::IsInitialBlockDownload() const noexcept
 {
@@ -2261,6 +2315,9 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
     AssertLockHeld(::cs_main);
     bool fClean = true;
 
+    // nVersion=3-lite: whether this disconnect rolled back any asset definition.
+    bool asset_defs_changed = false;
+
     CBlockUndo blockUndo;
     if (!m_blockman.ReadBlockUndo(blockUndo, *pindex)) {
         LogError("DisconnectBlock(): failure reading undo data\n");
@@ -2291,6 +2348,7 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
         // nVersion=3-lite: roll back any asset this tx defined.
         if (const auto d = Consensus::ParseAssetDefinition(tx)) {
             m_asset_registry.Undefine(d->first);
+            asset_defs_changed = true;
         }
 
         // Check that all outputs are available and match the outputs in the block itself
@@ -2330,6 +2388,9 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
     view.SetFinalTx(blockUndo.final_tx);
     // move best block pointer to prevout block
     view.SetBestBlock(pindex->pprev->GetBlockHash());
+
+    // nVersion=3-lite: persist any asset-definition rollback (reorg survival across restarts).
+    if (asset_defs_changed) PersistAssetRegistry();
 
     return fClean ? DISCONNECT_OK : DISCONNECT_UNCLEAN;
 }
@@ -2380,6 +2441,9 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
 
     const auto time_start{SteadyClock::now()};
     const CChainParams& params{m_chainman.GetParams()};
+
+    // nVersion=3-lite: whether this block (un)registered any asset definition.
+    bool asset_defs_changed = false;
 
     // Check it again in case a previous version let a bad block in
     // NOTE: We don't currently (re-)invoke ContextualCheckBlock() or
@@ -2701,6 +2765,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
             // beyond) can spend it. Rolled back in DisconnectBlock.
             if (const auto d = Consensus::ParseAssetDefinition(tx)) {
                 m_asset_registry.Define(d->first, d->second);
+                asset_defs_changed = true;
             }
             nFees += GetTimeAdjustedValue(txfee, pindex->nHeight - (int)tx.lock_height) + !use_alu;
 
@@ -2828,6 +2893,10 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         entry.size = block.vtx.back()->vout.size();
     }
     view.SetFinalTx(entry);
+
+    // nVersion=3-lite: the block is now fully valid and being connected for real (not
+    // fJustCheck) — persist any asset definitions it added, so they survive a restart.
+    if (asset_defs_changed) PersistAssetRegistry();
 
     // add this block to the view's block chain
     view.SetBestBlock(pindex->GetBlockHash());
@@ -4980,6 +5049,24 @@ VerifyDBResult CVerifyDB::VerifyDB(
     if (chainstate.m_chain.Tip() == nullptr || chainstate.m_chain.Tip()->pprev == nullptr) {
         return VerifyDBResult::SUCCESS;
     }
+
+    // nVersion=3-lite: VerifyDB dry-runs DisconnectBlock (and, at level 4, ConnectBlock)
+    // against a throwaway coins view, but the asset registry lives on the chainstate itself —
+    // snapshot it and suppress persistence for the duration, so verification can neither
+    // corrupt the in-memory registry nor clobber assets.dat with an interim state.
+    struct AssetRegistryGuard {
+        Chainstate& m_cs;
+        Consensus::AssetRegistry m_saved;
+        explicit AssetRegistryGuard(Chainstate& cs) : m_cs(cs), m_saved(cs.m_asset_registry)
+        {
+            m_cs.m_asset_registry_no_persist = true;
+        }
+        ~AssetRegistryGuard()
+        {
+            m_cs.m_asset_registry = std::move(m_saved);
+            m_cs.m_asset_registry_no_persist = false;
+        }
+    } registry_guard{chainstate};
 
     // Verify blocks in the best chain
     if (nCheckDepth <= 0 || nCheckDepth > chainstate.m_chain.Height()) {

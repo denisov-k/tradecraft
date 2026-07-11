@@ -796,9 +796,20 @@ protected:
 
 public:
     //! nVersion=3-lite: user-issued asset registry (tag -> monetary policy), populated from
-    //! asset-definition txs as blocks connect. In-memory for now — rebuilt by a reindex; a
-    //! restart without reindex would need a persistent index (deferred).
+    //! asset-definition txs as blocks connect. Persisted to datadir/assets.dat whenever a
+    //! definition connects or disconnects (rare), loaded at startup; a corrupt or missing
+    //! file after definitions existed is recovered by -reindex.
     Consensus::AssetRegistry m_asset_registry;
+
+    //! Load the asset registry from datadir/assets.dat (no-op without -nv3assets or if the
+    //! file does not exist). Returns false only on a corrupt file.
+    bool LoadAssetRegistry();
+    //! Atomically write the asset registry to datadir/assets.dat (no-op without -nv3assets
+    //! or while m_asset_registry_no_persist is set).
+    void PersistAssetRegistry() const;
+    //! Suppresses PersistAssetRegistry — set (with a registry snapshot) around dry runs of
+    //! ConnectBlock/DisconnectBlock such as VerifyDB, which must not clobber assets.dat.
+    bool m_asset_registry_no_persist{false};
 
     //! Reference to a BlockManager instance which itself is shared across all
     //! Chainstate instances.

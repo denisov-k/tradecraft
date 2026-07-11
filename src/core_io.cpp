@@ -489,8 +489,12 @@ void TxToUniv(const CTransaction& tx, const uint256& block_hash, UniValue& entry
             const Coin& prev_coin = txundo->vprevout[i];
             const CTxOut& prev_txout = prev_coin.out;
 
-            amt_raw_in += prev_coin.out.GetReferenceValue();
-            amt_total_in += prev_coin.GetPresentValue(tx.lock_height);
+            // nVersion=3-lite: fee and demurrage are host-currency concepts; a user-asset
+            // input has its own rate and never pays the fee, so keep it out of the tallies.
+            if (prev_coin.out.assetTag.IsNull()) {
+                amt_raw_in += prev_coin.out.GetReferenceValue();
+                amt_total_in += prev_coin.GetPresentValue(tx.lock_height);
+            }
 
             if (verbosity == TxVerbosity::SHOW_DETAILS_AND_PREVOUT) {
                 UniValue o_script_pub_key(UniValue::VOBJ);
@@ -539,7 +543,7 @@ void TxToUniv(const CTransaction& tx, const uint256& block_hash, UniValue& entry
 
         vout.push_back(std::move(out));
 
-        if (have_undo) {
+        if (have_undo && txout.assetTag.IsNull()) {
             amt_total_out += txout.GetReferenceValue();
         }
     }

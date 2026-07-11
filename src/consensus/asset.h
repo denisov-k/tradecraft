@@ -23,6 +23,7 @@
 #include <hash.h>
 #include <primitives/transaction.h>
 #include <script/script.h>
+#include <serialize.h>
 #include <uint256.h>
 
 #include <algorithm>
@@ -40,6 +41,8 @@ struct AssetParams {
     uint8_t shift{20};
     bool interest{false};
     uint64_t granularity{1};
+
+    SERIALIZE_METHODS(AssetParams, obj) { READWRITE(obj.shift, obj.interest, obj.granularity); }
 };
 
 /** Canonical asset id = RIPEMD160(SHA256(canonical definition bytes)) — matches the model. */
@@ -59,6 +62,11 @@ public:
     void Define(const uint160& tag, const AssetParams& p) { m_defs[tag] = p; }
     void Undefine(const uint160& tag) { m_defs.erase(tag); }
     size_t Size() const { return m_defs.size(); }
+
+    // Persisted as datadir/assets.dat so definitions survive a node restart (an in-memory-only
+    // registry would make every previously defined asset unknown — and its coins unspendable —
+    // until a -reindex rebuilt it from the definition txs).
+    SERIALIZE_METHODS(AssetRegistry, obj) { READWRITE(obj.m_defs); }
 };
 
 // The canonical definition byte string: shift(1) | flags(1) | granularity(8, LE) | contractHash(32).

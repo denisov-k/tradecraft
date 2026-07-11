@@ -241,6 +241,42 @@ BOOST_AUTO_TEST_CASE(tx_expiry)
       BOOST_CHECK_EQUAL(back.nExpireTime, 4242u); }
 }
 
+BOOST_AUTO_TEST_CASE(asset_registry_serialization)
+{
+    // The registry round-trips through its serialization (the on-disk assets.dat format is
+    // a 5-byte magic + exactly this encoding), so definitions survive a node restart.
+    std::vector<unsigned char> defA(2 + 8 + 32, 0); defA[0] = 18;
+    std::vector<unsigned char> defB(2 + 8 + 32, 0); defB[0] = 22; defB[1] = 1;
+    const uint160 tagA = Consensus::AssetIdFromDef(defA);
+    const uint160 tagB = Consensus::AssetIdFromDef(defB);
+
+    Consensus::AssetRegistry reg;
+    reg.Define(tagA, Consensus::AssetParams{18, false, 1000});
+    reg.Define(tagB, Consensus::AssetParams{22, true, 1});
+
+    DataStream ss;
+    ss << reg;
+    Consensus::AssetRegistry back;
+    ss >> back;
+
+    BOOST_CHECK_EQUAL(back.Size(), 2U);
+    BOOST_CHECK(back.IsKnown(tagA));
+    BOOST_CHECK(back.IsKnown(tagB));
+    const auto a = back.Get(tagA);
+    BOOST_CHECK_EQUAL(a.shift, 18);
+    BOOST_CHECK(!a.interest);
+    BOOST_CHECK_EQUAL(a.granularity, 1000U);
+    const auto b = back.Get(tagB);
+    BOOST_CHECK_EQUAL(b.shift, 22);
+    BOOST_CHECK(b.interest);
+    BOOST_CHECK_EQUAL(b.granularity, 1U);
+    // an empty registry round-trips too
+    Consensus::AssetRegistry empty, empty2;
+    DataStream ss2;
+    ss2 << empty; ss2 >> empty2;
+    BOOST_CHECK_EQUAL(empty2.Size(), 0U);
+}
+
 BOOST_AUTO_TEST_CASE(sighash_commits_asset_tag)
 {
     // A signature over a version==3 tx must bind each output's asset tag and token set, so no

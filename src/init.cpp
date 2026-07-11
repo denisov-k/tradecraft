@@ -1464,6 +1464,16 @@ static ChainstateLoadResult InitAndLoadChainstate(
             LogWarning("pruned datadir may not have more than %d blocks; only checking available blocks\n",
                        MIN_BLOCKS_TO_KEEP);
         }
+        // nVersion=3-lite: restore the asset registry (datadir/assets.dat) so assets defined
+        // before a restart stay known — loaded before block verification, which may replay
+        // (dis)connects of blocks whose txs reference those assets. On -reindex the registry
+        // is rebuilt from the chain itself, so drop the stale file. A corrupt file needs a
+        // -reindex.
+        if (do_reindex || do_reindex_chainstate) {
+            fs::remove(chainman.m_options.datadir / "assets.dat");
+        } else if (WITH_LOCK(::cs_main, return !chainman.ActiveChainstate().LoadAssetRegistry())) {
+            return {ChainstateLoadStatus::FAILURE, _("Error loading the asset registry (assets.dat). Restart with -reindex to rebuild it from the chain.")};
+        }
         std::tie(status, error) = catch_exceptions([&] { return VerifyLoadedChainstate(chainman, options); });
         if (status == node::ChainstateLoadStatus::SUCCESS) {
             LogInfo("Block index and chainstate loaded");
