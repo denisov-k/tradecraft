@@ -210,4 +210,34 @@ BOOST_AUTO_TEST_CASE(unique_tokens)
       BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-token-duplicate"); }
 }
 
+BOOST_AUTO_TEST_CASE(tx_expiry)
+{
+    const Consensus::Params& consensus = Params().GetConsensus();
+    CCoinsView base;
+    CCoinsViewCache view(&base);
+    const COutPoint op(Txid::FromUint256(m_rng.rand256()), 0);
+    view.AddCoin(op, Coin(CTxOut(1000000, CScript() << OP_TRUE), 1000, 1, false), false);
+
+    auto tx_exp = [&](uint32_t expire) {
+        CMutableTransaction m; m.version = 3; m.lock_height = 1000; m.nExpireTime = expire;
+        m.vin.emplace_back(op); m.vout.emplace_back(998000, CScript() << OP_TRUE);
+        return CTransaction(m);
+    };
+    // before expiry: valid
+    { const CTransaction tx = tx_exp(1005); TxValidationState st; CAmount f = 0;
+      BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1004, Consensus::NONE, f, nullptr)); }
+    // past expiry: rejected
+    { const CTransaction tx = tx_exp(1005); TxValidationState st; CAmount f = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1006, Consensus::NONE, f, nullptr));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-expired"); }
+    // nExpireTime 0 never expires
+    { const CTransaction tx = tx_exp(0); TxValidationState st; CAmount f = 0;
+      BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, 999999, Consensus::NONE, f, nullptr)); }
+    // round-trips through serialization (v3 carries nExpireTime)
+    { const CTransaction tx = tx_exp(4242);
+      DataStream ss; ss << TX_WITH_WITNESS(tx);
+      CMutableTransaction back; ss >> TX_WITH_WITNESS(back);
+      BOOST_CHECK_EQUAL(back.nExpireTime, 4242u); }
+}
+
 BOOST_AUTO_TEST_SUITE_END()

@@ -182,6 +182,13 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
                          strprintf("%s: inputs missing/spent", __func__));
     }
 
+    // nVersion=3-lite: nExpireTime — the tx may not be included once the chain passes this height
+    // (0 = never expires). The mirror of nLockTime; the primitive behind expiring offers.
+    if (tx.nExpireTime != 0 && nSpendHeight > 0 && (uint32_t)nSpendHeight > tx.nExpireTime) {
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-expired",
+            strprintf("tx expired (nExpireTime %u < height %d)", tx.nExpireTime, nSpendHeight));
+    }
+
     // nVersion=3-lite: balances are tallied PER ASSET (keyed by the 20-byte tag; the null tag is
     // the host currency). With no registry every output is the host currency, so this reduces
     // exactly to the single-asset rule below. Each asset's demurrage rate comes from the registry.

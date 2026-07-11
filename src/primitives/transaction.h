@@ -423,6 +423,7 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
     } else {
         tx.lock_height = 0;
     }
+    if (tx.version == 3) { s >> tx.nExpireTime; } else { tx.nExpireTime = 0; }
 }
 
 template<typename Stream, typename TxType>
@@ -465,6 +466,7 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
     if (tx.version != 1 || tx.vin.size() != 1 || !tx.vin[0].prevout.IsNull()) {
         s << tx.lock_height;
     }
+    if (tx.version == 3) { s << tx.nExpireTime; }
 }
 
 template<typename TxType>
@@ -493,6 +495,7 @@ public:
     const uint32_t version;
     const uint32_t nLockTime;
     const uint32_t lock_height;
+    const uint32_t nExpireTime;   // nVersion=3-lite: tx invalid after this height (0 = never)
 
 private:
     /** Memory only. */
@@ -570,6 +573,7 @@ struct CMutableTransaction
     uint32_t version;
     uint32_t nLockTime;
     uint32_t lock_height;
+    uint32_t nExpireTime{0};   // nVersion=3-lite: tx invalid after this height (0 = never)
 
     explicit CMutableTransaction();
     explicit CMutableTransaction(const CTransaction& tx);
