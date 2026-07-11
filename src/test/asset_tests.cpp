@@ -406,6 +406,29 @@ BOOST_AUTO_TEST_CASE(sighash_commits_asset_tag)
     // Non-v3: the asset tag is NOT part of the sighash — existing sighashes are byte-identical.
     BOOST_CHECK(H(at(1, tagA, {})) == H(at(1, tagB, {})));
     BOOST_CHECK(H(at(2, tagA, {})) == H(at(2, tagB, {})));
+
+    // Cross-check against the reference model (core/sighash.mjs): the v3 SINGLE|ANYONECANPAY
+    // digest — the DEX offer signature — must match bit-for-bit, tag+tokens committed.
+    {
+        CMutableTransaction m;
+        m.version = 3;
+        m.nLockTime = 0;
+        m.lock_height = 1234;
+        m.vin.resize(1);
+        m.vin[0].prevout = COutPoint(Txid::FromUint256(uint256{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}), 1);
+        m.vin[0].nSequence = 0xffffffff;
+        m.vout.emplace_back(5000, CScript() << OP_0 << std::vector<unsigned char>(20, 0x22));
+        {
+            const std::vector<unsigned char> tag_bytes = ParseHex("61d2187b9154614c2d5e29cef7cbfdd38f5b1156");
+            std::copy(tag_bytes.begin(), tag_bytes.end(), m.vout[0].assetTag.begin());
+        }
+        m.vout[0].tokens = {{0xde, 0xad, 0xbe, 0xef}};
+        const CScript script_code = CScript() << OP_DUP << OP_HASH160
+            << std::vector<unsigned char>(20, 0x33) << OP_EQUALVERIFY << OP_CHECKSIG;
+        const uint256 got = SignatureHash(script_code, m, 0, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY,
+                                          7000, 1200, SigVersion::WITNESS_V0);
+        BOOST_CHECK_EQUAL(HexStr(got), "4bac639ca23e2c4098d48b67e7bdf6d9667f4060e318761d21a7316f34e330dd");
+    }
 }
 
 BOOST_AUTO_TEST_CASE(authorizers)
