@@ -1654,8 +1654,15 @@ public:
         if (fHashSingle && nOutput != nIn)
             // Do not lock-in the txout payee at other indices as txin
             ::Serialize(s, CTxOut());
-        else
+        else {
             ::Serialize(s, txTo.vout[nOutput]);
+            // nVersion=3-lite: legacy (BASE) sighash must also bind the asset tag + tokens,
+            // else a v3 tx spending a non-witness input would be tag-swap malleable.
+            if (txTo.version == 3) {
+                ::Serialize(s, txTo.vout[nOutput].assetTag);
+                ::Serialize(s, txTo.vout[nOutput].tokens);
+            }
+        }
     }
 
     /** Serialize txTo */
@@ -1711,6 +1718,16 @@ uint256 GetOutputsSHA256(const T& txTo)
     HashWriter ss{};
     for (const auto& txout : txTo.vout) {
         ss << txout;
+        // nVersion=3-lite: the asset tag and token set live outside CTxOut's network
+        // serialization (they ride in a parallel block of the tx), so a signature that
+        // committed only to nValue+scriptPubKey would NOT bind which asset an output pays.
+        // Commit to them here so a third party cannot swap an output's asset tag (or its
+        // tokens) after signing — tag-swap malleability that conservation does not always
+        // catch. Only for version==3 outputs, leaving every existing sighash byte-identical.
+        if (txTo.version == 3) {
+            ss << txout.assetTag;
+            ss << txout.tokens;
+        }
     }
     return ss.GetSHA256();
 }
@@ -1893,6 +1910,11 @@ bool SignatureHashSchnorr(uint256& hash_out, ScriptExecutionData& execdata, cons
         if (!execdata.m_output_hash) {
             HashWriter sha_single_output{};
             sha_single_output << tx_to.vout[in_pos];
+            // nVersion=3-lite: bind the asset tag + tokens of the single signed output.
+            if (tx_to.version == 3) {
+                sha_single_output << tx_to.vout[in_pos].assetTag;
+                sha_single_output << tx_to.vout[in_pos].tokens;
+            }
             execdata.m_output_hash = sha_single_output.GetSHA256();
         }
         ss << execdata.m_output_hash.value();
@@ -1963,6 +1985,12 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
         } else if ((nHashType & 0x1f) == SIGHASH_SINGLE && nIn < txTo.vout.size()) {
             HashWriter ss{};
             ss << txTo.vout[nIn];
+            // nVersion=3-lite: commit to the signed output's asset tag + tokens (see
+            // GetOutputsSHA256) so SIGHASH_SINGLE binds which asset/tokens it pays.
+            if (txTo.version == 3) {
+                ss << txTo.vout[nIn].assetTag;
+                ss << txTo.vout[nIn].tokens;
+            }
             hashOutputs = ss.GetHash();
         }
 

@@ -16,6 +16,7 @@
 #include <consensus/validation.h>
 #include <chainparams.h>
 #include <primitives/transaction.h>
+#include <script/interpreter.h>
 #include <script/script.h>
 #include <serialize.h>
 #include <streams.h>
@@ -238,6 +239,53 @@ BOOST_AUTO_TEST_CASE(tx_expiry)
       DataStream ss; ss << TX_WITH_WITNESS(tx);
       CMutableTransaction back; ss >> TX_WITH_WITNESS(back);
       BOOST_CHECK_EQUAL(back.nExpireTime, 4242u); }
+}
+
+BOOST_AUTO_TEST_CASE(sighash_commits_asset_tag)
+{
+    // A signature over a version==3 tx must bind each output's asset tag and token set, so no
+    // third party can swap WHICH asset (or which tokens) an output pays without invalidating the
+    // signature. For every other tx version the sighash is unchanged (the tag is not committed).
+    std::vector<unsigned char> defA(2 + 8 + 32, 0); defA[0] = 18;
+    std::vector<unsigned char> defB(2 + 8 + 32, 0); defB[0] = 19;
+    const uint160 tagA = Consensus::AssetIdFromDef(defA);
+    const uint160 tagB = Consensus::AssetIdFromDef(defB);
+
+    auto make = [&](int32_t version, const uint160& tag,
+                    const std::vector<std::vector<unsigned char>>& toks) {
+        CMutableTransaction m;
+        m.version = version;
+        m.vin.resize(1);
+        m.vin[0].prevout = COutPoint(Txid::FromUint256(m_rng.rand256()), 0);
+        m.vout.emplace_back(50000, CScript() << OP_TRUE);
+        m.vout[0].assetTag = tag;
+        m.vout[0].tokens = toks;
+        return m;
+    };
+    const CScript code = CScript() << OP_TRUE;
+    auto H = [&](const CMutableTransaction& m) {
+        return SignatureHash(code, m, 0, SIGHASH_ALL, 50000, 1000, SigVersion::WITNESS_V0);
+    };
+
+    // Fix the random prevout so only the asset tag / tokens vary between the two hashes.
+    const COutPoint fixed(Txid::FromUint256(m_rng.rand256()), 0);
+    auto at = [&](int32_t v, const uint160& tag,
+                  const std::vector<std::vector<unsigned char>>& toks) {
+        CMutableTransaction m = make(v, tag, toks); m.vin[0].prevout = fixed; return m;
+    };
+
+    // v3: a different asset tag -> a different sighash (tag-swap breaks the signature).
+    BOOST_CHECK(H(at(3, tagA, {})) != H(at(3, tagB, {})));
+    // v3: a different token set -> a different sighash.
+    BOOST_CHECK(H(at(3, tagA, {{1, 2, 3}})) != H(at(3, tagA, {{4, 5, 6}})));
+    // Legacy (BASE) sighash of a v3 tx commits to the tag too.
+    auto Hbase = [&](const CMutableTransaction& m) {
+        return SignatureHash(code, m, 0, SIGHASH_ALL, 50000, 1000, SigVersion::BASE);
+    };
+    BOOST_CHECK(Hbase(at(3, tagA, {})) != Hbase(at(3, tagB, {})));
+    // Non-v3: the asset tag is NOT part of the sighash — existing sighashes are byte-identical.
+    BOOST_CHECK(H(at(1, tagA, {})) == H(at(1, tagB, {})));
+    BOOST_CHECK(H(at(2, tagA, {})) == H(at(2, tagB, {})));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

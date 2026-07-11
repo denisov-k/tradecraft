@@ -450,6 +450,9 @@ void TxToUniv(const CTransaction& tx, const uint256& block_hash, UniValue& entry
     entry.pushKV("weight", GetTransactionWeight(tx));
     entry.pushKV("locktime", (int64_t)tx.nLockTime);
     entry.pushKV("lockheight", (int64_t)tx.lock_height);
+    if (tx.version == 3 && tx.nExpireTime != 0) {
+        entry.pushKV("expiretime", (int64_t)tx.nExpireTime);
+    }
 
     UniValue vin{UniValue::VARR};
     vin.reserve(tx.vin.size());
@@ -517,6 +520,14 @@ void TxToUniv(const CTransaction& tx, const uint256& block_hash, UniValue& entry
 
         out.pushKV("value", ValueFromAmount(txout.GetReferenceValue()));
         out.pushKV("n", (int64_t)i);
+        if (tx.version == 3 && !txout.assetTag.IsNull()) {
+            out.pushKV("assetTag", txout.assetTag.GetHex());
+            if (!txout.tokens.empty()) {
+                UniValue toks(UniValue::VARR);
+                for (const auto& t : txout.tokens) toks.push_back(HexStr(t));
+                out.pushKV("tokens", std::move(toks));
+            }
+        }
 
         UniValue o(UniValue::VOBJ);
         ScriptToUniv(txout.scriptPubKey, /*out=*/o, /*include_hex=*/true, /*include_address=*/true);
