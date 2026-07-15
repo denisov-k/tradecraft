@@ -34,13 +34,14 @@
 BOOST_FIXTURE_TEST_SUITE(asset_tests, BasicTestingSetup)
 
 // nVersion=3 EXTENSION-OUTPUT test helpers. The asset tag rides INSIDE the scriptPubKey now, so
-// tests build a witness program with the tag in the extension push and derive it, exactly as the
-// consensus path does at (de)serialization. `AssetScript` = OP_0 <20-byte commitment> [<20-byte
-// tag ext push>]; host currency (null tag) = the plain program. `SetAsset` applies it to a CTxOut.
+// tests build a witness program with the tag in the §XI extension SUFFIX and derive it, exactly as
+// the consensus path does at (de)serialization. `AssetScript` = OP_0 <20-byte commitment>
+// [<20-byte tag push> OP_1]; the trailing OP_1 is the mandatory extended-output version (v1 =
+// fungible). Host currency (null tag) = the plain program. `SetAsset` applies it to a CTxOut.
 static CScript AssetScript(const uint160& tag)
 {
     CScript s = CScript() << OP_0 << std::vector<unsigned char>(20, 0x11);
-    if (!tag.IsNull()) s = s << std::vector<unsigned char>(tag.begin(), tag.end());
+    if (!tag.IsNull()) s = s << std::vector<unsigned char>(tag.begin(), tag.end()) << OP_1;
     return s;
 }
 static void SetAsset(CTxOut& out, const uint160& tag)
@@ -434,8 +435,8 @@ BOOST_AUTO_TEST_CASE(sighash_commits_asset_tag)
     BOOST_CHECK(H(at(3, tagA, {{1, 2, 3}})) == H(at(3, tagA, {{4, 5, 6}})));
 
     // Cross-check against the reference model (core/sighash.mjs): the v3 SINGLE|ANYONECANPAY
-    // digest — the DEX offer signature — must match bit-for-bit. Tag is in the scriptPubKey
-    // (0014{22×20} ++ push(tag)); the token set is committed via the v3 parallel block.
+    // digest — the DEX offer signature — must match bit-for-bit. Tag is in the scriptPubKey §XI
+    // suffix (0014{22×20} ++ push(tag) ++ OP_1); the token set is committed via the v3 parallel block.
     {
         CMutableTransaction m;
         m.version = NV3_TX_VERSION;
@@ -446,7 +447,7 @@ BOOST_AUTO_TEST_CASE(sighash_commits_asset_tag)
         m.vin[0].nSequence = 0xffffffff;
         {
             const std::vector<unsigned char> tag_bytes = ParseHex("61d2187b9154614c2d5e29cef7cbfdd38f5b1156");
-            CScript spk = CScript() << OP_0 << std::vector<unsigned char>(20, 0x22) << tag_bytes;
+            CScript spk = CScript() << OP_0 << std::vector<unsigned char>(20, 0x22) << tag_bytes << OP_1;
             m.vout.emplace_back(5000, spk);
         }
         m.vout[0].tokens = {{0xde, 0xad, 0xbe, 0xef}};
@@ -454,13 +455,13 @@ BOOST_AUTO_TEST_CASE(sighash_commits_asset_tag)
             << std::vector<unsigned char>(20, 0x33) << OP_EQUALVERIFY << OP_CHECKSIG;
         const uint256 got = SignatureHash(script_code, m, 0, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY,
                                           7000, 1200, SigVersion::WITNESS_V0);
-        BOOST_CHECK_EQUAL(HexStr(got), "345d3b78eda625b9d6f16f39e67a9b52dc80a5f05d1f014227aaa63002d346f7");
+        BOOST_CHECK_EQUAL(HexStr(got), "204578f1dd81b214260ed88a47c0841fae29a6518373ef05f9a0207f73581763");
         // nExpireTime is committed: a different expiry is a different digest (and matches
         // the model's vector for expire=777) — no one can impose an expiry on a signed tx.
         m.nExpireTime = 777;
         const uint256 got777 = SignatureHash(script_code, m, 0, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY,
                                              7000, 1200, SigVersion::WITNESS_V0);
-        BOOST_CHECK_EQUAL(HexStr(got777), "5783e62e7c5ce2024c0344765d07ad25b2fc59b2eda2ced5a47b75532325d1a0");
+        BOOST_CHECK_EQUAL(HexStr(got777), "1ef7ce08ae9d9472ffcbfa39380218a6da4c4111cb94dedf3198909986cdcf41");
     }
 }
 
@@ -741,8 +742,8 @@ BOOST_AUTO_TEST_CASE(dex_ranged)
         rb.minFill = 100; rb.maxFill = maxFill;
         c.ranged.push_back(rb);
         c.vout.emplace_back(pay_val, CScript() << OP_1);                 // payout (host)
-        CScript changeSpk = changeBase; changeSpk << std::vector<unsigned char>(coop.begin(), coop.end());
-        c.vout.emplace_back(change_val, changeSpk);                      // change (coop, tag in ext push)
+        CScript changeSpk = changeBase; changeSpk << std::vector<unsigned char>(coop.begin(), coop.end()) << OP_1;
+        c.vout.emplace_back(change_val, changeSpk);                      // change (coop, tag in §XI suffix + v1 opcode)
         c.vout.back().DeriveAssetTag();
         c.vout.emplace_back(1000000, CScript() << OP_TRUE);              // taker keeps FRC change; coop→?
         // taker's coop receipt: fill kria of coop
@@ -764,7 +765,7 @@ BOOST_AUTO_TEST_CASE(dex_ranged)
     // stealing the change destination (a different base program): rejected
     { CMutableTransaction c{comp(21000000, 300, 800)};
       CScript stolen = CScript() << OP_0 << std::vector<unsigned char>(20, 0x99);
-      stolen << std::vector<unsigned char>(coop.begin(), coop.end());
+      stolen << std::vector<unsigned char>(coop.begin(), coop.end()) << OP_1;
       c.vout[1] = CTxOut(300, stolen);
       c.vout[1].DeriveAssetTag();
       const CTransaction tx{c}; TxValidationState st; CAmount fee = 0;

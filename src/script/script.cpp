@@ -271,12 +271,12 @@ bool CScript::IsWitnessProgram(int* version, std::vector<unsigned char>* program
     if ((size_t)pos > this->size()) {
         return false;
     }
-    // The shard specifier and extension output are optional.
+    // The shard specifier and extension-output SUFFIX are optional.
     if ((size_t)pos < this->size()) {
         // Valiate shard prefix.
-        // Note that the extension output is a push between 2 and 75 bytes in
-        // length.  So if the shard prefix is not present, we will fall though
-        // this switch statement without any action.
+        // Note that the extension suffix begins with a data push (2..75 bytes).
+        // So if the shard prefix is not present, we fall through this switch
+        // without action and parse the suffix below.
         switch ((*this)[pos]) {
             case 0x01:
                 ++pos;
@@ -294,12 +294,29 @@ bool CScript::IsWitnessProgram(int* version, std::vector<unsigned char>* program
             case OP_13: case OP_14: case OP_15: case OP_16:
                 ++pos;
         }
-        // Validate extension output
+        // Validate the EXTENSION-OUTPUT SUFFIX (Forward Blocks paper, §XI): zero or more data
+        // pushes (each 2..75 bytes) followed by a MANDATORY trailing "extended output version"
+        // encoded as a single small-int opcode (OP_0..OP_16). A witness program with no suffix
+        // (a plain host program) skips this entirely. The version being the last element makes the
+        // field self-describing so multiple future extension types can share it unambiguously.
         if ((std::size_t)pos != this->size()) {
-            if ((*this)[pos] < 2 || (*this)[pos] > 75) {
-                return false;
+            bool saw_version = false;
+            while ((std::size_t)pos < this->size()) {
+                unsigned char op = (*this)[pos];
+                if (op >= 0x02 && op <= 0x4b) {            // data push of 2..75 bytes
+                    pos += 1 + op;
+                    if ((std::size_t)pos > this->size()) {
+                        return false;
+                    }
+                } else if (op == OP_0 || (op >= OP_1 && op <= OP_16)) {  // trailing version opcode
+                    ++pos;
+                    saw_version = true;
+                    break;                                 // the version must be the last element
+                } else {
+                    return false;
+                }
             }
-            if ((std::size_t)pos + 1 + (*this)[pos] != this->size()) {
+            if (!saw_version || (std::size_t)pos != this->size()) {
                 return false;
             }
         }
@@ -389,10 +406,23 @@ std::vector<unsigned char> CScript::GetWitnessExtension() const
             break;
     }
     if (pos == this->size()) {
-        return {}; // shard prefix but no extension push: still host currency
+        return {}; // shard prefix but no extension suffix: still host currency
     }
-    // The extension push length was validated by IsWitnessProgram (2..75, exact fit).
-    return std::vector<unsigned char>(this->begin() + pos + 1, this->end());
+    // Concatenate the suffix's data pushes (skipping the trailing version opcode). The whole
+    // suffix structure was validated by IsWitnessProgram, so this walk cannot run off the end.
+    // For an asset output this yields tag(20), or tag(20)++H(tokens)(32) — DeriveAssetTag reads
+    // the leading 20 bytes as the tag exactly as before.
+    std::vector<unsigned char> ext;
+    while (pos < this->size()) {
+        unsigned char op = (*this)[pos];
+        if (op >= 0x02 && op <= 0x4b) {
+            ext.insert(ext.end(), this->begin() + pos + 1, this->begin() + pos + 1 + op);
+            pos += 1 + op;
+        } else {
+            break; // the trailing version opcode
+        }
+    }
+    return ext;
 }
 
 CScript CScript::GetWitnessBase() const
