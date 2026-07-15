@@ -524,7 +524,9 @@ void TxToUniv(const CTransaction& tx, const uint256& block_hash, UniValue& entry
 
         out.pushKV("value", ValueFromAmount(txout.GetReferenceValue()));
         out.pushKV("n", (int64_t)i);
-        if (tx.version == NV3_TX_VERSION && !txout.assetTag.IsNull()) {
+        // nVersion=3 EXTENSION-OUTPUT: the tag is derived from scriptPubKey (any tx version now),
+        // so display it whenever present rather than gating on NV3_TX_VERSION.
+        if (!txout.assetTag.IsNull()) {
             out.pushKV("assetTag", txout.assetTag.GetHex());
             if (!txout.tokens.empty()) {
                 UniValue toks(UniValue::VARR);

@@ -1657,10 +1657,10 @@ public:
             ::Serialize(s, CTxOut());
         else {
             ::Serialize(s, txTo.vout[nOutput]);
-            // nVersion=3-lite: legacy (BASE) sighash must also bind the asset tag + tokens,
-            // else a v3 tx spending a non-witness input would be tag-swap malleable.
+            // nVersion=3 EXTENSION-OUTPUT: the asset tag is inside scriptPubKey (already
+            // serialized above), so it is bound automatically. Only tokens (still a parallel
+            // block) need an explicit commit against token-swap malleability.
             if (txTo.version == NV3_TX_VERSION) {
-                ::Serialize(s, txTo.vout[nOutput].assetTag);
                 ::Serialize(s, txTo.vout[nOutput].tokens);
             }
         }
@@ -1723,14 +1723,11 @@ uint256 GetOutputsSHA256(const T& txTo)
     HashWriter ss{};
     for (const auto& txout : txTo.vout) {
         ss << txout;
-        // nVersion=3-lite: the asset tag and token set live outside CTxOut's network
-        // serialization (they ride in a parallel block of the tx), so a signature that
-        // committed only to nValue+scriptPubKey would NOT bind which asset an output pays.
-        // Commit to them here so a third party cannot swap an output's asset tag (or its
-        // tokens) after signing — tag-swap malleability that conservation does not always
-        // catch. Only for version==3 outputs, leaving every existing sighash byte-identical.
+        // nVersion=3 EXTENSION-OUTPUT: the asset tag now lives INSIDE scriptPubKey (serialized
+        // by `ss << txout` above), so nValue+scriptPubKey already binds which asset an output
+        // pays. Only the token set still rides a parallel block, so commit to it here against
+        // token-swap malleability. version==3 outputs only.
         if (txTo.version == NV3_TX_VERSION) {
-            ss << txout.assetTag;
             ss << txout.tokens;
         }
     }
@@ -1919,9 +1916,8 @@ bool SignatureHashSchnorr(uint256& hash_out, ScriptExecutionData& execdata, cons
         if (!execdata.m_output_hash) {
             HashWriter sha_single_output{};
             sha_single_output << tx_to.vout[in_pos];
-            // nVersion=3-lite: bind the asset tag + tokens of the single signed output.
+            // nVersion=3 EXTENSION-OUTPUT: the tag is inside scriptPubKey; only tokens need a commit.
             if (tx_to.version == NV3_TX_VERSION) {
-                sha_single_output << tx_to.vout[in_pos].assetTag;
                 sha_single_output << tx_to.vout[in_pos].tokens;
             }
             execdata.m_output_hash = sha_single_output.GetSHA256();
@@ -2012,8 +2008,7 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
                 if (nIn >= in0 && nIn < in1) {
                     HashWriter outs{};
                     for (size_t i = out0; i < out1; ++i) {
-                        outs << txTo.vout[i];
-                        outs << txTo.vout[i].assetTag;
+                        outs << txTo.vout[i];   // tag is inside scriptPubKey (extension output)
                         outs << txTo.vout[i].tokens;
                     }
                     return bundle_digest(in0, in1, outs.GetHash(), b.nExpireTime);
@@ -2060,10 +2055,9 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
         } else if ((nHashType & 0x1f) == SIGHASH_SINGLE && nIn < txTo.vout.size()) {
             HashWriter ss{};
             ss << txTo.vout[nIn];
-            // nVersion=3-lite: commit to the signed output's asset tag + tokens (see
-            // GetOutputsSHA256) so SIGHASH_SINGLE binds which asset/tokens it pays.
+            // nVersion=3 EXTENSION-OUTPUT: the asset tag is inside scriptPubKey (serialized by
+            // `ss << txTo.vout[nIn]`), so only the token set needs an explicit commit here.
             if (txTo.version == NV3_TX_VERSION) {
-                ss << txTo.vout[nIn].assetTag;
                 ss << txTo.vout[nIn].tokens;
             }
             hashOutputs = ss.GetHash();

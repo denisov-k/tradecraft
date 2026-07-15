@@ -686,6 +686,17 @@ public:
     bool IsPayToWitnessScriptHash() const;
     bool IsWitnessProgram(int *version = nullptr, std::vector<unsigned char> *program = nullptr) const;
 
+    /** nVersion=3-lite EXTENSION-OUTPUT decode: if this witness program carries an asset
+     *  extension push, return its bytes (20 = asset tag; 52 = tag ++ 32-byte token-set
+     *  commitment). Returns an empty vector for a plain (host-currency) program or a
+     *  non-witness script. Mirrors core/asset-spk.mjs decodeAssetSpk. */
+    std::vector<unsigned char> GetWitnessExtension() const;
+
+    /** The BASE program with any asset extension push stripped — version byte + commitment push
+     *  (the abstract scriptPubKey the reference model compares, decodeAssetSpk.baseSpk). For a
+     *  non-witness / plain script this is the whole script unchanged. */
+    CScript GetWitnessBase() const;
+
     bool IsPayToTaproot() const;
 
     /** Called by IsStandardTx and P2SH/BIP62 VerifyScript (which makes it consensus-critical). */

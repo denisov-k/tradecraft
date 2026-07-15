@@ -94,6 +94,9 @@ public:
         fCoinBase = code & 1;
         ::Unserialize(s, Using<TxOutCompression>(out));
         ::Unserialize(s, VARINT(refheight));
+        // nVersion=3 EXTENSION-OUTPUT: the tag is not persisted separately — derive it from the
+        // (persisted) scriptPubKey so a coin loaded from chainstate knows its asset.
+        out.DeriveAssetTag();
     }
 
     /** Either this coin never existed (see e.g. coinEmpty in coins.cpp), or it

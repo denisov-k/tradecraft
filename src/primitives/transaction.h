@@ -199,6 +199,22 @@ public:
 
     SERIALIZE_METHODS(CTxOut, obj) { READWRITE(obj.nValue, obj.scriptPubKey); }
 
+    /* nVersion=3 EXTENSION-OUTPUT: the asset tag is DERIVED from scriptPubKey (its witness
+     * "extension output" push), not carried as a separate wire/chainstate field — so an
+     * asset-bearing tx is a STANDARD tx old nodes parse unchanged. Call after the scriptPubKey
+     * is set (post-deserialization, on Coin construction). A 20-byte ext push = the tag; a
+     * 52-byte push = tag ++ 32-byte token-set commitment (token phase). No/empty ext = host.
+     * Mirrors core/asset-spk.mjs decodeAssetSpk + core/nv3wire.mjs. */
+    void DeriveAssetTag()
+    {
+        const std::vector<unsigned char> ext = scriptPubKey.GetWitnessExtension();
+        if (ext.size() == 20 || ext.size() == 52) {
+            assetTag = uint160(std::vector<unsigned char>(ext.begin(), ext.begin() + 20));
+        } else {
+            assetTag.SetNull();
+        }
+    }
+
     /* A null tag means the host currency (freicoin). */
     bool IsHostCurrency() const { return assetTag.IsNull(); }
 
@@ -400,13 +416,13 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
     }
     // Reading vout requires no special handling.
     s >> tx.vout;
-    // nVersion=3-lite: each output carries a 20-byte asset tag, serialized as a parallel
-    // block right after vout so that version<3 encodings are unchanged. version<3 outputs are
-    // implicitly the host currency (null tag, already set by CTxOut::SetNull).
+    // nVersion=3 EXTENSION-OUTPUT: the asset tag now rides INSIDE each output's scriptPubKey, so
+    // it is DERIVED here rather than read from a parallel wire block — asset transfers are plain
+    // standard txs. (Tokens still ride a parallel block on NV3_TX_VERSION pending the token phase.)
+    for (CTxOut& txout : tx.vout) {
+        txout.DeriveAssetTag();
+    }
     if (tx.version == NV3_TX_VERSION) {
-        for (CTxOut& txout : tx.vout) {
-            s >> txout.assetTag;
-        }
         for (CTxOut& txout : tx.vout) {
             s >> txout.tokens;
         }
@@ -495,11 +511,10 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
     }
     s << tx.vin;
     s << tx.vout;
-    // nVersion=3-lite: asset tags as a parallel block after vout (see UnserializeTransaction).
+    // nVersion=3 EXTENSION-OUTPUT: the asset tag rides inside each output's scriptPubKey (already
+    // serialized above) — no parallel tag block. Tokens still ride a parallel block on
+    // NV3_TX_VERSION (token phase pending).
     if (tx.version == NV3_TX_VERSION) {
-        for (const CTxOut& txout : tx.vout) {
-            s << txout.assetTag;
-        }
         for (const CTxOut& txout : tx.vout) {
             s << txout.tokens;
         }

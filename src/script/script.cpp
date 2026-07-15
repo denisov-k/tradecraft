@@ -364,6 +364,47 @@ bool CScript::IsWitnessProgram(int* version, std::vector<unsigned char>* program
     return true;
 }
 
+std::vector<unsigned char> CScript::GetWitnessExtension() const
+{
+    // A well-formed program is required; reuse the same walk as IsWitnessProgram so a script
+    // this rejects yields no extension (the caller then treats the output as host currency).
+    if (!IsWitnessProgram()) {
+        return {};
+    }
+    size_t pos = 2 + (*this)[1];
+    if (pos == this->size()) {
+        return {}; // plain program: host currency
+    }
+    // Skip the optional shard prefix exactly as IsWitnessProgram does.
+    switch ((*this)[pos]) {
+        case 0x01:
+            pos += 2; // 0x01 + the (already-validated) shard byte
+            break;
+        case OP_1NEGATE:
+        case OP_1:  case OP_2:  case OP_3:  case OP_4:
+        case OP_5:  case OP_6:  case OP_7:  case OP_8:
+        case OP_9:  case OP_10: case OP_11: case OP_12:
+        case OP_13: case OP_14: case OP_15: case OP_16:
+            pos += 1;
+            break;
+    }
+    if (pos == this->size()) {
+        return {}; // shard prefix but no extension push: still host currency
+    }
+    // The extension push length was validated by IsWitnessProgram (2..75, exact fit).
+    return std::vector<unsigned char>(this->begin() + pos + 1, this->end());
+}
+
+CScript CScript::GetWitnessBase() const
+{
+    // version byte + commitment push, dropping any shard prefix / extension push. Non-witness
+    // scripts (and plain programs) return unchanged.
+    if (!IsWitnessProgram()) {
+        return *this;
+    }
+    return CScript(this->begin(), this->begin() + 2 + (*this)[1]);
+}
+
 bool CScript::IsPushOnly(const_iterator pc) const
 {
     while (pc < end())

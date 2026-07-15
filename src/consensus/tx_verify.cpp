@@ -298,8 +298,11 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
                 }
                 give_pv += asset_pv(give_asset, coin.out.GetReferenceValue(), (uint32_t)(tx.lock_height - coin.refheight));
             }
-            if (pay.assetTag != r.payoutAsset || pay.scriptPubKey != r.payoutScript
-                || change.assetTag != give_asset || change.scriptPubKey != r.changeScript) {
+            // nVersion=3 EXTENSION-OUTPUT: the asset tag rides in the output's scriptPubKey, so
+            // compare the BASE program (tag stripped) against the descriptor's script and the
+            // DERIVED tag against the descriptor's asset — the abstract comparison the model makes.
+            if (pay.assetTag != r.payoutAsset || pay.scriptPubKey.GetWitnessBase() != r.payoutScript
+                || change.assetTag != give_asset || change.scriptPubKey.GetWitnessBase() != r.changeScript) {
                 return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-ranged-destination");
             }
             const CAmount fill = give_pv - change.GetReferenceValue();
