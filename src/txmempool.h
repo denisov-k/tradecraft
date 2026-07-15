@@ -56,6 +56,8 @@
 class CChain;
 class ValidationSignals;
 
+namespace Consensus { class AssetRegistry; }
+
 struct bilingual_str;
 
 /** Fake height value used in Coin to signify they are only in the memory pool (since 0.8) */
@@ -325,7 +327,9 @@ public:
      * all inputs are in the mapNextTx array). If sanity-checking is turned off,
      * check does nothing.
      */
-    void check(const CCoinsViewCache& active_coins_tip, int64_t spendheight, const Consensus::Params& params) const EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
+    /** nVersion=3-lite: the internal CheckTxInputs re-run needs the live asset registry, or a
+     *  (future) asset-bearing mempool tx would trip its assert as bad-txns-unknown-asset. */
+    void check(const CCoinsViewCache& active_coins_tip, int64_t spendheight, const Consensus::Params& params, const Consensus::AssetRegistry* asset_registry = nullptr) const EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
     /**
      * Remove a transaction from the mempool along with any descendants.
