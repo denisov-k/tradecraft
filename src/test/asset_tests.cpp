@@ -215,29 +215,80 @@ BOOST_AUTO_TEST_CASE(unique_tokens)
     Consensus::AssetRegistry reg;
     reg.Define(tag, Consensus::AssetParams{20, false, 1});
 
+    using Toks = std::vector<std::vector<unsigned char>>;
     const std::vector<unsigned char> tokenA = {0xde, 0xad, 0xbe, 0xef};
-    // input coin holds asset `tag` (value 0) carrying tokenA
-    const COutPoint op(Txid::FromUint256(m_rng.rand256()), 0);
-    CTxOut in(0, CScript()); SetAsset(in, tag); in.tokens = {tokenA};
-    view.AddCoin(op, Coin(in, 1000, 1, false), false);
+    const Toks heldA = {tokenA};
 
-    auto tx_with = [&](std::vector<std::vector<unsigned char>> out_tokens, int nout) {
-        CMutableTransaction m; m.version = NV3_TX_VERSION; m.lock_height = 1000; m.vin.emplace_back(op);
-        for (int i = 0; i < nout; ++i) { CTxOut o(0, CScript()); SetAsset(o, tag); o.tokens = out_tokens; m.vout.push_back(o); }
-        return CTransaction(m);
+    // nVersion=3 EXTENSION-OUTPUT two-sided reveal helpers ----------------------------------------
+    // A v2 token output: base program ++ push(tag) ++ push(H(token-set)) ++ OP_2. GetWitnessExtension
+    // yields tag(20)++commit(32) so DeriveAssetTag sets both assetTag and the 32-byte tokenCommit.
+    auto assetV2 = [](const uint160& tag_, const Toks& tokens) {
+        const uint256 commit = Consensus::TokenSetHash(tokens);
+        return CScript() << OP_0 << std::vector<unsigned char>(20, 0x11)
+                         << std::vector<unsigned char>(tag_.begin(), tag_.end())
+                         << std::vector<unsigned char>(commit.begin(), commit.end()) << OP_2;
+    };
+    // FRT1 payload: magic ++ output section ++ input section (compactSize-framed, mirrors nv3wire.mjs).
+    auto encVarint = [](std::vector<unsigned char>& a, uint64_t n) {
+        if (n < 0xfd) a.push_back((unsigned char)n);
+        else if (n <= 0xffff) { a.push_back(0xfd); a.push_back(n & 0xff); a.push_back((n >> 8) & 0xff); }
+        else { a.push_back(0xfe); for (int i = 0; i < 4; ++i) a.push_back((n >> (8 * i)) & 0xff); }
+    };
+    auto encSection = [&](std::vector<unsigned char>& a, const std::map<uint32_t, Toks>& m) {
+        encVarint(a, m.size());
+        for (const auto& [idx, toks] : m) {
+            encVarint(a, idx); encVarint(a, toks.size());
+            for (const auto& t : toks) { encVarint(a, t.size()); a.insert(a.end(), t.begin(), t.end()); }
+        }
+    };
+    auto reveal = [&](const std::map<uint32_t, Toks>& outR, const std::map<uint32_t, Toks>& inR) {
+        std::vector<unsigned char> a(std::begin(Consensus::TOKEN_REVEAL_MAGIC), std::end(Consensus::TOKEN_REVEAL_MAGIC));
+        encSection(a, outR); encSection(a, inR);
+        return CScript() << OP_RETURN << a;
     };
 
-    // valid: the token is conserved (moved to a fresh output)
-    { const CTransaction tx = tx_with({tokenA}, 1); TxValidationState st; CAmount f = 0;
+    // input coin holds asset `tag` (value 0) COMMITTING tokenA — the chainstate keeps only the hash.
+    const COutPoint op(Txid::FromUint256(m_rng.rand256()), 0);
+    CTxOut in(0, assetV2(tag, heldA)); in.DeriveAssetTag();
+    BOOST_CHECK(!in.tokenCommit.IsNull() && in.tokenCommit == Consensus::TokenSetHash(heldA));
+    view.AddCoin(op, Coin(in, 1000, 1, false), false);
+
+    // Build a spend of that coin: `nout` committed outputs of `out_tokens`, an FRT1 reveal whose
+    // sections are chosen by the flags (to exercise the missing/mismatched-reveal negatives).
+    auto tx_with = [&](const Toks& out_tokens, int nout, const std::map<uint32_t, Toks>& outR,
+                       const std::map<uint32_t, Toks>& inR) {
+        CMutableTransaction m; m.version = 2; m.lock_height = 1000; m.vin.emplace_back(op);
+        for (int i = 0; i < nout; ++i) { CTxOut o(0, assetV2(tag, out_tokens)); o.DeriveAssetTag(); m.vout.push_back(o); }
+        m.vout.emplace_back(0, reveal(outR, inR));
+        return CTransaction(m);
+    };
+    const std::map<uint32_t, Toks> in0 = {{0, heldA}};   // reveal input 0 = tokenA
+
+    // valid: the token is conserved (moved to a fresh output), both halves revealed
+    { const CTransaction tx = tx_with(heldA, 1, {{0, heldA}}, in0); TxValidationState st; CAmount f = 0;
       BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1100, Consensus::NONE, f, &reg)); }
     // forge: an output token that was never in the inputs is rejected
-    { const CTransaction tx = tx_with({{0xca, 0xfe}}, 1); TxValidationState st; CAmount f = 0;
+    { const Toks cafe = {{0xca, 0xfe}};
+      const CTransaction tx = tx_with(cafe, 1, {{0, cafe}}, in0); TxValidationState st; CAmount f = 0;
       BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1100, Consensus::NONE, f, &reg));
       BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-token-created"); }
     // duplicate: the same token in two outputs is rejected (uniqueness)
-    { const CTransaction tx = tx_with({tokenA}, 2); TxValidationState st; CAmount f = 0;
+    { const CTransaction tx = tx_with(heldA, 2, {{0, heldA}, {1, heldA}}, in0); TxValidationState st; CAmount f = 0;
       BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1100, Consensus::NONE, f, &reg));
       BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-token-duplicate"); }
+    // input commitment WITHOUT reveal → rejected
+    { const CTransaction tx = tx_with(heldA, 1, {{0, heldA}}, {}); TxValidationState st; CAmount f = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1100, Consensus::NONE, f, &reg));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-token-input-unrevealed"); }
+    // output commitment WITHOUT reveal → rejected
+    { const CTransaction tx = tx_with(heldA, 1, {}, in0); TxValidationState st; CAmount f = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1100, Consensus::NONE, f, &reg));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-token-output-unrevealed"); }
+    // input reveal that DOESN'T match the coin's commitment → rejected
+    { const Toks wrong = {{0x99}};
+      const CTransaction tx = tx_with(heldA, 1, {{0, heldA}}, {{0, wrong}}); TxValidationState st; CAmount f = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, 1100, Consensus::NONE, f, &reg));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-token-input-mismatch"); }
 }
 
 BOOST_AUTO_TEST_CASE(tx_expiry)

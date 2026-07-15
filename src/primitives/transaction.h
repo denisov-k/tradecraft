@@ -186,9 +186,17 @@ public:
     uint160 assetTag;
 
     /* nVersion=3-lite: unique, indivisible tokens of this output's asset (smart property —
-     * memberships, tickets, keys). Each is an arbitrary bitstring; serialized (like assetTag)
-     * only for version==3 txs. */
+     * memberships, tickets, keys). Each is an arbitrary bitstring. NOT persisted or wire-carried
+     * for asset transfers: a token-bearing output commits H(token-set) in its scriptPubKey (below)
+     * and the tokens are REVEALED in an OP_RETURN "FRT1" payload, so this field is populated at
+     * validation time from that verified reveal (CheckTxInputs), never trusted from the wire. */
     std::vector<std::vector<unsigned char>> tokens;
+
+    /* nVersion=3 EXTENSION-OUTPUT: the 32-byte token-set COMMITMENT, DERIVED from the scriptPubKey's
+     * v2 extension suffix (tag ++ H(token-set); a 52-byte ext push). Null = the output carries no
+     * tokens. This is what the chainstate keeps for a coin — never the token list — so spending a
+     * token coin requires revealing its tokens, checked against this hash (the two-sided reveal). */
+    uint256 tokenCommit;
 
     CTxOut()
     {
@@ -213,6 +221,13 @@ public:
         } else {
             assetTag.SetNull();
         }
+        // A 52-byte ext push is tag(20) ++ token-set commitment(32): remember the commitment so a
+        // future spend of this coin can be checked against a revealed token set.
+        if (ext.size() == 52) {
+            tokenCommit = uint256(std::vector<unsigned char>(ext.begin() + 20, ext.end()));
+        } else {
+            tokenCommit.SetNull();
+        }
     }
 
     /* A null tag means the host currency (freicoin). */
@@ -224,6 +239,7 @@ public:
         scriptPubKey.clear();
         assetTag.SetNull();
         tokens.clear();
+        tokenCommit.SetNull();
     }
 
     bool IsNull() const

@@ -128,11 +128,11 @@ struct TxOutCompression
 {
     FORMATTER_METHODS(CTxOut, obj) {
         READWRITE(Using<AmountCompression>(obj.nValue), Using<ScriptCompression>(obj.scriptPubKey));
-        // nVersion=3 EXTENSION-OUTPUT: the asset tag is NOT persisted — it lives inside the
-        // (already-persisted) scriptPubKey and is re-derived on load (Coin::Unserialize calls
-        // DeriveAssetTag). Only per-output TOKENS still need chainstate persistence on the nV3
-        // chain (token phase pending); the gate keeps every other chain's format byte-identical.
-        if (g_txout_serialize_asset_tag) { READWRITE(obj.tokens); }
+        // nVersion=3 EXTENSION-OUTPUT: NOTHING beyond the scriptPubKey is persisted. Both the asset
+        // tag AND the 32-byte token-set commitment live inside the (already-persisted) scriptPubKey
+        // and are re-derived on load (Coin::Unserialize calls DeriveAssetTag). The token LIST is
+        // never stored — spending a token coin reveals it, checked against the derived commitment
+        // (the two-sided reveal). g_txout_serialize_asset_tag is now vestigial.
     }
 };
 

@@ -355,17 +355,54 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-fee-outofrange");
     }
 
-    // nVersion=3-lite: unique tokens are conserved per asset — every output token must come from
-    // an input of the SAME asset (or be minted by a definition tx), and no token may appear in
-    // two outputs. Unspent input tokens are simply destroyed.
-    std::set<std::pair<uint160, std::vector<unsigned char>>> input_tokens;
-    for (const CTxIn& txin : tx.vin) {
-        const Coin& coin = inputs.AccessCoin(txin.prevout);
-        for (const auto& tok : coin.out.tokens) input_tokens.emplace(coin.out.assetTag, tok);
+    // nVersion=3 EXTENSION-OUTPUT tokens (TWO-SIDED REVEAL): unique tokens are conserved per asset —
+    // every output token must come from an input of the SAME asset (or be minted by a definition
+    // tx), and no token may appear in two outputs. The chainstate keeps only each coin's 32-byte
+    // token-set COMMITMENT (CTxOut::tokenCommit, derived from its scriptPubKey), never the tokens.
+    // So both the input token sets (of the committed coins being spent) and the output token sets
+    // (of this tx's committed outputs) are REVEALED in a single OP_RETURN "FRT1" payload and checked
+    // here against the relevant commitment. Wire-supplied CTxOut::tokens are IGNORED — the reveal is
+    // the sole authority. Mirrors core/nv3wire.mjs + core/nv3chain.mjs.
+    std::map<uint32_t, std::vector<std::vector<unsigned char>>> out_reveal, in_reveal;
+    if (!Consensus::ParseTokenReveal(tx, out_reveal, in_reveal)) {
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-token-reveal");
     }
+    // input tokens: from the verified input reveal, checked against each spent coin's commitment.
+    std::set<std::pair<uint160, std::vector<unsigned char>>> input_tokens;
+    for (uint32_t j = 0; j < tx.vin.size(); ++j) {
+        const Coin& coin = inputs.AccessCoin(tx.vin[j].prevout);
+        auto it = in_reveal.find(j);
+        if (!coin.out.tokenCommit.IsNull()) {
+            if (it == in_reveal.end()) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-token-input-unrevealed");
+            }
+            if (Consensus::TokenSetHash(it->second) != coin.out.tokenCommit) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-token-input-mismatch");
+            }
+            for (const auto& tok : it->second) input_tokens.emplace(coin.out.assetTag, tok);
+        } else if (it != in_reveal.end()) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-token-input-uncommitted");
+        }
+    }
+    // output tokens: from the verified output reveal, enforcing commit↔reveal correspondence, then
+    // the uniqueness + conservation checks.
     std::set<std::pair<uint160, std::vector<unsigned char>>> seen_out;
-    for (const CTxOut& o : tx.vout) {
-        for (const auto& tok : o.tokens) {
+    for (uint32_t i = 0; i < tx.vout.size(); ++i) {
+        const CTxOut& o = tx.vout[i];
+        auto it = out_reveal.find(i);
+        if (o.tokenCommit.IsNull()) {
+            if (it != out_reveal.end()) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-token-output-uncommitted");
+            }
+            continue;
+        }
+        if (it == out_reveal.end()) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-token-output-unrevealed");
+        }
+        if (Consensus::TokenSetHash(it->second) != o.tokenCommit) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-token-output-mismatch");
+        }
+        for (const auto& tok : it->second) {
             auto key = std::make_pair(o.assetTag, tok);
             if (!seen_out.insert(key).second) {
                 return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-token-duplicate");

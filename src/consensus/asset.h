@@ -24,6 +24,8 @@
 #include <primitives/transaction.h>
 #include <script/script.h>
 #include <serialize.h>
+#include <span.h>
+#include <streams.h>
 #include <uint256.h>
 
 #include <algorithm>
@@ -81,6 +83,18 @@ static constexpr size_t ASSET_AUTHORIZER_SIZE = 33;
 inline const unsigned char ASSET_DEF_MAGIC[4] = { 'F', 'R', 'A', '1' };
 // Prefix of the digest an authorizer signs: SHA256d("FRAPPROV" || txid || tag).
 inline const unsigned char ASSET_APPROVAL_TAG[8] = { 'F', 'R', 'A', 'P', 'P', 'R', 'O', 'V' };
+// Magic prefix marking the two-sided token-reveal OP_RETURN payload (see ParseTokenReveal).
+inline const unsigned char TOKEN_REVEAL_MAGIC[4] = { 'F', 'R', 'T', '1' };
+
+/** The 32-byte commitment to a token set: double-SHA256 of its canonical serialization
+ *  (compactSize(n) ++ n × (compactSize(len) ++ bytes)). The default vector formatter emits
+ *  exactly that, so this byte-matches core/asset-spk.mjs tokenSetHash. */
+inline uint256 TokenSetHash(const std::vector<std::vector<unsigned char>>& tokens)
+{
+    HashWriter ss;
+    ss << tokens;
+    return ss.GetHash();
+}
 
 /** If this tx declares a new asset (an OP_RETURN output carrying the magic + a canonical
  *  definition), return its {tag, params}. A tx defines at most one asset (first match wins). */
@@ -115,6 +129,59 @@ inline std::optional<std::pair<uint160, AssetParams>> ParseAssetDefinition(const
         return std::make_pair(AssetIdFromDef(def), p);
     }
     return std::nullopt;
+}
+
+/** Parse the tx's single OP_RETURN "FRT1" two-sided token reveal into per-output and per-input
+ *  token sets. Payload = FRT1 ++ <output section> ++ <input section>, each section
+ *  = compactSize(n) ++ n × ( compactSize(index) ++ compactSize(count) ++ count × varbytes ).
+ *  The OUTPUT section names this tx's committed outputs; the INPUT section names the committed
+ *  coins being spent (the chainstate keeps only the hash, so the spender reveals them). Returns
+ *  false on any malformation: more than one reveal, an index out of range or repeated, a short
+ *  read, or trailing bytes. No FRT1 output ⇒ true with empty maps. Mirrors nv3wire.mjs
+ *  parseTokenReveal; commitment verification is the caller's job (CheckTxInputs). */
+inline bool ParseTokenReveal(const CTransaction& tx,
+                             std::map<uint32_t, std::vector<std::vector<unsigned char>>>& out_toks,
+                             std::map<uint32_t, std::vector<std::vector<unsigned char>>>& in_toks)
+{
+    out_toks.clear();
+    in_toks.clear();
+    bool seen = false;
+    for (const CTxOut& o : tx.vout) {
+        CScript::const_iterator pc = o.scriptPubKey.begin();
+        opcodetype op;
+        std::vector<unsigned char> data;
+        if (!o.scriptPubKey.GetOp(pc, op) || op != OP_RETURN) continue;
+        if (!o.scriptPubKey.GetOp(pc, op, data)) continue;
+        if (data.size() < 4 || !std::equal(std::begin(TOKEN_REVEAL_MAGIC), std::end(TOKEN_REVEAL_MAGIC), data.begin())) continue;
+        if (seen) return false;   // at most one reveal keeps validation deterministic
+        seen = true;
+        try {
+            SpanReader r{std::span<const unsigned char>{data}.subspan(4)};
+            auto section = [&](std::map<uint32_t, std::vector<std::vector<unsigned char>>>& m, size_t bound) {
+                const uint64_t n = ReadCompactSize(r);
+                for (uint64_t i = 0; i < n; ++i) {
+                    const uint64_t idx = ReadCompactSize(r);
+                    if (idx >= bound) throw std::ios_base::failure("token reveal index out of range");
+                    if (m.count(static_cast<uint32_t>(idx))) throw std::ios_base::failure("duplicate token reveal index");
+                    const uint64_t cnt = ReadCompactSize(r);
+                    std::vector<std::vector<unsigned char>> toks;
+                    toks.reserve(cnt);
+                    for (uint64_t j = 0; j < cnt; ++j) {
+                        std::vector<unsigned char> t;
+                        r >> t;   // compactSize(len) ++ bytes
+                        toks.push_back(std::move(t));
+                    }
+                    m.emplace(static_cast<uint32_t>(idx), std::move(toks));
+                }
+            };
+            section(out_toks, tx.vout.size());
+            section(in_toks, tx.vin.size());
+            if (!r.empty()) return false;   // trailing bytes
+        } catch (const std::exception&) {
+            return false;
+        }
+    }
+    return true;
 }
 
 } // namespace Consensus
