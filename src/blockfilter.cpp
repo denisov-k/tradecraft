@@ -200,19 +200,27 @@ static GCSFilter::ElementSet BasicFilterElements(const CBlock& block,
 {
     GCSFilter::ElementSet elements;
 
+    // nVersion=3 EXTENSION-OUTPUT: an asset output's scriptPubKey carries the asset suffix
+    // (base program ++ tag ++ [token commitment] ++ version). A light client watches its BASE
+    // program (a plain P2WPKH/P2WSH), so besides the full script we also index GetWitnessBase()
+    // — else the base-spk query never flags the block and asset coins stay invisible to the wallet.
+    // For a plain output GetWitnessBase()==script, so the set simply dedups.
+    const auto add_script = [&elements](const CScript& script) {
+        if (script.empty() || (!script.empty() && script[0] == OP_RETURN)) return;
+        elements.emplace(script.begin(), script.end());
+        const CScript base = script.GetWitnessBase();
+        if (base != script) elements.emplace(base.begin(), base.end());
+    };
+
     for (const CTransactionRef& tx : block.vtx) {
         for (const CTxOut& txout : tx->vout) {
-            const CScript& script = txout.scriptPubKey;
-            if (script.empty() || script[0] == OP_RETURN) continue;
-            elements.emplace(script.begin(), script.end());
+            add_script(txout.scriptPubKey);
         }
     }
 
     for (const CTxUndo& tx_undo : block_undo.vtxundo) {
         for (const Coin& prevout : tx_undo.vprevout) {
-            const CScript& script = prevout.out.scriptPubKey;
-            if (script.empty()) continue;
-            elements.emplace(script.begin(), script.end());
+            add_script(prevout.out.scriptPubKey);
         }
     }
 
