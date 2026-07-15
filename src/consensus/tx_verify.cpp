@@ -231,6 +231,22 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
     const auto def = Consensus::ParseAssetDefinition(tx);
     const bool has_minted = def.has_value();
     const uint160 minted = has_minted ? def->first : uint160();
+    // A definition may not REDEFINE an existing id — the def bytes are public once issued, so
+    // accepting a re-publication would let anyone mint more of somebody else's asset — and it
+    // must actually MINT (at least one output of the new asset), else it's pure registry spam.
+    // Mirrors nv3chain.mjs ("asset already defined" / "definition mints nothing").
+    if (has_minted) {
+        if (registry && registry->IsKnown(minted)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-redefined");
+        }
+        bool mints = false;
+        for (const CTxOut& o : tx.vout) {
+            if (o.assetTag == minted) { mints = true; break; }
+        }
+        if (!mints) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-mints-nothing");
+        }
+    }
     auto params_of = [&](const uint160& tag) -> Consensus::AssetParams {
         if (tag.IsNull()) return Consensus::AssetParams{20, false, 1};
         if (has_minted && tag == minted) return def->second;

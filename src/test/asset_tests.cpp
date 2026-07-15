@@ -167,6 +167,54 @@ BOOST_AUTO_TEST_CASE(asset_issuance)
     BOOST_CHECK_EQUAL(fee, 2000);
 }
 
+// A published definition's bytes are PUBLIC (they sit in the issuance tx's OP_RETURN), so a
+// re-publication must not mint more of the asset — and a definition that mints nothing is
+// registry spam. Both rejected; mirrors nv3chain.mjs.
+BOOST_AUTO_TEST_CASE(asset_redefinition)
+{
+    const Consensus::Params& consensus = Params().GetConsensus();
+    CCoinsView base;
+    CCoinsViewCache view(&base);
+
+    std::vector<unsigned char> def(Consensus::ASSET_DEF_SIZE, 0);
+    def[0] = 18;
+    const uint160 tag = Consensus::AssetIdFromDef(def);
+
+    std::vector<unsigned char> payload(std::begin(Consensus::ASSET_DEF_MAGIC), std::end(Consensus::ASSET_DEF_MAGIC));
+    payload.insert(payload.end(), def.begin(), def.end());
+    const CScript opret = CScript() << OP_RETURN << payload;
+
+    const uint32_t H = 1000;
+    const COutPoint opHost(Txid::FromUint256(m_rng.rand256()), 0);
+    view.AddCoin(opHost, Coin(CTxOut(1000000, CScript() << OP_TRUE), H, 1, false), false);
+
+    CMutableTransaction mtx;
+    mtx.version = NV3_TX_VERSION;
+    mtx.lock_height = H;
+    mtx.vin.emplace_back(opHost);
+    CTxOut mint(10000000000, CScript()); SetAsset(mint, tag);
+    CTxOut marker(0, opret);
+    CTxOut change(998000, AssetScript(uint160{}));
+    mtx.vout = {mint, marker, change};
+    const CTransaction tx(mtx);
+
+    // fresh id: issuance passes
+    { Consensus::AssetRegistry reg; TxValidationState st; CAmount fee = -1;
+      BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, (int)H + 100, Consensus::NONE, fee, &reg)); }
+    // id already in the registry: the identical re-publication is rejected
+    { Consensus::AssetRegistry reg; reg.Define(tag, Consensus::AssetParams{18, false, 1});
+      TxValidationState st; CAmount fee = -1;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, (int)H + 100, Consensus::NONE, fee, &reg));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-asset-redefined"); }
+    // a definition with no output of the new asset mints nothing: rejected
+    { CMutableTransaction m2 = mtx;
+      m2.vout = {marker, change};
+      const CTransaction tx2(m2);
+      TxValidationState st; CAmount fee = -1;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx2, st, view, consensus, 0, (int)H + 100, Consensus::NONE, fee, nullptr));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-asset-mints-nothing"); }
+}
+
 BOOST_AUTO_TEST_CASE(asset_tag_utxo_persistence)
 {
     std::vector<unsigned char> def(Consensus::ASSET_DEF_SIZE, 0); def[0] = 18;

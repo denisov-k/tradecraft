@@ -2444,6 +2444,17 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
 
     // nVersion=3-lite: whether this block (un)registered any asset definition.
     bool asset_defs_changed = false;
+    // Definitions this call ADDS to the live registry must be undone on every exit except a
+    // real successful connect: ConnectBlock also runs as a dry run (fJustCheck — TestBlockValidity,
+    // VerifyDB) and can fail mid-block after registering some of them, and a stale entry would
+    // make the real connection of the same block fail bad-txns-asset-redefined. RAII so no exit
+    // path can leak one.
+    struct AssetDefsRollback {
+        Consensus::AssetRegistry& reg;
+        std::vector<uint160> added;
+        bool keep{false};
+        ~AssetDefsRollback() { if (!keep) for (const uint160& t : added) reg.Undefine(t); }
+    } asset_defs_rollback{m_asset_registry};
 
     // Check it again in case a previous version let a bad block in
     // NOTE: We don't currently (re-)invoke ContextualCheckBlock() or
@@ -2766,6 +2777,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
             if (const auto d = Consensus::ParseAssetDefinition(tx)) {
                 m_asset_registry.Define(d->first, d->second);
                 asset_defs_changed = true;
+                asset_defs_rollback.added.push_back(d->first);
             }
             nFees += GetTimeAdjustedValue(txfee, pindex->nHeight - (int)tx.lock_height) + !use_alu;
 
@@ -2895,7 +2907,8 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     view.SetFinalTx(entry);
 
     // nVersion=3-lite: the block is now fully valid and being connected for real (not
-    // fJustCheck) — persist any asset definitions it added, so they survive a restart.
+    // fJustCheck) — keep its asset definitions and persist them, so they survive a restart.
+    asset_defs_rollback.keep = true;
     if (asset_defs_changed) PersistAssetRegistry();
 
     // add this block to the view's block chain
