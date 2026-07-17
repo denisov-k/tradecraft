@@ -86,17 +86,36 @@ def signet_txs(block, challenge):
 
     return spend, to_spend
 
-def decode_pst(hexpst):
+class RawTemplateTx:
+    """A getblocktemplate transaction carried as OPAQUE bytes. The miner never needs to
+    understand a template tx — only its raw serialization (block body) and its txid/wtxid
+    (merkle trees), all of which GBT provides. Parsing them through the test framework
+    breaks on wire formats it doesn't model (e.g. nv3 ranged/token sections)."""
+    def __init__(self, t):
+        self.raw = bytes.fromhex(t["data"])
+        self.txid_int = uint256_from_str(bytes.fromhex(t["txid"])[::-1])
+        self.wtxid_int = uint256_from_str(bytes.fromhex(t["hash"])[::-1])
+    def serialize(self): return self.raw
+    def serialize_with_witness(self): return self.raw
+    def rehash(self): pass
+
+def decode_pst_solution(hexpst):
     pst = PST.fromhex(hexpst)
 
     assert len(pst.tx.vin) == 1
     assert len(pst.tx.vout) == 1
-    assert PST_SIGNET_BLOCK in pst.g.map
 
     scriptSig = pst.i[0].map.get(PST_IN_FINAL_SCRIPTSIG, b"")
     scriptWitness = pst.i[0].map.get(PST_IN_FINAL_SCRIPTWITNESS, b"\x00")
 
-    return from_binary(CBlock, pst.g.map[PST_SIGNET_BLOCK]), ser_string(scriptSig) + scriptWitness
+    return ser_string(scriptSig) + scriptWitness
+
+def decode_pst(hexpst):
+    # NOTE: only used by the split genpst/solvepst pipeline — the block round-trips through
+    # the framework parser here, so that pipeline cannot carry opaque (e.g. nv3) template txs.
+    pst = PST.fromhex(hexpst)
+    assert PST_SIGNET_BLOCK in pst.g.map
+    return from_binary(CBlock, pst.g.map[PST_SIGNET_BLOCK]), decode_pst_solution(hexpst)
 
 def finish_block(block, signet_solution, grind_cmd):
     if signet_solution is None:
@@ -186,7 +205,7 @@ def generate_pst(tmpl, reward_spk, *, blocktime=None, poolid=None):
         finaltx.vin = [CTxIn(COutPoint(int(p["txid"], 16), p["vout"]), b"", 0xffffffff) for p in tmpl["finaltx"]["prevout"]]
         finaltx.vout = [CTxOut(0, CScript(zero_commitment))]
         cbtx.vout.append(CTxOut(0, CScript(hdr_push)))
-        block.vtx = [cbtx] + [tx_from_hex(t["data"]) for t in tmpl["transactions"]] + [finaltx]
+        block.vtx = [cbtx] + [RawTemplateTx(t) for t in tmpl["transactions"]] + [finaltx]
     else:
         # No block-final transaction yet (the first ~100 blocks): the witness
         # commitment must terminate the coinbase itself, which must therefore
@@ -210,7 +229,7 @@ def generate_pst(tmpl, reward_spk, *, blocktime=None, poolid=None):
                          PST_IN_SIGHASH_TYPE: bytes([1,0,0,0])})
              ]
     pst.o = [ PSTMap() ]
-    return pst.hex()
+    return pst.hex(), block
 
 def get_poolid(args):
     if args.poolid is not None:
@@ -252,7 +271,7 @@ def do_genpst(args):
     tmpl = json.load(sys.stdin)
     signet_spk = tmpl["signet_challenge"]
     _, reward_spk = get_reward_addr_spk(args, tmpl["height"])
-    pst = generate_pst(tmpl, reward_spk, poolid=poolid)
+    pst, _ = generate_pst(tmpl, reward_spk, poolid=poolid)
     print(pst)
 
 def do_solvepst(args):
@@ -414,14 +433,16 @@ class Generate:
         return tmpl
 
     def mine(self, bcli, grind_cmd, tmpl, reward_spk):
-        pst = generate_pst(tmpl, reward_spk, blocktime=self.mine_time, poolid=self.poolid)
+        pst, block = generate_pst(tmpl, reward_spk, blocktime=self.mine_time, poolid=self.poolid)
         input_stream = os.linesep.join([pst, "true", "ALL"]).encode('utf8')
         pst_signed = json.loads(bcli("-stdin", "walletprocesspst", input=input_stream))
         if not pst_signed.get("complete",False):
             logging.debug("Generated PST: %s" % (pst,))
             sys.stderr.write("PST signing failed\n")
             return None
-        block, signet_solution = decode_pst(pst_signed["pst"])
+        # keep OUR block object (template txs are opaque bytes in it) — re-parsing the block
+        # out of the PST would push them through the framework parser, which mangles nv3 txs
+        signet_solution = decode_pst_solution(pst_signed["pst"])
         return finish_block(block, signet_solution, grind_cmd)
 
 def do_generate(args):
