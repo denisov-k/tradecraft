@@ -74,6 +74,12 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
 
 bool IsDust(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
 {
+    // nVersion=3-lite: an asset-tagged output's value is denominated in the
+    // asset's base units, not kria — host dust economics (would the fee to
+    // spend it exceed its worth?) simply don't apply, and a one-token output
+    // is the NORMAL shape of a smart-property coin. Never dust on -nv3assets
+    // chains; host-currency outputs keep the standard rule.
+    if (g_txout_serialize_asset_tag && !txout.IsHostCurrency()) return false;
     return (txout.GetReferenceValue() < GetDustThreshold(txout, dustRelayFeeIn));
 }
 
