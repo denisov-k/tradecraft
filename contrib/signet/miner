@@ -339,7 +339,7 @@ class Generate:
 
     def __init__(self, multiminer=None, ultimate_target=None, poisson=False, max_interval=1800,
                  standby_delay=0, backup_delay=0, set_block_time=None,
-                 poolid=None):
+                 poolid=None, ondemand=False):
         if multiminer is None:
             multiminer = (0, 1, 1)
         (self.multi_low, self.multi_high, self.multi_period) = multiminer
@@ -350,6 +350,7 @@ class Generate:
         self.backup_delay = backup_delay
         self.set_block_time = set_block_time
         self.poolid = poolid
+        self.ondemand = ondemand
 
     def next_block_delta(self, last_nbits, last_hash):
         # strategy:
@@ -381,6 +382,17 @@ class Generate:
         return self.multi_low <= (det_rand % self.multi_period) < self.multi_high
 
     def next_block_time(self, now, bestheader, is_first_block):
+        if self.ondemand:
+            # ON-DEMAND chain (single signer, blocks whenever there are txs): no pacing,
+            # stamp the block with the wall clock. The interval-pacing model below stamps
+            # prev.time + ~10min regardless of the wall clock, so a chain mined faster
+            # than the target cadence drifts hours into the future until the 2h consensus
+            # cap stalls the miner entirely. gbt() raises the stamp to mintime (MTP+1)
+            # when the chain's median is still ahead — the drift then self-heals.
+            self.mine_time = int(now)
+            self.action_time = int(now)
+            self.is_mine = True
+            return
         if self.set_block_time is not None:
             logging.debug("Setting start time to %d", self.set_block_time)
             self.mine_time = self.set_block_time
@@ -426,7 +438,7 @@ class Generate:
         if tmpl["mintime"] > self.mine_time:
             logging.info("Updating block time from %d to %d", self.mine_time, tmpl["mintime"])
             self.mine_time = tmpl["mintime"]
-            if self.mine_time > now:
+            if self.mine_time > now and not self.ondemand:
                 logging.error("GBT mintime is in the future: %d is %d seconds later than %d", self.mine_time, (self.mine_time-now), now)
                 return None
 
@@ -499,7 +511,8 @@ def do_generate(args):
     ultimate_target = nbits_to_target(int(args.nbits,16))
 
     gen = Generate(multiminer=my_blocks, ultimate_target=ultimate_target, poisson=args.poisson, max_interval=args.max_interval,
-                   standby_delay=args.standby_delay, backup_delay=args.backup_delay, set_block_time=args.set_block_time, poolid=poolid)
+                   standby_delay=args.standby_delay, backup_delay=args.backup_delay, set_block_time=args.set_block_time, poolid=poolid,
+                   ondemand=args.ondemand)
 
     mined_blocks = 0
     bestheader = {"hash": None}
@@ -632,6 +645,7 @@ def main():
     generate.set_defaults(fn=do_generate)
     howmany = generate.add_mutually_exclusive_group()
     howmany.add_argument("--ongoing", action="store_true", help="Keep mining blocks")
+    generate.add_argument("--ondemand", action="store_true", help="No pacing: stamp blocks with the wall clock (single-signer on-demand chains)")
     howmany.add_argument("--max-blocks", default=None, type=int, help="Max blocks to mine (default=1)")
     howmany.add_argument("--set-block-time", default=None, type=int, help="Set block time (unix timestamp); implies --max-blocks=1")
     nbit_target = generate.add_mutually_exclusive_group()
