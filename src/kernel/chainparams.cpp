@@ -564,9 +564,13 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].threshold = 1815; // 90%
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].period = 2016;
 
-        // Activation of block-final transactions
+        // Activation of block-final transactions.  Unlike the legacy public
+        // signet (where this was never activated), block-final transactions
+        // are active from genesis: they are the only place a Freicoin block
+        // can carry its witness commitment, so without them a signet cannot
+        // contain witness transactions at all.
         consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].bit = 1;
-        consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].min_activation_height = 0; // No activation delay
         consensus.vDeployments[Consensus::DEPLOYMENT_FINALTX].threshold = 1916;

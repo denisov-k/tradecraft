@@ -22,6 +22,7 @@
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
+#include <compressor.h>
 #include <policy/feerate.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
@@ -107,7 +108,12 @@ bool IsStandard(const CScript& scriptPubKey, TxoutType& whichType)
 
 bool IsStandardTx(const CTransaction& tx, const std::optional<unsigned>& max_datacarrier_bytes, bool permit_bare_multisig, const CFeeRate& dust_relay_fee, std::string& reason)
 {
-    if (tx.version > TX_MAX_STANDARD_VERSION || tx.version < TX_MIN_STANDARD_VERSION) {
+    // nVersion=3-lite: token-carrying transactions use NV3_TX_VERSION. On a
+    // dedicated -nv3assets chain they must be relayable through the mempool
+    // (a signet has no way to inject blocks around it), so the version is
+    // standard there. Chains without the flag still reject it.
+    const bool nv3_ok = g_txout_serialize_asset_tag && tx.version == NV3_TX_VERSION;
+    if (!nv3_ok && (tx.version > TX_MAX_STANDARD_VERSION || tx.version < TX_MIN_STANDARD_VERSION)) {
         reason = "version";
         return false;
     }

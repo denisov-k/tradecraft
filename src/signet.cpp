@@ -18,6 +18,7 @@
 #include <consensus/merkle.h>
 #include <consensus/params.h>
 #include <consensus/validation.h>
+#include <hash.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
@@ -26,6 +27,7 @@
 #include <uint256.h>
 #include <util/check.h>
 #include <util/log.h>
+#include <util/strencodings.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -67,13 +69,50 @@ static bool FetchAndClearCommitmentSection(const std::span<const uint8_t> header
     return found_header;
 }
 
+//! Hash a transaction's no-witness serialization with the trailing witness
+//! commitment (path byte + Merkle root), if present, zeroed out — the same
+//! stripping BlockWitnessMerkleRoot performs on the block-final transaction.
+static uint256 CommitmentZeroedTxLeaf(DataStream& tx)
+{
+    if (tx.size() >= (1 + 32 + 4 + 8)            // <- 1 byte for witness path
+        && tx[tx.size()-8-4] == std::byte{0x4b}  //   32 bytes for merkle root
+        && tx[tx.size()-8-3] == std::byte{0x4a}  //    4 bytes for magic value
+        && tx[tx.size()-8-2] == std::byte{0x49}  //    4 bytes for nLockTime
+        && tx[tx.size()-8-1] == std::byte{0x48}) //    4 bytes for lock_height
+    {                                            //      (end of transaction)
+        std::fill_n(tx.end()-8-4-32-1, 33, std::byte{0});
+    }
+    uint256 leaf;
+    CHash256()
+        .Write({(unsigned char*)&tx[0], tx.size()})
+        .Finalize(leaf);
+    return leaf;
+}
+
 static uint256 ComputeModifiedMerkleRoot(const CMutableTransaction& cb, const CBlock& block)
 {
+    // In Freicoin the witness Merkle root's coinbase leaf covers the coinbase
+    // outputs, one of which holds the signet solution.  The witness commitment
+    // therefore cannot be fixed until AFTER the block is signed, so the data
+    // being signed must be independent of it: the last transaction's leaf
+    // (which carries the commitment — the coinbase itself in a one-tx block)
+    // is hashed with the commitment bytes zeroed, mirroring
+    // BlockWitnessMerkleRoot.  Signing order is then: sign -> attach solution
+    // -> compute witness commitment.
     std::vector<uint256> leaves;
     leaves.reserve((block.vtx.size() + 1) & ~1ULL); // capacity rounded up to even
-    leaves.push_back(cb.GetHash().ToUint256());
-    for (size_t s = 1; s < block.vtx.size(); ++s) {
-        leaves.push_back(block.vtx[s]->GetHash().ToUint256());
+    if (block.vtx.size() == 1) {
+        DataStream tx;
+        tx << TX_NO_WITNESS(cb);
+        leaves.push_back(CommitmentZeroedTxLeaf(tx));
+    } else {
+        leaves.push_back(cb.GetHash().ToUint256());
+        for (size_t s = 1; s + 1 < block.vtx.size(); ++s) {
+            leaves.push_back(block.vtx[s]->GetHash().ToUint256());
+        }
+        DataStream tx;
+        tx << TX_NO_WITNESS(block.vtx.back());
+        leaves.push_back(CommitmentZeroedTxLeaf(tx));
     }
     return ComputeMerkleRoot(std::move(leaves));
 }

@@ -921,6 +921,21 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
         return false; // state filled in by CheckTxInputs
     }
 
+    // nVersion=3-lite: CheckTxInputs above rejects a definition already in the
+    // CHAIN's registry, but two definitions of the same tag can both be
+    // unconfirmed. Both would enter the mempool and any block containing both
+    // fails bad-txns-asset-redefined — poisoning getblocktemplate until one
+    // expires. Reject the second definition while the first is in the mempool.
+    if (const auto def = Consensus::ParseAssetDefinition(tx)) {
+        for (const auto& entry : m_pool.entryAll()) {
+            if (const auto other = Consensus::ParseAssetDefinition(entry.get().GetTx())) {
+                if (other->first == def->first) {
+                    return state.Invalid(TxValidationResult::TX_MEMPOOL_POLICY, "txn-mempool-asset-conflict");
+                }
+            }
+        }
+    }
+
     if (m_pool.m_opts.require_standard && !AreInputsStandard(tx, m_view)) {
         return state.Invalid(TxValidationResult::TX_INPUTS_NOT_STANDARD, "bad-txns-nonstandard-inputs");
     }

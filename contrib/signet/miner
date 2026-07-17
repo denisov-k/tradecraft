@@ -29,10 +29,10 @@ PATH_BASE_CONTRIB_SIGNET = os.path.abspath(os.path.dirname(os.path.realpath(__fi
 PATH_BASE_TEST_FUNCTIONAL = os.path.abspath(os.path.join(PATH_BASE_CONTRIB_SIGNET, "..", "..", "test", "functional"))
 sys.path.insert(0, PATH_BASE_TEST_FUNCTIONAL)
 
-from test_framework.blocktools import get_witness_script, script_BIP34_coinbase_height # noqa: E402
-from test_framework.messages import CBlock, CBlockHeader, COutPoint, CTransaction, CTxIn, CTxInWitness, CTxOut, from_binary, from_hex, ser_string, ser_uint256, tx_from_hex # noqa: E402
+from test_framework.blocktools import WITNESS_COMMITMENT_HEADER, get_witness_script, script_BIP34_coinbase_height # noqa: E402
+from test_framework.messages import CBlock, CBlockHeader, COutPoint, CTransaction, CTxIn, CTxInWitness, CTxOut, MAX_SEQUENCE_NONFINAL, from_binary, from_hex, hash256, ser_string, ser_uint256, tx_from_hex, uint256_from_str # noqa: E402
 from test_framework.pst import PST, PSTMap, PST_GLOBAL_UNSIGNED_TX, PST_IN_FINAL_SCRIPTSIG, PST_IN_FINAL_SCRIPTWITNESS, PST_IN_NON_WITNESS_UTXO, PST_IN_SIGHASH_TYPE # noqa: E402
-from test_framework.script import CScript, CScriptOp # noqa: E402
+from test_framework.script import CScript, CScriptOp, OP_TRUE # noqa: E402
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)s %(message)s',
@@ -43,16 +43,27 @@ SIGNET_HEADER = b"\xec\xc7\xda\xa2"
 PST_SIGNET_BLOCK = b"\xfc\x06signetb"    # proprietary PST global field holding the block being signed
 RE_MULTIMINER = re.compile(r"^(\d+)(-(\d+))?/(\d+)$")
 
-def signet_txs(block, challenge):
-    # assumes signet solution has not been added yet so does not need
-    # to be removed
+def strip_commitment(txser):
+    """Zero the trailing witness commitment (path byte + merkle root) of a
+    no-witness tx serialization, mirroring BlockWitnessMerkleRoot /
+    CommitmentZeroedTxLeaf on the C++ side."""
+    if len(txser) >= (1 + 32 + 4 + 8) and txser[-8-4] == 0x4b and txser[-8-3] == 0x4a and txser[-8-2] == 0x49 and txser[-8-1] == 0x48:
+        txser = txser[:-8-4-32-1] + (33 * b'\x00') + txser[-8-4:]
+    return txser
 
-    txs = block.vtx[:]
-    txs[0] = CTransaction(txs[0])
-    txs[0].vout[-1].scriptPubKey += CScriptOp.encode_op_pushdata(SIGNET_HEADER)
+def signet_txs(block, challenge):
+    # The block is in its to-be-signed form: the coinbase's last output already
+    # carries a bare push of SIGNET_HEADER (the solution is attached there
+    # after signing) and the witness commitment bytes are still zero.  The
+    # verifier reconstructs exactly this form (strips the solution, zeroes the
+    # commitment), so the signed merkle root is computed over the transactions
+    # as they are, with the last tx's commitment defensively zeroed.
     hashes = []
-    for tx in txs:
-        hashes.append(ser_uint256(tx.txid_int))
+    for i, tx in enumerate(block.vtx):
+        if i == len(block.vtx) - 1:
+            hashes.append(hash256(strip_commitment(tx.serialize_without_witness())))
+        else:
+            hashes.append(ser_uint256(tx.txid_int))
     mroot = block.get_merkle_root(hashes)
 
     sd = b""
@@ -91,7 +102,30 @@ def finish_block(block, signet_solution, grind_cmd):
     if signet_solution is None:
         pass # Don't need to add a signet commitment if there's no signet signature needed
     else:
-        block.vtx[0].vout[-1].scriptPubKey += CScriptOp.encode_op_pushdata(SIGNET_HEADER + signet_solution)
+        # Attach the solution: the coinbase's last output starts with a bare
+        # push of SIGNET_HEADER — replace it with a push of header+solution.
+        cb = block.vtx[0]
+        spk = bytes(cb.vout[-1].scriptPubKey)
+        hdr_push = bytes(CScriptOp.encode_op_pushdata(SIGNET_HEADER))
+        assert spk.startswith(hdr_push)
+        cb.vout[-1].scriptPubKey = CScript(bytes(CScriptOp.encode_op_pushdata(SIGNET_HEADER + signet_solution)) + spk[len(hdr_push):])
+        cb.rehash()
+        # The witness commitment covers the coinbase INCLUDING the solution
+        # (Freicoin's witness-tree coinbase leaf spans its outputs), so it can
+        # only be computed now, after signing.
+        if len(block.vtx) == 1:
+            # single-tx block: the consensus leaf is the coinbase with
+            # scriptSig intact and commitment bytes zeroed
+            # (calc_witness_merkle_root would double-count the coinbase here)
+            witroot = uint256_from_str(hash256(strip_commitment(cb.serialize_without_witness())))
+        else:
+            witroot = block.calc_witness_merkle_root()
+        last = block.vtx[-1]
+        spk2 = bytes(last.vout[-1].scriptPubKey)
+        commit_push = bytes(get_witness_script(witroot, 0))
+        assert len(spk2) >= len(commit_push)
+        last.vout[-1].scriptPubKey = CScript(spk2[:-len(commit_push)] + commit_push)
+        last.rehash()
         block.hashMerkleRoot = block.calc_merkle_root()
     if grind_cmd is None:
         block.solve()
@@ -112,10 +146,25 @@ def generate_pst(tmpl, reward_spk, *, blocktime=None, poolid=None):
         scriptSig = CScript(b"" + scriptSig + CScriptOp.encode_op_pushdata(poolid))
 
     cbtx = CTransaction()
+    cbtx.version = 2
+    # height-based locktime (height-1 < height is always final); the GBT
+    # "locktime" (median-time-past) fails IsFinalTx on equality with the cutoff
     cbtx.nLockTime = tmpl["height"] - 1
+    cbtx.lock_height = tmpl["height"]
     cbtx.vin = [CTxIn(COutPoint(0, 0xffffffff), scriptSig, MAX_SEQUENCE_NONFINAL)]
     cbtx.vout = [CTxOut(tmpl["coinbasevalue"], reward_spk)]
-    cbtx.vin[0].nSequence = 2**32-2
+    if tmpl["height"] == 1:
+        # first block under the block-final rules: create the initial
+        # anyone-can-spend block-final output (mirrors BlockAssembler)
+        cbtx.vout.insert(0, CTxOut(0, CScript([OP_TRUE])))
+    # coinbase witness: the reserved value is the (empty) merkle branch for
+    # witness path 0x01
+    cbwit = CTxInWitness()
+    cbwit.scriptWitness.stack = [b""]
+    cbtx.wit.vtxinwit = [cbwit]
+
+    hdr_push = bytes(CScriptOp.encode_op_pushdata(SIGNET_HEADER))
+    zero_commitment = bytes(CScriptOp.encode_op_pushdata(b"\x00" * 33 + WITNESS_COMMITMENT_HEADER))
 
     block = CBlock()
     block.nVersion = tmpl["version"]
@@ -125,16 +174,33 @@ def generate_pst(tmpl, reward_spk, *, blocktime=None, poolid=None):
         block.nTime = tmpl["mintime"]
     block.nBits = int(tmpl["bits"], 16)
     block.nNonce = 0
-    block.vtx = [cbtx] + [tx_from_hex(t["data"]) for t in tmpl["transactions"]]
 
-    witnonce = 0
-    witroot = block.calc_witness_merkle_root()
-    cbwit = CTxInWitness()
-    cbwit.scriptWitness.stack = [ser_uint256(witnonce)]
-    block.vtx[0].wit.vtxinwit = [cbwit]
-    block.vtx[0].vout.append(CTxOut(0, bytes(get_witness_script(witroot, witnonce))))
+    if "finaltx" in tmpl:
+        # The block-final transaction terminates the block and carries the
+        # witness commitment; the coinbase gets a separate output whose script
+        # holds the signet solution.
+        finaltx = CTransaction()
+        finaltx.version = 2
+        finaltx.nLockTime = tmpl["locktime"]
+        finaltx.lock_height = tmpl["height"]
+        finaltx.vin = [CTxIn(COutPoint(int(p["txid"], 16), p["vout"]), b"", 0xffffffff) for p in tmpl["finaltx"]["prevout"]]
+        finaltx.vout = [CTxOut(0, CScript(zero_commitment))]
+        cbtx.vout.append(CTxOut(0, CScript(hdr_push)))
+        block.vtx = [cbtx] + [tx_from_hex(t["data"]) for t in tmpl["transactions"]] + [finaltx]
+    else:
+        # No block-final transaction yet (the first ~100 blocks): the witness
+        # commitment must terminate the coinbase itself, which must therefore
+        # be the LAST transaction — the block can carry no others.
+        if tmpl["transactions"]:
+            logging.info("no block-final tx yet; leaving %d mempool transactions for a later block", len(tmpl["transactions"]))
+        cbtx.vout.append(CTxOut(0, CScript(hdr_push + zero_commitment)))
+        block.vtx = [cbtx]
 
+    for tx in block.vtx:
+        tx.rehash()
     block.hashMerkleRoot = block.calc_merkle_root()
+
+    signme, spendme = signet_txs(block, signet_spk_bin)
 
     pst = PST()
     pst.g = PSTMap( {PST_GLOBAL_UNSIGNED_TX: signme.serialize(),
@@ -332,7 +398,7 @@ class Generate:
         self.action_time = max(self.action_time, self.mine_time - 6900)
 
     def gbt(self, bcli, bestblockhash, now):
-        tmpl = json.loads(bcli("getblocktemplate", '{"rules":["signet","segwit"]}'))
+        tmpl = json.loads(bcli("getblocktemplate", '{"rules":["signet","segwit","finaltx"]}'))
         if tmpl["previousblockhash"] != bestblockhash:
             logging.warning("GBT based off unexpected block (%s not %s), retrying", tmpl["previousblockhash"], bestblockhash)
             time.sleep(1)
