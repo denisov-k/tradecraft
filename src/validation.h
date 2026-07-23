@@ -263,6 +263,19 @@ inline bool IsSizeExpansionActive(const Consensus::Params& params, const CBlockI
     return (index.GetMedianTimePast() >= params.size_expansion_activation_time);
 }
 
+/** Scheduled Freiland Harberger covenant soft-fork (time-based, mirrors size expansion). */
+inline bool IsHarbergerActive(const Consensus::Params& params, const CBlock& block)
+{
+    if (block.m_aux_pow.IsNull()) {
+        return false;
+    }
+    return ((!block.vtx.empty() ? block.vtx[0]->nLockTime : 0) >= params.harberger_activation_time);
+}
+inline bool IsHarbergerActive(const Consensus::Params& params, const CBlockIndex& index)
+{
+    return (index.GetMedianTimePast() >= params.harberger_activation_time);
+}
+
 inline Consensus::RuleSet GetActiveRules(const Consensus::Params& params, const CBlock& block)
 {
     Consensus::RuleSet rules = Consensus::NONE;
@@ -271,6 +284,9 @@ inline Consensus::RuleSet GetActiveRules(const Consensus::Params& params, const 
     }
     if (IsSizeExpansionActive(params, block)) {
         rules |= Consensus::SIZE_EXPANSION;
+    }
+    if (IsHarbergerActive(params, block)) {
+        rules |= Consensus::HARBERGER;
     }
     return rules;
 }
@@ -282,6 +298,9 @@ inline Consensus::RuleSet GetActiveRules(const Consensus::Params& params, const 
     }
     if (IsSizeExpansionActive(params, index)) {
         rules |= Consensus::SIZE_EXPANSION;
+    }
+    if (IsHarbergerActive(params, index)) {
+        rules |= Consensus::HARBERGER;
     }
     return rules;
 }

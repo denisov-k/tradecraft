@@ -34,6 +34,10 @@ enum RuleSet : uint8_t {
     NONE = 0,
     PROTOCOL_CLEANUP = (1U << 0),
     SIZE_EXPANSION = (1U << 1),
+    // Freiland Harberger covenant (docs/freiland-covenant-spec.md): forced-sale name outputs.
+    // A soft fork — before activation an HRBG (witness-v2) output is anyone-can-spend; after, new
+    // nodes enforce the covenant. Activation is time-based (harberger_activation_time).
+    HARBERGER = (1U << 2),
 };
 
 inline RuleSet operator | (RuleSet lhs, RuleSet rhs) {
@@ -161,6 +165,8 @@ struct Params {
     int64_t protocol_cleanup_activation_time;
     /** Scheduled size expansion rule change */
     int64_t size_expansion_activation_time;
+    /** Scheduled Freiland Harberger covenant soft-fork (0 = active from genesis, e.g. regtest) */
+    int64_t harberger_activation_time;
     /** Proof of work parameters */
     uint256 powLimit;
     // NB: Freicoin removed fPowAllowMinDifficultyBlocks (unused with merge
@@ -245,6 +251,10 @@ inline bool IsSizeExpansionActive(const Consensus::Params& params, std::chrono::
 {
     return (now.count() > (params.size_expansion_activation_time - /* 3 hours */ 3*60*60));
 }
+inline bool IsHarbergerActive(const Consensus::Params& params, std::chrono::seconds now)
+{
+    return (now.count() > (params.harberger_activation_time - /* 3 hours */ 3*60*60));
+}
 inline Consensus::RuleSet GetActiveRules(const Consensus::Params& params, std::chrono::seconds now)
 {
     Consensus::RuleSet rules = Consensus::NONE;
@@ -253,6 +263,9 @@ inline Consensus::RuleSet GetActiveRules(const Consensus::Params& params, std::c
     }
     if (IsSizeExpansionActive(params, now)) {
         rules |= Consensus::SIZE_EXPANSION;
+    }
+    if (IsHarbergerActive(params, now)) {
+        rules |= Consensus::HARBERGER;
     }
     return rules;
 }
