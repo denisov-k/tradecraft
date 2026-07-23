@@ -19,6 +19,7 @@
 #include <coins.h>
 #include <consensus/amount.h>
 #include <consensus/asset.h>
+#include <consensus/harberger.h>
 
 #include <map>
 #include <set>
@@ -330,6 +331,46 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
                 return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-ranged-price");
             }
             in0 += r.nIn; out0 += 2;
+        }
+    }
+
+    // Freiland Harberger covenant (docs/freiland-covenant-spec.md §4, path A). Once HARBERGER is
+    // active, a HRBG input — an anyone-can-spend witness-v2 output to old nodes — may only be spent
+    // as a FORCED BUY: pay V = asset_pv(deposit) to the committed owner AND re-create a successor
+    // HRBG output for the same name with value >= V. Both together stop a free acquisition (host
+    // FRC is fungible, so paying only the owner could be sourced from the name's own deposit).
+    if (rules & Consensus::HARBERGER) {
+        unsigned int n_hrbg_in = 0;
+        for (unsigned int i = 0; i < tx.vin.size(); ++i) {
+            const Coin& coin = inputs.AccessCoin(tx.vin[i].prevout);
+            Consensus::HarbergerCovenant in_cov;
+            if (!Consensus::ParseHarbergerOutput(coin.out.scriptPubKey, in_cov)) continue;
+            // One HRBG input per tx for now (multiple would need positional payout/successor
+            // matching to avoid one output satisfying several inputs — a later step).
+            if (++n_hrbg_in > 1) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-harberger-multiple-inputs");
+            }
+            // V = the deposit's present value at this tx's lock_height (host demurrage, shift 20).
+            const CAmount V = asset_pv(coin.out.assetTag, coin.out.GetReferenceValue(), (uint32_t)(tx.lock_height - coin.refheight));
+            // (1) an output pays >= V host FRC to the owner (0014{owner})
+            const CScript pay_script = CScript() << OP_0 << std::vector<unsigned char>(in_cov.owner.begin(), in_cov.owner.end());
+            bool paid = false;
+            for (const CTxOut& o : tx.vout) {
+                if (o.assetTag.IsNull() && o.scriptPubKey == pay_script && o.GetReferenceValue() >= V) { paid = true; break; }
+            }
+            if (!paid) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-harberger-unpaid");
+            }
+            // (2) a successor HRBG output for the SAME name with value >= V (the deposit carries)
+            bool successor = false;
+            for (const CTxOut& o : tx.vout) {
+                Consensus::HarbergerCovenant out_cov;
+                if (Consensus::ParseHarbergerOutput(o.scriptPubKey, out_cov)
+                    && out_cov.nameHash == in_cov.nameHash && o.GetReferenceValue() >= V) { successor = true; break; }
+            }
+            if (!successor) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-harberger-no-successor");
+            }
         }
     }
 

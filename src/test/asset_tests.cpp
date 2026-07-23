@@ -924,4 +924,62 @@ BOOST_AUTO_TEST_CASE(harberger_output_format)
     BOOST_CHECK(!Consensus::ParseHarbergerOutput(wrong, j));
 }
 
+// Path-A forced buy at the CheckTxInputs level (docs/freiland-covenant-spec.md §4). When HARBERGER
+// is active, spending a HRBG deposit requires paying V=asset_pv(deposit) to the owner AND a
+// successor HRBG output for the same name with value>=V. Without the flag the covenant is inert.
+BOOST_AUTO_TEST_CASE(harberger_forced_buy)
+{
+    const Consensus::Params& consensus = Params().GetConsensus();
+    Consensus::AssetRegistry reg;
+    CCoinsView base; CCoinsViewCache view(&base);
+    const uint32_t refheight = 1000;
+
+    uint256 name; for (int i = 0; i < 32; ++i) name.begin()[i] = 0xaa;
+    uint160 alice; for (int i = 0; i < 20; ++i) alice.begin()[i] = 0xbb;   // current owner (paid V)
+    uint160 bob;   for (int i = 0; i < 20; ++i) bob.begin()[i]   = 0xcc;   // buyer's new owner
+    const CAmount V = 1000;                                                 // present value at distance 0
+
+    auto add = [&](const CScript& spk, CAmount amt) {
+        const COutPoint op(Txid::FromUint256(m_rng.rand256()), 0);
+        CTxOut out(amt, spk); out.DeriveAssetTag();
+        view.AddCoin(op, Coin(out, refheight, 1, false), false);
+        return op;
+    };
+    const COutPoint opHrbg = add(BuildHarberger(name, alice, 100 /*floorV*/), V);   // host FRC deposit
+    const COutPoint opFrc  = add(CScript() << OP_TRUE, 50000);                       // buyer's funding
+    const CScript payAlice = CScript() << OP_0 << std::vector<unsigned char>(alice.begin(), alice.end());
+
+    auto buildBuy = [&](CAmount payVal, bool successor, CAmount succVal) {
+        CMutableTransaction c; c.version = NV3_TX_VERSION; c.lock_height = refheight;
+        c.vin.emplace_back(opHrbg); c.vin.emplace_back(opFrc);
+        c.vout.emplace_back(payVal, payAlice);                                          // (1) pay owner
+        if (successor) { CTxOut s(succVal, BuildHarberger(name, bob, 100)); s.DeriveAssetTag(); c.vout.push_back(s); } // (2) successor
+        c.vout.emplace_back(500, CScript() << OP_TRUE);                                 // slack → fee
+        return CTransaction(c);
+    };
+
+    // valid forced buy
+    { auto tx = buildBuy(V, true, V); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::HARBERGER, fee, &reg)); }
+    // underpaying the owner
+    { auto tx = buildBuy(V - 1, true, V); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::HARBERGER, fee, &reg));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-harberger-unpaid"); }
+    // no successor (would let a buyer take the name and pocket the deposit)
+    { auto tx = buildBuy(V, false, V); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::HARBERGER, fee, &reg));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-harberger-no-successor"); }
+    // successor deposit below V (buyer under-funds the carried deposit)
+    { auto tx = buildBuy(V, true, V - 1); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::HARBERGER, fee, &reg));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-harberger-no-successor"); }
+    // WITHOUT the flag: the HRBG deposit is an ordinary (anyone-can-spend) host coin — spending it
+    // with no owner payout and no successor is valid; the covenant is not enforced.
+    { CMutableTransaction c; c.version = NV3_TX_VERSION; c.lock_height = refheight;
+      c.vin.emplace_back(opHrbg); c.vin.emplace_back(opFrc);
+      c.vout.emplace_back(V + 40000, CScript() << OP_TRUE);
+      CTransaction tx(c); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::NONE, fee, &reg)); }
+}
+
 BOOST_AUTO_TEST_SUITE_END()
