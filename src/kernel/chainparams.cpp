@@ -538,7 +538,7 @@ public:
         // exceeds T-3h; the tip's MTP is already well past that, so the covenant enforces from the very
         // next block. Safe to activate now on this signet: WE sign every block (challenge key), it is a
         // soft-fork (non-upgraded peers just follow our blocks), and no HRBG coins exist yet.
-        consensus.harberger_activation_time = 1784889238;
+        consensus.harberger_activation_time = 1784885000;
 
         consensus.original_adjust_interval = 2016; // two weeks
         consensus.filtered_adjust_interval = 9; // 1.5 hrs
