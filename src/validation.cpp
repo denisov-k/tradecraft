@@ -916,8 +916,18 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
         return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "non-BIP68-final");
     }
 
+    // Freiland: enforce the HARBERGER ruleset at the mempool once it is active, so an invalid forced
+    // buy (spends a HRBG input but doesn't pay the owner / omits the successor) — now relay-standard,
+    // see AreInputsStandard / PolicyScriptChecks — is rejected here instead of sitting in the mempool
+    // and poisoning block production (a block containing it fails at connect). Only the HARBERGER bit
+    // is added; the rest of the mempool's rule handling (deliberately NONE) is unchanged. The name
+    // registry passed below is the chain's, so uniqueness is checked against confirmed state; two
+    // UNconfirmed claims of one name are additionally de-conflicted just after this call.
+    const CBlockIndex* tip = m_active_chainstate.m_chain.Tip();
+    const Consensus::RuleSet mempool_rules = (tip && IsHarbergerActive(chainparams.GetConsensus(), *tip)) ? Consensus::HARBERGER : Consensus::NONE;
+
     // The mempool holds txs for the next block, so pass height+1 to CheckTxInputs
-    if (!Consensus::CheckTxInputs(tx, state, m_view, chainparams.GetConsensus(), /* per_input_adjustment = */ 0, m_active_chainstate.m_chain.Height() + 1, Consensus::NONE, ws.m_base_fees, &m_active_chainstate.m_asset_registry, &m_active_chainstate.m_name_registry)) {
+    if (!Consensus::CheckTxInputs(tx, state, m_view, chainparams.GetConsensus(), /* per_input_adjustment = */ 0, m_active_chainstate.m_chain.Height() + 1, mempool_rules, ws.m_base_fees, &m_active_chainstate.m_asset_registry, &m_active_chainstate.m_name_registry)) {
         return false; // state filled in by CheckTxInputs
     }
 
@@ -931,6 +941,34 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
             if (const auto other = Consensus::ParseAssetDefinition(entry.get().GetTx())) {
                 if (other->first == def->first) {
                     return state.Invalid(TxValidationResult::TX_MEMPOOL_POLICY, "txn-mempool-asset-conflict");
+                }
+            }
+        }
+    }
+
+    // Freiland: the same hazard for Harberger name claims. CheckTxInputs rejects a name already live
+    // in the CHAIN registry, but two txs can both claim a still-free name unconfirmed; a block with
+    // both fails bad-txns-harberger-name-taken. Reject this tx if a mempool tx already creates one of
+    // its names — UNLESS this tx spends that mempool output (a legitimate revalue/forced-buy chain of
+    // the same name is exactly one HRBG output spending its predecessor).
+    if (mempool_rules & Consensus::HARBERGER) {
+        std::set<uint256> names_created;
+        for (const CTxOut& o : tx.vout) {
+            Consensus::HarbergerCovenant cov;
+            if (Consensus::ParseHarbergerOutput(o.scriptPubKey, cov)) names_created.insert(cov.nameHash);
+        }
+        if (!names_created.empty()) {
+            std::set<COutPoint> spent;
+            for (const CTxIn& in : tx.vin) spent.insert(in.prevout);
+            for (const auto& entry : m_pool.entryAll()) {
+                const CTransaction& mtx = entry.get().GetTx();
+                for (size_t o = 0; o < mtx.vout.size(); ++o) {
+                    Consensus::HarbergerCovenant cov;
+                    if (Consensus::ParseHarbergerOutput(mtx.vout[o].scriptPubKey, cov)
+                        && names_created.count(cov.nameHash)
+                        && !spent.count(COutPoint(mtx.GetHash(), o))) {
+                        return state.Invalid(TxValidationResult::TX_MEMPOOL_POLICY, "txn-mempool-harberger-conflict");
+                    }
                 }
             }
         }
@@ -1179,7 +1217,24 @@ bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
     const CTransaction& tx = *ws.m_ptx;
     TxValidationState& state = ws.m_state;
 
-    constexpr script_verify_flags scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    script_verify_flags scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS;
+
+    // Freiland: a Harberger covenant output is an anyone-can-spend unknown-witness-version program
+    // (so old nodes accept the forced buy), which STANDARD flags reject via
+    // DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM. Once HARBERGER is active, a forced buy that spends such
+    // an input is a first-class, consensus-enforced transaction and must be relayable — so drop that
+    // one policy flag when this tx spends a HRBG input. The covenant's own rules (payout, successor,
+    // uniqueness) are enforced in CheckTxInputs, and only the exact 65-byte HRBG format is exempted,
+    // so the general reservation of upgradable witness versions is untouched.
+    if (const CBlockIndex* tip = m_active_chainstate.m_chain.Tip();
+        tip && IsHarbergerActive(args.m_chainparams.GetConsensus(), *tip)) {
+        for (const CTxIn& in : tx.vin) {
+            if (Consensus::IsHarbergerOutput(m_view.AccessCoin(in.prevout).out.scriptPubKey)) {
+                scriptVerifyFlags &= ~SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM;
+                break;
+            }
+        }
+    }
 
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.

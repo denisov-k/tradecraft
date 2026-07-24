@@ -12,6 +12,7 @@
 #include <compressor.h>
 #include <hash.h>
 #include <key.h>
+#include <policy/policy.h>
 #include <pubkey.h>
 #include <util/strencodings.h>
 #include <consensus/amount.h>
@@ -1043,6 +1044,41 @@ BOOST_AUTO_TEST_CASE(harberger_uniqueness)
       c.vout.emplace_back(40000, CScript() << OP_TRUE);
       CTransaction tx(c); TxValidationState st; CAmount fee = 0;
       BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::HARBERGER, fee, &reg, &names)); }
+}
+
+// RELAY standardness (docs/freiland-covenant-spec.md §Осталось): a HRBG output is an anyone-can-spend
+// unknown-witness-version program, so a forced buy that spends it must be relayable — AreInputsStandard
+// must NOT reject a HRBG input the way it rejects a generic WITNESS_UNKNOWN input. (The DISCOURAGE
+// policy flag is relaxed for HRBG spends in MemPoolAccept::PolicyScriptChecks; that path needs the
+// mempool and is covered by the functional tests, not here.)
+BOOST_AUTO_TEST_CASE(harberger_relay_standardness)
+{
+    CCoinsView base; CCoinsViewCache view(&base);
+
+    uint256 name; for (int i = 0; i < 32; ++i) name.begin()[i] = 0xaa;
+    uint160 owner; for (int i = 0; i < 20; ++i) owner.begin()[i] = 0xbb;
+
+    auto add = [&](const CScript& spk) {
+        const COutPoint op(Txid::FromUint256(m_rng.rand256()), 0);
+        CTxOut out(1000, spk); out.DeriveAssetTag();
+        view.AddCoin(op, Coin(out, 1000, 1, false), false);
+        return op;
+    };
+    const COutPoint opHrbg = add(BuildHarberger(name, owner, 100));
+    // a generic unknown-witness-version program that is NOT a HRBG covenant (no 65-byte OP_3 suffix)
+    const COutPoint opUnknown = add(CScript() << OP_1 << std::vector<unsigned char>(32, 0x77));
+
+    auto spend = [&](const COutPoint& op) {
+        CMutableTransaction c; c.version = NV3_TX_VERSION; c.lock_height = 1000;
+        c.vin.emplace_back(op);
+        c.vout.emplace_back(500, CScript() << OP_TRUE);
+        return CTransaction(c);
+    };
+
+    // spending a HRBG covenant input is relay-standard (exempted), spending a generic unknown
+    // witness program is not — proving the exemption is narrow to the HRBG format.
+    BOOST_CHECK(::AreInputsStandard(spend(opHrbg), view));
+    BOOST_CHECK(!::AreInputsStandard(spend(opUnknown), view));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

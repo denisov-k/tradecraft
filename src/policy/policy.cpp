@@ -21,6 +21,7 @@
 #include <coins.h>
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
+#include <consensus/harberger.h>
 #include <consensus/validation.h>
 #include <compressor.h>
 #include <policy/feerate.h>
@@ -243,6 +244,14 @@ bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
 
     for (unsigned int i = 0; i < tx.vin.size(); i++) {
         const CTxOut& prev = mapInputs.AccessCoin(tx.vin[i].prevout).out;
+
+        // Freiland: a Harberger covenant input is a well-defined (65-byte, OP_3) extension output,
+        // not an opaque unknown-witness program — spending it as a forced buy must be relayable. It
+        // classifies as WITNESS_UNKNOWN below; exempt it here (its consensus rules are enforced in
+        // CheckTxInputs, and mempool DISCOURAGE handling is relaxed for it in PolicyScriptChecks).
+        if (Consensus::IsHarbergerOutput(prev.scriptPubKey)) {
+            continue;
+        }
 
         std::vector<std::vector<unsigned char> > vSolutions;
         TxoutType whichType = Solver(prev.scriptPubKey, vSolutions);
