@@ -1471,8 +1471,11 @@ static ChainstateLoadResult InitAndLoadChainstate(
         // -reindex.
         if (do_reindex || do_reindex_chainstate) {
             fs::remove(chainman.m_options.datadir / "assets.dat");
+            fs::remove(chainman.m_options.datadir / "names.dat");   // Freiland: rebuilt from the chain
         } else if (WITH_LOCK(::cs_main, return !chainman.ActiveChainstate().LoadAssetRegistry())) {
             return {ChainstateLoadStatus::FAILURE, _("Error loading the asset registry (assets.dat). Restart with -reindex to rebuild it from the chain.")};
+        } else if (WITH_LOCK(::cs_main, return !chainman.ActiveChainstate().LoadNameRegistry())) {
+            return {ChainstateLoadStatus::FAILURE, _("Error loading the name registry (names.dat). Restart with -reindex to rebuild it from the chain.")};
         }
         std::tie(status, error) = catch_exceptions([&] { return VerifyLoadedChainstate(chainman, options); });
         if (status == node::ChainstateLoadStatus::SUCCESS) {

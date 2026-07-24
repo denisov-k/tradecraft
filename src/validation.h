@@ -24,6 +24,7 @@
 #include <coins.h>
 #include <consensus/amount.h>
 #include <consensus/asset.h>
+#include <consensus/harberger.h>
 #include <consensus/consensus.h>
 #include <cuckoocache.h>
 #include <deploymentstatus.h>
@@ -829,6 +830,13 @@ public:
     //! Suppresses PersistAssetRegistry — set (with a registry snapshot) around dry runs of
     //! ConnectBlock/DisconnectBlock such as VerifyDB, which must not clobber assets.dat.
     bool m_asset_registry_no_persist{false};
+
+    //! Freiland: name registry (nameHash -> live HRBG outpoint), mirroring the unspent Harberger
+    //! covenant coins in the UTXO set. Enforces name uniqueness; persisted to datadir/names.dat.
+    //! Shares m_asset_registry_no_persist for dry-run suppression.
+    Consensus::NameRegistry m_name_registry;
+    bool LoadNameRegistry();
+    void PersistNameRegistry() const;
 
     //! Reference to a BlockManager instance which itself is shared across all
     //! Chainstate instances.

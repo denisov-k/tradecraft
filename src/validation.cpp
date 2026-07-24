@@ -917,7 +917,7 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     }
 
     // The mempool holds txs for the next block, so pass height+1 to CheckTxInputs
-    if (!Consensus::CheckTxInputs(tx, state, m_view, chainparams.GetConsensus(), /* per_input_adjustment = */ 0, m_active_chainstate.m_chain.Height() + 1, Consensus::NONE, ws.m_base_fees, &m_active_chainstate.m_asset_registry)) {
+    if (!Consensus::CheckTxInputs(tx, state, m_view, chainparams.GetConsensus(), /* per_input_adjustment = */ 0, m_active_chainstate.m_chain.Height() + 1, Consensus::NONE, ws.m_base_fees, &m_active_chainstate.m_asset_registry, &m_active_chainstate.m_name_registry)) {
         return false; // state filled in by CheckTxInputs
     }
 
@@ -2027,6 +2027,44 @@ void Chainstate::PersistAssetRegistry() const
     }
 }
 
+static constexpr std::array<char, 5> NAME_REGISTRY_MAGIC{'F', 'R', 'N', 'M', '1'};
+
+void Chainstate::PersistNameRegistry() const
+{
+    if (!g_txout_serialize_asset_tag || m_asset_registry_no_persist) return;
+    const fs::path path = m_chainman.m_options.datadir / "names.dat";
+    const fs::path tmp = m_chainman.m_options.datadir / "names.dat.new";
+    try {
+        AutoFile file{fsbridge::fopen(tmp, "wb")};
+        if (file.IsNull()) { LogWarning("Freiland: unable to open %s for writing\n", fs::PathToString(tmp)); return; }
+        file << NAME_REGISTRY_MAGIC << m_name_registry;
+        if (!file.Commit()) { LogWarning("Freiland: failed to commit %s\n", fs::PathToString(tmp)); return; }
+        file.fclose();
+        if (!RenameOver(tmp, path)) LogWarning("Freiland: failed to rename %s\n", fs::PathToString(tmp));
+    } catch (const std::exception& e) {
+        LogWarning("Freiland: failed to persist name registry: %s\n", e.what());
+    }
+}
+
+bool Chainstate::LoadNameRegistry()
+{
+    if (!g_txout_serialize_asset_tag) return true;
+    const fs::path path = m_chainman.m_options.datadir / "names.dat";
+    AutoFile file{fsbridge::fopen(path, "rb")};
+    if (file.IsNull()) return true;   // no names persisted yet
+    try {
+        std::array<char, 5> magic;
+        file >> magic;
+        if (magic != NAME_REGISTRY_MAGIC) { LogError("Freiland: %s has wrong magic\n", fs::PathToString(path)); return false; }
+        file >> m_name_registry;
+    } catch (const std::exception& e) {
+        LogError("Freiland: failed to load name registry: %s\n", e.what());
+        return false;
+    }
+    LogInfo("Freiland: loaded %u name(s) from %s", m_name_registry.Size(), fs::PathToString(path));
+    return true;
+}
+
 bool Chainstate::LoadAssetRegistry()
 {
     if (!g_txout_serialize_asset_tag) return true;
@@ -2332,6 +2370,8 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
 
     // nVersion=3-lite: whether this disconnect rolled back any asset definition.
     bool asset_defs_changed = false;
+    // Freiland: whether this disconnect touched the name registry.
+    bool name_reg_changed = false;
 
     CBlockUndo blockUndo;
     if (!m_blockman.ReadBlockUndo(blockUndo, *pindex)) {
@@ -2364,6 +2404,28 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
         if (const auto d = Consensus::ParseAssetDefinition(tx)) {
             m_asset_registry.Undefine(d->first);
             asset_defs_changed = true;
+        }
+
+        // Freiland: reverse this tx's name-registry changes — the inverse of the ConnectBlock
+        // update: RELEASE the HRBG outputs it created (removed just below), then CLAIM the HRBG
+        // inputs it spent (restored below). Mirrors the UTXO rollback, so no separate undo data.
+        {
+            Consensus::HarbergerCovenant cov;
+            for (size_t o = 0; o < tx.vout.size(); o++) {
+                if (Consensus::ParseHarbergerOutput(tx.vout[o].scriptPubKey, cov)) {
+                    m_name_registry.Release(cov.nameHash, COutPoint(hash, o));
+                    name_reg_changed = true;
+                }
+            }
+            if (i > 0) {
+                const CTxUndo& tu = blockUndo.vtxundo[i-1];
+                for (unsigned int j = 0; j < tx.vin.size() && j < tu.vprevout.size(); ++j) {
+                    if (Consensus::ParseHarbergerOutput(tu.vprevout[j].out.scriptPubKey, cov)) {
+                        m_name_registry.Claim(cov.nameHash, tx.vin[j].prevout);
+                        name_reg_changed = true;
+                    }
+                }
+            }
         }
 
         // Check that all outputs are available and match the outputs in the block itself
@@ -2406,6 +2468,8 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
 
     // nVersion=3-lite: persist any asset-definition rollback (reorg survival across restarts).
     if (asset_defs_changed) PersistAssetRegistry();
+    // Freiland: persist any name-registry rollback.
+    if (name_reg_changed) PersistNameRegistry();
 
     return fClean ? DISCONNECT_OK : DISCONNECT_UNCLEAN;
 }
@@ -2470,6 +2534,18 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         bool keep{false};
         ~AssetDefsRollback() { if (!keep) for (const uint160& t : added) reg.Undefine(t); }
     } asset_defs_rollback{m_asset_registry};
+
+    // Freiland: same RAII guard for the name registry. ConnectBlock also runs as a dry run
+    // (fJustCheck) and can fail mid-block after mutating it; record each touched name's PRIOR
+    // value (nullopt = was absent) the first time, and restore on any non-keep exit.
+    bool name_reg_changed = false;
+    struct NameRegRollback {
+        Consensus::NameRegistry& reg;
+        std::map<uint256, std::optional<COutPoint>> prev;
+        bool keep{false};
+        void touch(const uint256& n) { if (!prev.count(n)) prev.emplace(n, reg.IsLive(n) ? std::optional<COutPoint>(reg.Get(n)) : std::nullopt); }
+        ~NameRegRollback() { if (!keep) for (auto& [n, v] : prev) { if (v) reg.Claim(n, *v); else reg.Erase(n); } }
+    } name_reg_rollback{m_name_registry};
 
     // Check it again in case a previous version let a bad block in
     // NOTE: We don't currently (re-)invoke ContextualCheckBlock() or
@@ -2780,7 +2856,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         {
             CAmount txfee = 0;
             TxValidationState tx_state;
-            if (!Consensus::CheckTxInputs(tx, tx_state, view, params.GetConsensus(), !truncate_inputs + !use_alu, pindex->nHeight, rules, txfee, &m_asset_registry)) {
+            if (!Consensus::CheckTxInputs(tx, tx_state, view, params.GetConsensus(), !truncate_inputs + !use_alu, pindex->nHeight, rules, txfee, &m_asset_registry, &m_name_registry)) {
                 // Any transaction validation failure in ConnectBlock is a block consensus failure
                 state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
                               tx_state.GetRejectReason(),
@@ -2793,6 +2869,28 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
                 m_asset_registry.Define(d->first, d->second);
                 asset_defs_changed = true;
                 asset_defs_rollback.added.push_back(d->first);
+            }
+            // Freiland: mirror this tx's HRBG coins into the name registry — release each spent
+            // HRBG input, then claim each created HRBG output — so later txs in this block see the
+            // uniqueness state and a reorg rolls back with the UTXO set. Inputs are still in `view`
+            // (UpdateCoins spends them below). Tracked unconditionally: HRBG coins only exist post-
+            // activation, and uniqueness is enforced (rules&HARBERGER) inside CheckTxInputs.
+            {
+                Consensus::HarbergerCovenant cov;
+                for (const CTxIn& in : tx.vin) {
+                    if (Consensus::ParseHarbergerOutput(view.AccessCoin(in.prevout).out.scriptPubKey, cov)) {
+                        name_reg_rollback.touch(cov.nameHash);
+                        m_name_registry.Release(cov.nameHash, in.prevout);
+                        name_reg_changed = true;
+                    }
+                }
+                for (size_t o = 0; o < tx.vout.size(); ++o) {
+                    if (Consensus::ParseHarbergerOutput(tx.vout[o].scriptPubKey, cov)) {
+                        name_reg_rollback.touch(cov.nameHash);
+                        m_name_registry.Claim(cov.nameHash, COutPoint(tx.GetHash(), o));
+                        name_reg_changed = true;
+                    }
+                }
             }
             nFees += GetTimeAdjustedValue(txfee, pindex->nHeight - (int)tx.lock_height) + !use_alu;
 
@@ -2925,6 +3023,8 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     // fJustCheck) — keep its asset definitions and persist them, so they survive a restart.
     asset_defs_rollback.keep = true;
     if (asset_defs_changed) PersistAssetRegistry();
+    name_reg_rollback.keep = true;
+    if (name_reg_changed) PersistNameRegistry();
 
     // add this block to the view's block chain
     view.SetBestBlock(pindex->GetBlockHash());

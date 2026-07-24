@@ -81,6 +81,7 @@ public:
     // Release only if the live holder is exactly `op` — a stale release must not evict a name that
     // has since moved to a different outpoint (e.g. reorg edge cases, out-of-order application).
     void Release(const uint256& n, const COutPoint& op) { auto it = m_names.find(n); if (it != m_names.end() && it->second == op) m_names.erase(it); }
+    void Erase(const uint256& n) { m_names.erase(n); }   // unconditional — for rollback restore
     size_t Size() const { return m_names.size(); }
     SERIALIZE_METHODS(NameRegistry, obj) { READWRITE(obj.m_names); }
 };
