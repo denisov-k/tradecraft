@@ -3574,10 +3574,76 @@ return RPCHelpMan{
     };
 }
 
+// Freiland: authoritative discovery for the Harberger name covenant. The consensus name registry
+// (nameHash -> outpoint) mirrors the unspent HRBG coins, so this dumps every live name with the
+// coin details a client needs to buy it — owner (the forced-sale payout target), the committed floor,
+// the melting deposit, and the current forced-sale price V (present value at the next block). Names
+// are addressed by their hash (sha256 of the human name); pass one to look a single name up.
+static RPCHelpMan getharbergernames()
+{
+    return RPCHelpMan{
+        "getharbergernames",
+        "List live Freiland Harberger names from the consensus name registry, with the coin details a buyer needs.\n",
+        {
+            {"namehash", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "If given, return only the name with this 32-byte hash."},
+        },
+        RPCResult{RPCResult::Type::ARR, "", "", {
+            {RPCResult::Type::OBJ, "", "", {
+                {RPCResult::Type::STR_HEX, "namehash", "the name's 32-byte registry key (sha256 of the name)"},
+                {RPCResult::Type::STR, "outpoint", "the live HRBG coin, txid:vout"},
+                {RPCResult::Type::STR_HEX, "owner", "the 20-byte owner commitment; the forced-sale payout goes to 0014{owner}"},
+                {RPCResult::Type::NUM, "floorV", "the self-assessed Gesell dust floor (kria)"},
+                {RPCResult::Type::NUM, "deposit", "the melting deposit, nominal (kria)"},
+                {RPCResult::Type::NUM, "refheight", "the deposit's reference height"},
+                {RPCResult::Type::NUM, "price", "the current forced-sale price V = present value at the next block (kria)"},
+            }},
+        }},
+        RPCExamples{HelpExampleCli("getharbergernames", "") + HelpExampleRpc("getharbergernames", "")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    ChainstateManager& chainman = EnsureAnyChainman(request.context);
+    std::optional<uint256> filter;
+    if (!request.params[0].isNull()) {
+        const std::string hex = request.params[0].get_str();
+        if (!IsHex(hex) || hex.size() != 64) throw JSONRPCError(RPC_INVALID_PARAMETER, "namehash must be a 32-byte hex string");
+        filter = uint256(ParseHex(hex));   // forward byte order (matches the stored nameHash), not reversed
+    }
+
+    LOCK(cs_main);
+    Chainstate& active = chainman.ActiveChainstate();
+    CCoinsViewCache& coins = active.CoinsTip();
+    const CBlockIndex* tip = chainman.ActiveChain().Tip();
+    const int next_height = (tip ? tip->nHeight : 0) + 1;   // a buyer spends in the next block
+
+    UniValue arr(UniValue::VARR);
+    for (const auto& [nameHash, op] : active.m_name_registry.Names()) {
+        if (filter && nameHash != *filter) continue;
+        const std::optional<Coin> coin = coins.GetCoin(op);
+        if (!coin) continue;                                // registry mirrors the UTXO set; be defensive
+        Consensus::HarbergerCovenant cov;
+        if (!Consensus::ParseHarbergerOutput(coin->out.scriptPubKey, cov)) continue;
+        UniValue o(UniValue::VOBJ);
+        // forward byte order (= sha256 of the name), NOT uint256::GetHex()'s reversed display, so it
+        // matches the client's nameHashOf(); the outpoint txid below keeps the reversed txid convention.
+        o.pushKV("namehash", HexStr(std::vector<unsigned char>(nameHash.begin(), nameHash.end())));
+        o.pushKV("outpoint", op.hash.GetHex() + ":" + std::to_string(op.n));
+        o.pushKV("owner", HexStr(std::vector<unsigned char>(cov.owner.begin(), cov.owner.end())));
+        o.pushKV("floorV", cov.floorV);
+        o.pushKV("deposit", coin->out.GetReferenceValue());
+        o.pushKV("refheight", (int64_t)coin->refheight);
+        o.pushKV("price", coin->GetPresentValue(next_height));
+        arr.push_back(std::move(o));
+    }
+    return arr;
+},
+    };
+}
+
 
 void RegisterBlockchainRPCCommands(CRPCTable& t)
 {
     static const CRPCCommand commands[]{
+        {"blockchain", &getharbergernames},
         {"blockchain", &getblockchaininfo},
         {"blockchain", &getchaintxstats},
         {"blockchain", &getblockstats},
