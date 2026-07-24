@@ -177,7 +177,7 @@ int64_t GetTransactionSigOpCost(const CTransaction& tx, const CCoinsViewCache& i
     return nSigOps;
 }
 
-bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, const Consensus::Params& params, int per_input_adjustment, int nSpendHeight, Consensus::RuleSet rules, CAmount& txfee, const Consensus::AssetRegistry* registry)
+bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, const Consensus::Params& params, int per_input_adjustment, int nSpendHeight, Consensus::RuleSet rules, CAmount& txfee, const Consensus::AssetRegistry* registry, const Consensus::NameRegistry* names)
 {
     // are the actual inputs available?
     if (!inputs.HaveInputs(tx)) {
@@ -370,6 +370,25 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
             }
             if (!successor) {
                 return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-harberger-no-successor");
+            }
+        }
+
+        // Name UNIQUENESS: creating a HRBG output for name N is valid only if N is free, OR this tx
+        // spends N's current live holder (a transfer/revalue replacing it). Also: at most one HRBG
+        // output per name within a single tx. Needs the name registry reflecting the pre-tx state.
+        std::set<COutPoint> hrbg_inputs;
+        for (const CTxIn& in : tx.vin) {
+            if (Consensus::IsHarbergerOutput(inputs.AccessCoin(in.prevout).out.scriptPubKey)) hrbg_inputs.insert(in.prevout);
+        }
+        std::set<uint256> names_out;
+        for (const CTxOut& o : tx.vout) {
+            Consensus::HarbergerCovenant cov;
+            if (!Consensus::ParseHarbergerOutput(o.scriptPubKey, cov)) continue;
+            if (!names_out.insert(cov.nameHash).second) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-harberger-dup-name");
+            }
+            if (names && names->IsLive(cov.nameHash) && !hrbg_inputs.count(names->Get(cov.nameHash))) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-harberger-name-taken");
             }
         }
     }

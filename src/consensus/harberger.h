@@ -14,10 +14,13 @@
 #define FREICOIN_CONSENSUS_HARBERGER_H
 
 #include <consensus/amount.h>
+#include <primitives/transaction.h>
 #include <script/script.h>
+#include <serialize.h>
 #include <uint256.h>
 
 #include <cstdint>
+#include <map>
 #include <vector>
 
 namespace Consensus {
@@ -62,6 +65,25 @@ inline bool IsHarbergerOutput(const CScript& spk)
     HarbergerCovenant tmp;
     return ParseHarbergerOutput(spk, tmp);
 }
+
+/** nameHash -> the live HRBG outpoint holding that name. Enforces name UNIQUENESS: at most one
+ *  live covenant output per name. The registry MIRRORS the unspent HRBG coins in the UTXO set —
+ *  a HRBG output created ⇒ Claim, a HRBG coin spent ⇒ Release. Because it tracks coins (not a
+ *  separate ledger), it rolls back symmetrically with the UTXO set across reorgs: DisconnectBlock
+ *  just applies the inverse coin ops (remove output ⇒ Release, restore input ⇒ Claim), no extra
+ *  undo data. Held per-Chainstate, persisted like the AssetRegistry. */
+class NameRegistry {
+    std::map<uint256, COutPoint> m_names;
+public:
+    bool IsLive(const uint256& n) const { return m_names.count(n) != 0; }
+    COutPoint Get(const uint256& n) const { auto it = m_names.find(n); return it != m_names.end() ? it->second : COutPoint(); }
+    void Claim(const uint256& n, const COutPoint& op) { m_names[n] = op; }
+    // Release only if the live holder is exactly `op` — a stale release must not evict a name that
+    // has since moved to a different outpoint (e.g. reorg edge cases, out-of-order application).
+    void Release(const uint256& n, const COutPoint& op) { auto it = m_names.find(n); if (it != m_names.end() && it->second == op) m_names.erase(it); }
+    size_t Size() const { return m_names.size(); }
+    SERIALIZE_METHODS(NameRegistry, obj) { READWRITE(obj.m_names); }
+};
 
 } // namespace Consensus
 

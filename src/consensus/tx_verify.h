@@ -39,7 +39,8 @@ namespace Consensus {
  * Preconditions: tx.IsCoinBase() is false.
  */
 class AssetRegistry;   // nVersion=3-lite: per-asset rates (consensus/asset.h)
-[[nodiscard]] bool CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, const Consensus::Params& params, int per_input_adjustment, int nSpendHeight, RuleSet rules, CAmount& txfee, const AssetRegistry* registry = nullptr);
+class NameRegistry;    // Freiland: name uniqueness (consensus/harberger.h)
+[[nodiscard]] bool CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, const Consensus::Params& params, int per_input_adjustment, int nSpendHeight, RuleSet rules, CAmount& txfee, const AssetRegistry* registry = nullptr, const NameRegistry* names = nullptr);
 } // namespace Consensus
 
 /** Auxiliary functions for transaction validation (ideally should not be exposed) */

@@ -982,4 +982,67 @@ BOOST_AUTO_TEST_CASE(harberger_forced_buy)
       BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::NONE, fee, &reg)); }
 }
 
+// Name UNIQUENESS (docs/freiland-covenant-spec.md §4): at most one live HRBG output per name.
+BOOST_AUTO_TEST_CASE(harberger_uniqueness)
+{
+    const Consensus::Params& consensus = Params().GetConsensus();
+    Consensus::AssetRegistry reg;
+    CCoinsView base; CCoinsViewCache view(&base);
+    const uint32_t refheight = 1000;
+
+    uint256 N; for (int i = 0; i < 32; ++i) N.begin()[i] = 0xaa;      // an already-claimed name
+    uint256 M; for (int i = 0; i < 32; ++i) M.begin()[i] = 0xdd;      // a free name
+    uint160 alice; for (int i = 0; i < 20; ++i) alice.begin()[i] = 0xbb;
+    uint160 bob;   for (int i = 0; i < 20; ++i) bob.begin()[i]   = 0xcc;
+    const CAmount V = 1000;
+
+    auto add = [&](const CScript& spk, CAmount amt) {
+        const COutPoint op(Txid::FromUint256(m_rng.rand256()), 0);
+        CTxOut out(amt, spk); out.DeriveAssetTag();
+        view.AddCoin(op, Coin(out, refheight, 1, false), false);
+        return op;
+    };
+    const COutPoint opN   = add(BuildHarberger(N, alice, 100), V);    // N's live holder
+    const COutPoint opFrc = add(CScript() << OP_TRUE, 50000);
+    const CScript payAlice = CScript() << OP_0 << std::vector<unsigned char>(alice.begin(), alice.end());
+
+    Consensus::NameRegistry names;
+    names.Claim(N, opN);                                             // N is live at opN
+
+    // fresh claim of a FREE name M (no HRBG input) — allowed
+    { CMutableTransaction c; c.version = NV3_TX_VERSION; c.lock_height = refheight;
+      c.vin.emplace_back(opFrc);
+      c.vout.emplace_back(V, BuildHarberger(M, bob, 100)); c.vout.back().DeriveAssetTag();
+      c.vout.emplace_back(40000, CScript() << OP_TRUE);
+      CTransaction tx(c); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::HARBERGER, fee, &reg, &names)); }
+
+    // claim of the TAKEN name N without spending its holder — rejected
+    { CMutableTransaction c; c.version = NV3_TX_VERSION; c.lock_height = refheight;
+      c.vin.emplace_back(opFrc);
+      c.vout.emplace_back(V, BuildHarberger(N, bob, 100)); c.vout.back().DeriveAssetTag();
+      c.vout.emplace_back(40000, CScript() << OP_TRUE);
+      CTransaction tx(c); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::HARBERGER, fee, &reg, &names));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-harberger-name-taken"); }
+
+    // two HRBG outputs for the same name in one tx — rejected
+    { CMutableTransaction c; c.version = NV3_TX_VERSION; c.lock_height = refheight;
+      c.vin.emplace_back(opFrc);
+      c.vout.emplace_back(V, BuildHarberger(M, bob, 100)); c.vout.back().DeriveAssetTag();
+      c.vout.emplace_back(V, BuildHarberger(M, alice, 100)); c.vout.back().DeriveAssetTag();
+      CTransaction tx(c); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::HARBERGER, fee, &reg, &names));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-harberger-dup-name"); }
+
+    // valid TRANSFER of N: spends N's holder (opN) + forced-buy (pay V to Alice + successor N) — allowed
+    { CMutableTransaction c; c.version = NV3_TX_VERSION; c.lock_height = refheight;
+      c.vin.emplace_back(opN); c.vin.emplace_back(opFrc);
+      c.vout.emplace_back(V, payAlice);
+      c.vout.emplace_back(V, BuildHarberger(N, bob, 100)); c.vout.back().DeriveAssetTag();
+      c.vout.emplace_back(40000, CScript() << OP_TRUE);
+      CTransaction tx(c); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::HARBERGER, fee, &reg, &names)); }
+}
+
 BOOST_AUTO_TEST_SUITE_END()
