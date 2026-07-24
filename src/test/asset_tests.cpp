@@ -983,6 +983,46 @@ BOOST_AUTO_TEST_CASE(harberger_forced_buy)
       BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::NONE, fee, &reg)); }
 }
 
+// OWNER PATH — withdraw/release (docs spec §Осталося owner-path): with NO successor the name is being
+// freed and its deposit reclaimed, which ONLY the owner may do — authorized by co-spending a coin at
+// the owner's own address 0014{owner} (whose signature the interpreter verifies). A forced buyer lacks
+// that key, so the successor rule is relaxed only for the owner.
+BOOST_AUTO_TEST_CASE(harberger_owner_withdraw)
+{
+    const Consensus::Params& consensus = Params().GetConsensus();
+    Consensus::AssetRegistry reg;
+    CCoinsView base; CCoinsViewCache view(&base);
+    const uint32_t refheight = 1000;
+    uint256 name; for (int i = 0; i < 32; ++i) name.begin()[i] = 0xaa;
+    uint160 alice; for (int i = 0; i < 20; ++i) alice.begin()[i] = 0xbb;   // owner
+    const CAmount V = 1000;
+    auto add = [&](const CScript& spk, CAmount amt) {
+        const COutPoint op(Txid::FromUint256(m_rng.rand256()), 0);
+        CTxOut out(amt, spk); out.DeriveAssetTag();
+        view.AddCoin(op, Coin(out, refheight, 1, false), false);
+        return op;
+    };
+    const COutPoint opHrbg  = add(BuildHarberger(name, alice, 100), V);
+    const CScript ownerSpk  = CScript() << OP_0 << std::vector<unsigned char>(alice.begin(), alice.end());
+    const COutPoint opOwner = add(ownerSpk, 50000);                        // a coin at the owner's address
+    const COutPoint opOther = add(CScript() << OP_TRUE, 50000);            // a non-owner coin
+
+    // valid withdraw: HRBG + the owner's coin, no successor → owner reclaims the deposit
+    { CMutableTransaction c; c.version = NV3_TX_VERSION; c.lock_height = refheight;
+      c.vin.emplace_back(opHrbg); c.vin.emplace_back(opOwner);
+      c.vout.emplace_back(V + 40000, CScript() << OP_TRUE);
+      CTransaction tx(c); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::HARBERGER, fee, &reg)); }
+
+    // no successor AND no owner input (a forced buyer trying to pocket the deposit) → rejected
+    { CMutableTransaction c; c.version = NV3_TX_VERSION; c.lock_height = refheight;
+      c.vin.emplace_back(opHrbg); c.vin.emplace_back(opOther);
+      c.vout.emplace_back(V + 40000, CScript() << OP_TRUE);
+      CTransaction tx(c); TxValidationState st; CAmount fee = 0;
+      BOOST_CHECK(!Consensus::CheckTxInputs(tx, st, view, consensus, 0, refheight, Consensus::HARBERGER, fee, &reg));
+      BOOST_CHECK_EQUAL(st.GetRejectReason(), "bad-txns-harberger-no-successor"); }
+}
+
 // Name UNIQUENESS (docs/freiland-covenant-spec.md §4): at most one live HRBG output per name.
 BOOST_AUTO_TEST_CASE(harberger_uniqueness)
 {

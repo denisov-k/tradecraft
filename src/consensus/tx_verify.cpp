@@ -357,24 +357,40 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
             // distance, but asset_pv(_, 0, _) == 0 ⇒ V == 0 ⇒ it only lets an already-worthless
             // (fully-lapsed) name be taken for 0, never a theft of a funded name. (audit 2026-07-24)
             const CAmount V = asset_pv(coin.out.assetTag, coin.out.GetReferenceValue(), (uint32_t)(tx.lock_height - coin.refheight));
-            // (1) an output pays >= V host FRC to the owner (0014{owner})
-            const CScript pay_script = CScript() << OP_0 << std::vector<unsigned char>(in_cov.owner.begin(), in_cov.owner.end());
-            bool paid = false;
-            for (const CTxOut& o : tx.vout) {
-                if (o.assetTag.IsNull() && o.scriptPubKey == pay_script && o.GetReferenceValue() >= V) { paid = true; break; }
-            }
-            if (!paid) {
-                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-harberger-unpaid");
-            }
-            // (2) a successor HRBG output for the SAME name with value >= V (the deposit carries)
+            const CScript owner_script = CScript() << OP_0 << std::vector<unsigned char>(in_cov.owner.begin(), in_cov.owner.end());
+            // Does a successor HRBG output carry the deposit forward for the SAME name (value >= V)?
             bool successor = false;
             for (const CTxOut& o : tx.vout) {
                 Consensus::HarbergerCovenant out_cov;
                 if (Consensus::ParseHarbergerOutput(o.scriptPubKey, out_cov)
                     && out_cov.nameHash == in_cov.nameHash && o.GetReferenceValue() >= V) { successor = true; break; }
             }
-            if (!successor) {
-                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-harberger-no-successor");
+            if (successor) {
+                // FORCED BUY / revalue: anyone may take the name, but must pay >= V host FRC to the
+                // committed owner (0014{owner}). With the successor requirement above this stops a free
+                // acquisition (host FRC is fungible, so paying only the owner could be sourced from the
+                // name's own deposit).
+                bool paid = false;
+                for (const CTxOut& o : tx.vout) {
+                    if (o.assetTag.IsNull() && o.scriptPubKey == owner_script && o.GetReferenceValue() >= V) { paid = true; break; }
+                }
+                if (!paid) {
+                    return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-harberger-unpaid");
+                }
+            } else {
+                // WITHDRAW / RELEASE (owner path): with no successor the name is being freed and its
+                // deposit reclaimed — only the OWNER may do this. Authorization is proven by co-spending
+                // a coin at the owner's own address 0014{owner}: the script interpreter verifies that
+                // input's signature (an ordinary witness-v0 spend), so no signature check is needed here.
+                // A forced buyer cannot use this path (they lack the owner's key), so this relaxes the
+                // successor rule ONLY for the owner.
+                bool owner_auth = false;
+                for (const CTxIn& in2 : tx.vin) {
+                    if (inputs.AccessCoin(in2.prevout).out.scriptPubKey == owner_script) { owner_auth = true; break; }
+                }
+                if (!owner_auth) {
+                    return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-harberger-no-successor");
+                }
             }
         }
 
