@@ -351,6 +351,11 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
                 return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-harberger-multiple-inputs");
             }
             // V = the deposit's present value at this tx's lock_height (host demurrage, shift 20).
+            // The (uint32_t) cast is safe for any FUNDED name: GetReferenceValue()>0 means the
+            // monotonic-lock-height check above (lock_height >= refheight) applied, so distance >= 0.
+            // A zero-value HRBG coin can skip that check under PROTOCOL_CLEANUP and underflow the
+            // distance, but asset_pv(_, 0, _) == 0 ⇒ V == 0 ⇒ it only lets an already-worthless
+            // (fully-lapsed) name be taken for 0, never a theft of a funded name. (audit 2026-07-24)
             const CAmount V = asset_pv(coin.out.assetTag, coin.out.GetReferenceValue(), (uint32_t)(tx.lock_height - coin.refheight));
             // (1) an output pays >= V host FRC to the owner (0014{owner})
             const CScript pay_script = CScript() << OP_0 << std::vector<unsigned char>(in_cov.owner.begin(), in_cov.owner.end());
