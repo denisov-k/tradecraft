@@ -2393,6 +2393,12 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
     bool fEnforceBIP30 = !((pindex->nHeight==91722 && pindex->GetBlockHash() == uint256{"00000000000271a2dc26e7667f8419f2e15416dc6955e5a6c6cdf3f2574dd08e"}) ||
                            (pindex->nHeight==91812 && pindex->GetBlockHash() == uint256{"00000000000af0aed4792b1acee3d966af36cf5def14935db8de83d6f9306f2f"}));
 
+    // Freiland: the same active-rule set ConnectBlock used for this block (keyed on the parent), so
+    // the name-registry mirror below is gated identically in both directions — see the ConnectBlock
+    // note. Only post-activation HRBG coins are ever tracked; pre-activation HRBG-shaped outputs are
+    // plain anyone-can-spend witness-v2 outputs with no uniqueness enforcement and must NOT be mirrored.
+    const Consensus::RuleSet rules = pindex->pprev ? GetActiveRules(m_chainman.GetConsensus(), *pindex->pprev) : Consensus::NONE;
+
     // undo transactions in reverse order
     for (int i = block.vtx.size() - 1; i >= 0; i--) {
         const CTransaction &tx = *(block.vtx[i]);
@@ -2409,7 +2415,7 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
         // Freiland: reverse this tx's name-registry changes — the inverse of the ConnectBlock
         // update: RELEASE the HRBG outputs it created (removed just below), then CLAIM the HRBG
         // inputs it spent (restored below). Mirrors the UTXO rollback, so no separate undo data.
-        {
+        if (rules & Consensus::HARBERGER) {
             Consensus::HarbergerCovenant cov;
             for (size_t o = 0; o < tx.vout.size(); o++) {
                 if (Consensus::ParseHarbergerOutput(tx.vout[o].scriptPubKey, cov)) {
@@ -2889,9 +2895,12 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
             // Freiland: mirror this tx's HRBG coins into the name registry — release each spent
             // HRBG input, then claim each created HRBG output — so later txs in this block see the
             // uniqueness state and a reorg rolls back with the UTXO set. Inputs are still in `view`
-            // (UpdateCoins spends them below). Tracked unconditionally: HRBG coins only exist post-
-            // activation, and uniqueness is enforced (rules&HARBERGER) inside CheckTxInputs.
-            {
+            // (UpdateCoins spends them below). Gated on rules&HARBERGER so the registry only ever
+            // tracks coins that went through uniqueness enforcement (tx_verify) — pre-activation
+            // HRBG-shaped outputs are plain anyone-can-spend witness-v2 coins and must not be mirrored,
+            // or two pre-activation claims of one name would seed a permanent registry/UTXO divergence.
+            // DisconnectBlock is gated by the identical rule set for reverse symmetry.
+            if (rules & Consensus::HARBERGER) {
                 Consensus::HarbergerCovenant cov;
                 for (const CTxIn& in : tx.vin) {
                     if (Consensus::ParseHarbergerOutput(view.AccessCoin(in.prevout).out.scriptPubKey, cov)) {
@@ -5194,20 +5203,27 @@ VerifyDBResult CVerifyDB::VerifyDB(
         return VerifyDBResult::SUCCESS;
     }
 
-    // nVersion=3-lite: VerifyDB dry-runs DisconnectBlock (and, at level 4, ConnectBlock)
-    // against a throwaway coins view, but the asset registry lives on the chainstate itself —
-    // snapshot it and suppress persistence for the duration, so verification can neither
-    // corrupt the in-memory registry nor clobber assets.dat with an interim state.
-    struct AssetRegistryGuard {
+    // nVersion=3-lite / Freiland: VerifyDB dry-runs DisconnectBlock (and, at level 4, ConnectBlock)
+    // against a throwaway coins view, but the asset AND name registries live on the chainstate
+    // itself — snapshot BOTH and suppress persistence for the duration, so verification can neither
+    // corrupt the in-memory registries nor clobber assets.dat/names.dat with an interim state.
+    // CRITICAL for names: DisconnectBlock mutates m_name_registry directly with no internal RAII
+    // rollback (unlike ConnectBlock's NameRegRollback), so without this snapshot a normal startup
+    // VerifyDB (disconnect-only, default checkblocks=6) would leave the registry rolled back ~6
+    // blocks behind the tip — recent names look free, the node re-claims them, peers reject with
+    // bad-txns-harberger-name-taken → chain split. (m_asset_registry_no_persist gates PersistNameRegistry.)
+    struct RegistryGuard {
         Chainstate& m_cs;
-        Consensus::AssetRegistry m_saved;
-        explicit AssetRegistryGuard(Chainstate& cs) : m_cs(cs), m_saved(cs.m_asset_registry)
+        Consensus::AssetRegistry m_saved_assets;
+        Consensus::NameRegistry m_saved_names;
+        explicit RegistryGuard(Chainstate& cs) : m_cs(cs), m_saved_assets(cs.m_asset_registry), m_saved_names(cs.m_name_registry)
         {
             m_cs.m_asset_registry_no_persist = true;
         }
-        ~AssetRegistryGuard()
+        ~RegistryGuard()
         {
-            m_cs.m_asset_registry = std::move(m_saved);
+            m_cs.m_asset_registry = std::move(m_saved_assets);
+            m_cs.m_name_registry = std::move(m_saved_names);
             m_cs.m_asset_registry_no_persist = false;
         }
     } registry_guard{chainstate};
