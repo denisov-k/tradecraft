@@ -191,6 +191,9 @@ public:
         std::unordered_map<Consensus::BuriedDeployment, int> activation_heights{};
         bool fastprune{false};
         bool enforce_bip94{false};
+        // Freiland: override the Harberger covenant activation time on regtest (default 0 = active
+        // from genesis). Lets functional tests exercise the pre-activation window / activation edge.
+        std::optional<int64_t> harberger_activation_time{};
     };
 
     static std::unique_ptr<const CChainParams> RegTest(const RegTestOptions& options);

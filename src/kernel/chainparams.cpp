@@ -710,8 +710,9 @@ public:
          */
         consensus.protocol_cleanup_activation_time = std::numeric_limits<int64_t>::max();
         consensus.size_expansion_activation_time = std::numeric_limits<int64_t>::max();
-        // Freiland Harberger covenant: ACTIVE from genesis on regtest (covenant functional tests).
-        consensus.harberger_activation_time = 0;
+        // Freiland Harberger covenant: ACTIVE from genesis on regtest (covenant functional tests),
+        // unless -harbergeractivationtime overrides it (to test the pre-activation window / edge).
+        consensus.harberger_activation_time = opts.harberger_activation_time.value_or(0);
 
         consensus.original_adjust_interval = 2016; // two weeks
         consensus.filtered_adjust_interval = 9; // 1.5 hrs
