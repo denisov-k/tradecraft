@@ -533,11 +533,12 @@ public:
         // Two months prior to main net
         // 16 February 2026 00:00:00 UTC
         consensus.size_expansion_activation_time = 1771200000;
-        // Freiland Harberger covenant activation on the Freimarkets nv3 signet.
-        // 7 August 2026 ~10:05 UTC (deploy 2026-07-24 + ~14 days: buffer for the relay harbergernames
-        // endpoint, the wallet covenant flag / web deploy, and peers to upgrade). Soft-fork: until this
-        // time HRBG outputs are plain anyone-can-spend and the covenant code is dormant.
-        consensus.harberger_activation_time = 1786097120;
+        // Freiland Harberger covenant activation on the Freimarkets nv3 signet — IMMEDIATE.
+        // 2026-07-24 10:33:58 UTC (unix 1784889238). Activation fires when a block's median-time-past
+        // exceeds T-3h; the tip's MTP is already well past that, so the covenant enforces from the very
+        // next block. Safe to activate now on this signet: WE sign every block (challenge key), it is a
+        // soft-fork (non-upgraded peers just follow our blocks), and no HRBG coins exist yet.
+        consensus.harberger_activation_time = 1784889238;
 
         consensus.original_adjust_interval = 2016; // two weeks
         consensus.filtered_adjust_interval = 9; // 1.5 hrs
