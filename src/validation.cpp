@@ -2852,6 +2852,22 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
 
         nInputs += tx.vin.size();
 
+        // Freiland: a coinbase must never create a Harberger covenant. The coinbase is the one tx
+        // that skips CheckTxInputs (deposit funding, forced-buy authorisation, name uniqueness) and
+        // the registry mirror below, so a coinbase HRBG output would be an unregistered free name
+        // claim that also defeats uniqueness (a later tx sees the name as unclaimed). Reject it.
+        if ((rules & Consensus::HARBERGER) && tx.IsCoinBase()) {
+            bool cb_has_hrbg = false;
+            for (const CTxOut& o : tx.vout) {
+                if (Consensus::IsHarbergerOutput(o.scriptPubKey)) { cb_has_hrbg = true; break; }
+            }
+            if (cb_has_hrbg) {
+                state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-harberger-output",
+                              "coinbase creates a Harberger covenant");
+                break;
+            }
+        }
+
         if (!tx.IsCoinBase())
         {
             CAmount txfee = 0;
