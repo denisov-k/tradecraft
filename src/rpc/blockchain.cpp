@@ -3592,7 +3592,7 @@ static RPCHelpMan getharbergernames()
                 {RPCResult::Type::STR_HEX, "namehash", "the name's 32-byte registry key (sha256 of the name)"},
                 {RPCResult::Type::STR, "outpoint", "the live HRBG coin, txid:vout"},
                 {RPCResult::Type::STR_HEX, "owner", "the 20-byte owner commitment; the forced-sale payout goes to 0014{owner}"},
-                {RPCResult::Type::NUM, "floorV", "the self-assessed Gesell dust floor (kria)"},
+                {RPCResult::Type::NUM, "reserved", "reserved padding bytes: parsed, never enforced (they keep the extension suffix out of the asset-tag sizes)"},
                 {RPCResult::Type::NUM, "deposit", "the melting deposit, nominal (kria)"},
                 {RPCResult::Type::NUM, "refheight", "the deposit's reference height"},
                 {RPCResult::Type::NUM, "price", "the current forced-sale price V = present value at the next block (kria)"},
@@ -3628,7 +3628,7 @@ static RPCHelpMan getharbergernames()
         o.pushKV("namehash", HexStr(std::vector<unsigned char>(nameHash.begin(), nameHash.end())));
         o.pushKV("outpoint", op.hash.GetHex() + ":" + std::to_string(op.n));
         o.pushKV("owner", HexStr(std::vector<unsigned char>(cov.owner.begin(), cov.owner.end())));
-        o.pushKV("floorV", cov.floorV);
+        o.pushKV("reserved", cov.reserved);
         o.pushKV("deposit", coin->out.GetReferenceValue());
         o.pushKV("refheight", (int64_t)coin->refheight);
         o.pushKV("price", coin->GetPresentValue(next_height));

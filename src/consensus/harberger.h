@@ -29,7 +29,13 @@ namespace Consensus {
 struct HarbergerCovenant {
     uint256 nameHash;   //!< sha256 of the name — the consensus name-registry key
     uint160 owner;      //!< hash160 the forced-sale price V is paid to (0014{owner})
-    CAmount floorV{0};  //!< Gesell dust floor (kria); below this the name lapses
+    //! Reserved padding, parsed but NEVER enforced. It exists for a STRUCTURAL reason: DeriveAssetTag
+    //! (primitives/transaction.h) reads a 20- or 52-byte witness-extension suffix as an ASSET TAG, and
+    //! owner(20) on its own would land in that class — the deposit would stop being host currency.
+    //! These 8 bytes keep the suffix at 28. (They were once documented as a "dust floor"; no rule ever
+    //! read them, and both Harberger and Gesell argue against such a threshold — the melting deposit
+    //! already makes an abandoned name cheap to take.)
+    CAmount reserved{0};
 };
 
 //! Exact serialized length of a Harberger scriptPubKey.
@@ -37,8 +43,8 @@ static constexpr size_t HARBERGER_SPK_SIZE = 1 + 1 + 32 + 1 + 20 + 1 + 8 + 1; //
 
 /** Decode a Harberger covenant output. Exact wire form (see spec §3):
  *
- *    OP_1 0x20 <nameHash:32> 0x14 <owner:20> 0x08 <floorV:8 LE> OP_3
- *    ^witver-2  ^program=nameHash  ^suffix: owner + floorV        ^HRBG ext-version marker
+ *    OP_1 0x20 <nameHash:32> 0x14 <owner:20> 0x08 <reserved:8 LE> OP_3
+ *    ^witver-2  ^program=nameHash  ^suffix: owner + reserved      ^HRBG ext-version marker
  *
  *  Returns true and fills `out` iff `spk` is exactly this form. Pure decode: no consensus effect,
  *  no registry, no validation — a byte-for-byte mirror of decodeAssetSpk()'s version-3 branch. */
@@ -49,13 +55,13 @@ inline bool ParseHarbergerOutput(const CScript& spk, HarbergerCovenant& out)
     if (p[0]  != OP_1)  return false;   // witness version 2 (unknown to old nodes ⇒ anyone-can-spend)
     if (p[1]  != 0x20)  return false;   // push 32: nameHash (the witness program)
     if (p[34] != 0x14)  return false;   // push 20: owner
-    if (p[55] != 0x08)  return false;   // push 8:  floorV
+    if (p[55] != 0x08)  return false;   // push 8:  reserved (padding — see the field comment)
     if (p[64] != OP_3)  return false;   // trailing extended-output version = HRBG
     out.nameHash = uint256(std::vector<unsigned char>(p + 2, p + 34));
     out.owner = uint160(std::vector<unsigned char>(p + 35, p + 55));
-    CAmount floorV = 0;
-    for (int i = 7; i >= 0; --i) floorV = (floorV << 8) | static_cast<CAmount>(p[56 + i]);
-    out.floorV = floorV;
+    CAmount reserved = 0;
+    for (int i = 7; i >= 0; --i) reserved = (reserved << 8) | static_cast<CAmount>(p[56 + i]);
+    out.reserved = reserved;
     return true;
 }
 

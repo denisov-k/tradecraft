@@ -877,10 +877,10 @@ BOOST_AUTO_TEST_CASE(dex_ranged)
 // Freiland Harberger covenant (docs/freiland-covenant-spec.md §3): the OP_3 witness-v2 output
 // format, decoded by Consensus::ParseHarbergerOutput. Rule-free step — parsing only, mirroring the
 // JS model (core/asset-spk.mjs / apps/web/test/harberger.test.mjs). No validation path yet.
-static CScript BuildHarberger(const uint256& name, const uint160& owner, CAmount floorV)
+static CScript BuildHarberger(const uint256& name, const uint160& owner, CAmount reserved)
 {
     std::vector<unsigned char> fv(8);
-    for (int i = 0; i < 8; ++i) { fv[i] = (unsigned char)(floorV & 0xff); floorV >>= 8; }
+    for (int i = 0; i < 8; ++i) { fv[i] = (unsigned char)(reserved & 0xff); reserved >>= 8; }
     return CScript() << OP_1
         << std::vector<unsigned char>(name.begin(), name.end())
         << std::vector<unsigned char>(owner.begin(), owner.end())
@@ -891,10 +891,10 @@ BOOST_AUTO_TEST_CASE(harberger_output_format)
 {
     uint256 name; for (int i = 0; i < 32; ++i) name.begin()[i] = 0xaa;
     uint160 owner; for (int i = 0; i < 20; ++i) owner.begin()[i] = 0xbb;
-    const CAmount floorV = 1000000; // 0.01 FRC dust floor
+    const CAmount reserved = 1000000; // any value: parsed, never enforced
 
-    const CScript spk = BuildHarberger(name, owner, floorV);
-    // exact wire form: OP_1 20{name} 14{owner} 08{floorV LE} OP_3  ⇒ 65 bytes
+    const CScript spk = BuildHarberger(name, owner, reserved);
+    // exact wire form: OP_1 20{name} 14{owner} 08{reserved LE} OP_3  ⇒ 65 bytes
     BOOST_CHECK_EQUAL(spk.size(), Consensus::HARBERGER_SPK_SIZE);
     BOOST_CHECK_EQUAL(spk[0], OP_1);   // witness version 2 (anyone-can-spend on old nodes)
     BOOST_CHECK_EQUAL(spk[64], OP_3);  // HRBG extended-output marker
@@ -903,14 +903,14 @@ BOOST_AUTO_TEST_CASE(harberger_output_format)
     BOOST_CHECK(Consensus::ParseHarbergerOutput(spk, h));
     BOOST_CHECK(h.nameHash == name);
     BOOST_CHECK(h.owner == owner);
-    BOOST_CHECK_EQUAL(h.floorV, floorV);
+    BOOST_CHECK_EQUAL(h.reserved, reserved);
     BOOST_CHECK(Consensus::IsHarbergerOutput(spk));
 
-    // floorV little-endian round-trips across the range
+    // the reserved field little-endian round-trips across the range
     for (CAmount v : {CAmount{0}, CAmount{1}, CAmount{255}, CAmount{256}, CAmount{100000000}, CAmount{0xdeadbeef}, MAX_MONEY}) {
         Consensus::HarbergerCovenant r;
         BOOST_CHECK(Consensus::ParseHarbergerOutput(BuildHarberger(name, owner, v), r));
-        BOOST_CHECK_EQUAL(r.floorV, v);
+        BOOST_CHECK_EQUAL(r.reserved, v);
     }
 
     // NOT a HRBG output: a host program, a fungible asset (OP_1 suffix), an asset+tokens (OP_2), and
@@ -946,7 +946,7 @@ BOOST_AUTO_TEST_CASE(harberger_forced_buy)
         view.AddCoin(op, Coin(out, refheight, 1, false), false);
         return op;
     };
-    const COutPoint opHrbg = add(BuildHarberger(name, alice, 100 /*floorV*/), V);   // host FRC deposit
+    const COutPoint opHrbg = add(BuildHarberger(name, alice, 100 /*reserved*/), V);   // host FRC deposit
     const COutPoint opFrc  = add(CScript() << OP_TRUE, 50000);                       // buyer's funding
     const CScript payAlice = CScript() << OP_0 << std::vector<unsigned char>(alice.begin(), alice.end());
 
