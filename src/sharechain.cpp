@@ -5,10 +5,10 @@
 #include <sharechain.h>
 
 #include <consensus/merkle.h> // for ComputeMerkleMapRootFromBranch, ComputeMerkleRootFromBranch
-#include <hash.h> // for CHash256, CHashWriter
+#include <hash.h> // for CHash256, HashWriter
 #include <primitives/block.h> // for CBlockHeader
 #include <rpc/server.h> // for CRPCTable
-#include <streams.h> // for CDataStream
+#include <streams.h> // for DataStream
 #include <span.h> // for Span, MakeUCharSpan
 #include <util/check.h> // for Assert
 
@@ -84,7 +84,7 @@ CBlockHeader Share::GetBlockHeader(bool *mutated) const {
     }
 
     // Compute the hash of the share header.
-    CHashWriter ss(PROTOCOL_VERSION);
+    HashWriter ss{};
     ss << version;
     ss << bits;
     ss << height;
@@ -120,11 +120,11 @@ CBlockHeader Share::GetBlockHeader(bool *mutated) const {
     h.Write(MakeUCharSpan(id));
     // Write the rest of the coinbase transaction.
     {
-        CDataStream ds(SER_NETWORK, PROTOCOL_VERSION);
+        DataStream ds{};
         ds << wit.nLockTime;
         h.Write(MakeUCharSpan(ds));
     }
-    hash = ss.GetHash();
+    h.Finalize(hash);
 
     // Calculate hashMerkleRoot for the block header.
     hash = ComputeMerkleRootFromBranch(hash, wit.branch, 0);

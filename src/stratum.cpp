@@ -283,7 +283,7 @@ void UpdateSegwitCommitment(const ChainstateManager& chainman, const StratumWork
 //! The default address to use for mining rewards if no address is provided.
 //! Set once at startup, so it doesn't need to be protected by cs_stratum.f
 static CTxDestination g_default_mining_address;
-static WitnessUnknown g_default_share_address;
+static WitnessUnknown g_default_share_address{0u, std::vector<unsigned char>{}};
 
 //! The minimum difficulty to use for mining, for DoS protection.  This is
 //! configurable via the -miningmindifficulty option.  As of late 2023, reasonable
@@ -1698,38 +1698,20 @@ void BlockWatcher()
 
 struct SetDefaultShareAddress {
     bool operator()(const CNoDestination&) const { return false; }
+    bool operator()(const PubKeyDestination&) const { return false; }
     bool operator()(const PKHash&) const { return false; }
     bool operator()(const ScriptHash&) const { return false; }
-    bool operator()(const WitnessV0KeyHash& id) const {
-        g_default_share_address.version = 0;
-        g_default_share_address.length = id.size();
-        std::copy(id.begin(), id.end(), &g_default_share_address.program[0]);
-        std::fill(&g_default_share_address.program[id.size()],
-                  &g_default_share_address.program[sizeof(g_default_share_address.program)], 0);
+    bool operator()(const PayToAnchor&) const { return false; }
+    bool operator()(const WitnessV0LongHash& id) const {
+        g_default_share_address = WitnessUnknown(0u, std::vector<unsigned char>(id.begin(), id.end()));
         return true;
     }
-    bool operator()(const WitnessV0ScriptHash& id) const {
-        g_default_share_address.version = 0;
-        g_default_share_address.length = id.size();
-        std::copy(id.begin(), id.end(), &g_default_share_address.program[0]);
-        std::fill(&g_default_share_address.program[id.size()],
-                  &g_default_share_address.program[sizeof(g_default_share_address.program)], 0);
-        return true;
-    }
-    bool operator()(const WitnessV1Taproot& id) const {
-        g_default_share_address.version = 1;
-        g_default_share_address.length = id.size();
-        std::copy(id.begin(), id.end(), &g_default_share_address.program[0]);
-        std::fill(&g_default_share_address.program[id.size()],
-                  &g_default_share_address.program[sizeof(g_default_share_address.program)], 0);
+    bool operator()(const WitnessV0ShortHash& id) const {
+        g_default_share_address = WitnessUnknown(0u, std::vector<unsigned char>(id.begin(), id.end()));
         return true;
     }
     bool operator()(const WitnessUnknown& id) const {
-        g_default_share_address.version = id.version;
-        g_default_share_address.length = id.length;
-        std::copy(&id.program[0], &id.program[id.length], &g_default_share_address.program[0]);
-        std::fill(&g_default_share_address.program[id.length],
-                  &g_default_share_address.program[sizeof(g_default_share_address.program)], 0);
+        g_default_share_address = id;
         return true;
     }
 };

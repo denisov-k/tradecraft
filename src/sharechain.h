@@ -201,8 +201,12 @@ struct Share {
         READWRITE(obj.height);
         READWRITE(obj.total_work);
         READWRITE(obj.prev_shares);
-        READWRITE(COMPACTSIZE(obj.miner.GetWitnessVersion()));
-        READWRITE(obj.miner.GetWitnessProgram());
+        // WitnessUnknown has no public fields on 28.x: serialize through copies and rebuild on read.
+        uint64_t miner_version = obj.miner.GetWitnessVersion();
+        std::vector<unsigned char> miner_program = obj.miner.GetWitnessProgram();
+        READWRITE(COMPACTSIZE(miner_version));
+        READWRITE(miner_program);
+        SER_READ(obj, obj.miner = WitnessUnknown(static_cast<unsigned int>(miner_version), miner_program));
         READWRITE(obj.wit);
     }
 

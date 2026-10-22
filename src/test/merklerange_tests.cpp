@@ -22,23 +22,23 @@ BOOST_AUTO_TEST_CASE(merklerange_empty) {
 
 BOOST_AUTO_TEST_CASE(merklerange_append) {
     const std::vector<uint256> leaves = {
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('a')).GetHash(), // 0
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('b')).GetHash(), // 1
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('c')).GetHash(), // 2
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('d')).GetHash(), // 3
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('e')).GetHash(), // 4
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('f')).GetHash(), // 5
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('g')).GetHash(), // 6
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('h')).GetHash(), // 7
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('i')).GetHash(), // 8
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('j')).GetHash(), // 9
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('k')).GetHash(), // 10
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('l')).GetHash(), // 11
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('m')).GetHash(), // 12
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('n')).GetHash(), // 13
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('o')).GetHash(), // 14
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('p')).GetHash(), // 15
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('q')).GetHash(), // 16
+        (HashWriter{} << static_cast<uint8_t>('a')).GetHash(), // 0
+        (HashWriter{} << static_cast<uint8_t>('b')).GetHash(), // 1
+        (HashWriter{} << static_cast<uint8_t>('c')).GetHash(), // 2
+        (HashWriter{} << static_cast<uint8_t>('d')).GetHash(), // 3
+        (HashWriter{} << static_cast<uint8_t>('e')).GetHash(), // 4
+        (HashWriter{} << static_cast<uint8_t>('f')).GetHash(), // 5
+        (HashWriter{} << static_cast<uint8_t>('g')).GetHash(), // 6
+        (HashWriter{} << static_cast<uint8_t>('h')).GetHash(), // 7
+        (HashWriter{} << static_cast<uint8_t>('i')).GetHash(), // 8
+        (HashWriter{} << static_cast<uint8_t>('j')).GetHash(), // 9
+        (HashWriter{} << static_cast<uint8_t>('k')).GetHash(), // 10
+        (HashWriter{} << static_cast<uint8_t>('l')).GetHash(), // 11
+        (HashWriter{} << static_cast<uint8_t>('m')).GetHash(), // 12
+        (HashWriter{} << static_cast<uint8_t>('n')).GetHash(), // 13
+        (HashWriter{} << static_cast<uint8_t>('o')).GetHash(), // 14
+        (HashWriter{} << static_cast<uint8_t>('p')).GetHash(), // 15
+        (HashWriter{} << static_cast<uint8_t>('q')).GetHash(), // 16
     };
 
     // <empty>
@@ -352,7 +352,7 @@ BOOST_AUTO_TEST_CASE(merklerange_append) {
 
 BOOST_AUTO_TEST_CASE(merklerange_swap) {
     const std::vector<uint256> leaves = {
-        (CHashWriter(PROTOCOL_VERSION) << static_cast<uint8_t>('a')).GetHash(), // 0
+        (HashWriter{} << static_cast<uint8_t>('a')).GetHash(), // 0
     };
 
     // <empty>
