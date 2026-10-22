@@ -957,6 +957,17 @@ bool ShareChainstateManager::DumpToFile(const fs::path& path) const
     std::vector<ShareMessage> entries;
     std::set<uint256> seen;
     for (const auto& cs : chain_shares) {
+        // The fruits a chain share lists hang from its ancestors, so they can be
+        // accepted as soon as they precede it in the file.
+        for (const uint256& f : cs->fruits) {
+            if (seen.count(f) || state.chain_shares.count(f)) continue;
+            auto it = state.fruits.find(f);
+            if (it == state.fruits.end()) continue;
+            ShareMessage m;
+            m.share = it->second;
+            entries.push_back(std::move(m));
+            seen.insert(f);
+        }
         ShareMessage m;
         m.share = cs->share;
         m.has_body = true;
@@ -997,7 +1008,7 @@ bool ShareChainstateManager::DumpToFile(const fs::path& path) const
         LogPrintf("Share chain: failed to dump %s: %s\n", fs::PathToString(path), e.what());
         return false;
     }
-    LogPrintf("Share chain: dumped %d chain shares and %d shares to %s\n", chain_shares.size(), entries.size() - chain_shares.size(), fs::PathToString(path));
+    LogPrintf("Share chain: dumped %d chain shares and %d other shares to %s\n", chain_shares.size(), entries.size() - chain_shares.size(), fs::PathToString(path));
     return true;
 }
 
@@ -1030,11 +1041,20 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
             else if (r == ShareAccept::MISSING) { deferred_msgs.push_back(m); ++deferred; }
             else ++rejected;
         }
-        // one retry pass for entries whose dependencies came later in the file
-        for (const ShareMessage& m : deferred_msgs) {
-            std::vector<uint256> missing;
-            std::string reason;
-            if (ProcessShareMessage(m, missing, reason, /*live=*/false) == ShareAccept::ACCEPTED) { ++accepted; --deferred; }
+        // Entries whose dependencies came later in the file: retry until a pass
+        // makes no progress (dependencies can chain several levels deep).
+        while (!deferred_msgs.empty()) {
+            std::vector<ShareMessage> still;
+            for (const ShareMessage& m : deferred_msgs) {
+                std::vector<uint256> missing;
+                std::string reason;
+                const ShareAccept r = ProcessShareMessage(m, missing, reason, /*live=*/false);
+                if (r == ShareAccept::ACCEPTED || r == ShareAccept::DUPLICATE) { ++accepted; --deferred; }
+                else if (r == ShareAccept::MISSING) still.push_back(m);
+                else { ++rejected; --deferred; }
+            }
+            if (still.size() == deferred_msgs.size()) break;
+            deferred_msgs = std::move(still);
         }
     } catch (const std::exception& e) {
         LogPrintf("Share chain: failed to load %s: %s\n", fs::PathToString(path), e.what());
