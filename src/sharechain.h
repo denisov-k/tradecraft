@@ -9,6 +9,8 @@
 #include <consensus/merklerange.h> // for MmrAccumulator
 #include <kernel/sharechainstatemanager_opts.h> // for kernel::ShareChainstateManagerOpts
 #include <primitives/block.h> // for CBlockHeader
+#include <primitives/transaction.h> // for CMutableTransaction
+#include <script/script.h> // for CScript
 #include <serialize.h> // for Serialize, Unserialize, VARINT
 #include <uint256.h> // for uint256
 #include <util/check.h> // for Assert
@@ -31,10 +33,29 @@ struct ShareChainParams {
     std::string GetShareChainTypeString() const { return ShareChainTypeToString(m_share_chain_type); }
     /** Return the share chain type */
     ShareChainType GetShareChainType() const { return m_share_chain_type; }
+    //! Compact target every share has to meet (fixed for now; retargeting is a later step).
+    uint32_t ShareBits() const { return m_share_bits; }
+    //! A chain share must meet share target / ChainFactor (M in doc/sharechain-uncles.md).
+    uint32_t ChainFactor() const { return m_chain_factor; }
+    //! How many chain heights after its anchor a fruit stays listable (R).
+    uint32_t Recency() const { return m_recency; }
+    //! PPLNS window = WindowK * work(Freicoin aux target).
+    uint32_t WindowK() const { return m_window_k; }
+    CAmount Dust() const { return m_dust; }
+    size_t MaxPayees() const { return m_max_payees; }
+    //! Key of the share commitment in the coinbase Merkle hash map.
+    const uint256& ChainId() const { return m_chain_id; }
 
 protected:
     bool is_valid{false};
     ShareChainType m_share_chain_type{ShareChainType::SOLO};
+    uint32_t m_share_bits{0x1d00ffff};
+    uint32_t m_chain_factor{6};
+    uint32_t m_recency{10};
+    uint32_t m_window_k{4};
+    CAmount m_dust{1000};
+    size_t m_max_payees{100};
+    uint256 m_chain_id;
 };
 
 /**
@@ -76,9 +97,11 @@ struct ShareWitness {
     //! The coinbase transaction of the block, serialized up to the point of
     //! the commitment.
     std::vector<unsigned char> cb1;
-    //! The nLockTime field of the coinbase, the only field after the
-    //! commitment.
+    //! The nLockTime and lock_height fields of the coinbase: the only fields
+    //! after the commitment (lock_height is serialized for every version-2
+    //! transaction, and block templates build version-2 coinbases).
     uint32_t nLockTime{0};
+    uint32_t lock_height{0};
 
     //! The path through the Block's transaction Merkle tree to the coinbase
     //! transaction, which is always the left-most leaf.
@@ -116,6 +139,7 @@ struct ShareWitness {
             ::Serialize(s, byte);
         }
         ::Serialize(s, nLockTime);
+        ::Serialize(s, lock_height);
         // The path to the coinbase transaction.
         ::Serialize(s, VARINT(branch.size()));
         for (const auto& hash : branch) {
@@ -150,6 +174,7 @@ struct ShareWitness {
             ::Unserialize(s, byte);
         }
         ::Unserialize(s, nLockTime);
+        ::Unserialize(s, lock_height);
         // The path to the coinbase transaction.
         len = 0;
         ::Unserialize(s, VARINT(len));
@@ -331,7 +356,12 @@ struct ShareChain {
 };
 
 struct ShareChainstate {
+    //! The active (most-work) chain of chain shares.
     ShareChain chain;
+    //! Every known chain share by hash (active chain and forks).
+    std::map<uint256, std::shared_ptr<ShareIndex>> chain_shares;
+    //! Every known share (fruit) by hash, chain shares included.
+    std::map<uint256, Share> fruits;
 };
 
 struct ShareChainstateManager {
@@ -360,6 +390,63 @@ struct ShareChainstateManager {
     std::shared_ptr<ShareIndex> ActiveTip() const EXCLUSIVE_LOCKS_REQUIRED(GetMutex()) {
         return ActiveChain().Tip();
     }
+
+    const ShareChainParams& Params() const { return m_options.sharechainparams; }
+    arith_uint256 ShareTarget() const;
+    arith_uint256 ChainTarget() const;
+
+    //! Create the (empty) active chainstate.  Call once after construction.
+    void Initialize() EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+
+    //! miner + bits of a known share, for ComputeShareCredits.
+    std::optional<FruitInfo> LookupFruit(const uint256& hash) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+
+    //! Everything a template needs from the share chain for a given miner.
+    struct TemplateState {
+        uint256 anchor;
+        uint256 prev_root;
+        uint32_t height{0};
+        uint256 total_work;
+        uint32_t bits{0};
+        std::vector<uint256> fruits;
+        uint256 fruits_root;
+        std::vector<std::pair<WitnessUnknown, CAmount>> payouts;
+    };
+    //! `total` is the coinbase value to split; `frc_bits` the Freicoin aux target
+    //! that sizes the PPLNS window.
+    TemplateState GetTemplateState(const WitnessUnknown& miner, CAmount total, uint32_t frc_bits) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+
+    //! Validate and record a share that met the share target (doc/sharechain-uncles.md A1, A2).
+    //! On success the share is in fruits (it may also become a chain share via AcceptChainShare).
+    bool AcceptFruit(const Share& share, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+
+    //! Validate and record a share that also met the chain target, with the
+    //! body behind its roots (C1, C2); updates the active chain if it has more work (C3).
+    bool AcceptChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+
+    //! Fruits that a new chain share on top of `tip` may list: known, anchored
+    //! within Recency() of the new height, not listed by the last Recency()
+    //! ancestors, sorted, unique.
+    std::vector<uint256> ListableFruits(const ShareIndex* tip) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+
+private:
+    //! Linkage checks shared by fruits and chain shares: anchor known (or
+    //! null on an empty chain), height, total_work, prev_root.
+    bool CheckLinkage(const Share& share, const ShareIndex** anchor_out, std::string& reason) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Coinbase outputs of the share equal PPLNS(anchor) (A2).
+    bool CheckPayouts(const Share& share, const ShareIndex* anchor, std::string& reason) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Rebuild the active chain vector from a tip.
+    void SetActiveTip(const std::shared_ptr<ShareIndex>& tip) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
 };
+
+/** MMR root that a share hanging from `anchor` must carry as prev_root:
+ *  the accumulator of all chain shares up to and including the anchor. */
+uint256 PrevRootAfter(const ShareIndex* anchor);
+/** Merkle root of a fruit list (null for an empty list). */
+uint256 FruitsRoot(const std::vector<uint256>& fruits);
+/** The commitment output a share template appends last: OP_RETURN <root||id>. */
+CScript ShareCommitmentScript(const uint256& commitment_root);
+/** Rebuild the full coinbase of a share from its witness (cb1 || root || id || nLockTime || lock_height). */
+bool ReconstructShareCoinbase(const Share& share, CMutableTransaction& cb);
 
 // End of File

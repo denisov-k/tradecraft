@@ -15,6 +15,8 @@ std::string ShareChainTypeToString(ShareChainType share_chain)
         return "solo";
     case ShareChainType::MAIN:
         return "main";
+    case ShareChainType::REGTEST:
+        return "regtest";
     }
     assert(false);
 }

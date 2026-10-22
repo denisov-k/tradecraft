@@ -11,6 +11,7 @@
 enum class ShareChainType {
     SOLO,
     MAIN,
+    REGTEST,
 };
 
 std::string ShareChainTypeToString(ShareChainType share_chain);

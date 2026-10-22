@@ -13,11 +13,14 @@
 #include <util/check.h> // for Assert
 
 #include <algorithm> // for std::sort
+#include <set> // for std::set
+#include <script/standard.h> // for GetScriptForDestination
+#include <addresstype.h>
 #include <array> // for std::array
 #include <utility> // for std::swap
 
 void SetupShareChainParamsOptions(ArgsManager& argsman) {
-    argsman.AddArg("-sharechain=<name>", "Use the share chain <name> (default: main). Allowed values: solo or main", ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
+    argsman.AddArg("-sharechain=<name>", "Use the share chain <name> (default: main). Allowed values: solo, main or regtest", ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
 }
 
 struct SoloShareChainParams : public ShareChainParams {
@@ -31,6 +34,18 @@ struct MainShareChainParams : public ShareChainParams {
     MainShareChainParams() {
         is_valid = true;
         m_share_chain_type = ShareChainType::MAIN;
+        m_chain_id = uint256S("5348415245434841494e2d4d41494e0000000000000000000000000000000001"); // 'SHARECHAIN-MAIN' || 1
+    }
+};
+
+struct RegtestShareChainParams : public ShareChainParams {
+    RegtestShareChainParams() {
+        is_valid = true;
+        m_share_chain_type = ShareChainType::REGTEST;
+        m_share_bits = 0x207fffff;   // every hash is a share: tests and the regtest stack
+        m_chain_factor = 4;
+        m_recency = 10;
+        m_chain_id = uint256S("5348415245434841494e2d5245475445535400000000000000000000000001");
     }
 };
 
@@ -43,6 +58,9 @@ void SelectShareParams(const ShareChainType share_chain) {
         return;
     case ShareChainType::MAIN:
         g_share_chain_params = std::unique_ptr<const ShareChainParams>(new MainShareChainParams());
+        return;
+    case ShareChainType::REGTEST:
+        g_share_chain_params = std::unique_ptr<const ShareChainParams>(new RegtestShareChainParams());
         return;
     }
     // Switch statement is exhaustive.
@@ -59,6 +77,7 @@ void swap(ShareWitness& lhs, ShareWitness& rhs) {
     swap(lhs.commit, rhs.commit);
     swap(lhs.cb1, rhs.cb1);
     swap(lhs.nLockTime, rhs.nLockTime);
+    swap(lhs.lock_height, rhs.lock_height);
     swap(lhs.branch, rhs.branch);
     swap(lhs.nVersion, rhs.nVersion);
     swap(lhs.hashPrevBlock, rhs.hashPrevBlock);
@@ -124,6 +143,7 @@ CBlockHeader Share::GetBlockHeader(bool *mutated) const {
     {
         DataStream ds{};
         ds << wit.nLockTime;
+        ds << wit.lock_height;
         h.Write(MakeUCharSpan(ds));
     }
     h.Finalize(hash);
@@ -245,6 +265,361 @@ std::vector<std::pair<WitnessUnknown, CAmount>> ComputeSharePayouts(ShareCredits
     }
 
     return std::vector<std::pair<WitnessUnknown, CAmount>>(outs.begin(), outs.end());
+}
+
+// ---------------------------------------------------------------------------
+// Share chain state
+
+static const std::array<unsigned char, 4> SHARE_COMMIT_ID = { 0x4b, 0x4a, 0x49, 0x48 };
+
+uint256 PrevRootAfter(const ShareIndex* anchor)
+{
+    if (!anchor) {
+        return MmrAccumulator().GetHash();
+    }
+    MmrAccumulator mmr(anchor->peaks);
+    mmr.Append(anchor->GetHash());
+    return mmr.GetHash();
+}
+
+uint256 FruitsRoot(const std::vector<uint256>& fruits)
+{
+    if (fruits.empty()) {
+        return uint256();
+    }
+    return ComputeMerkleRoot(fruits, nullptr);
+}
+
+CScript ShareCommitmentScript(const uint256& commitment_root)
+{
+    std::vector<unsigned char> data(commitment_root.begin(), commitment_root.end());
+    data.insert(data.end(), SHARE_COMMIT_ID.begin(), SHARE_COMMIT_ID.end());
+    return CScript() << OP_RETURN << data;
+}
+
+bool ReconstructShareCoinbase(const Share& share, CMutableTransaction& cb)
+{
+    // The witness stores the coinbase up to the commitment root; the rest is
+    // root || id || nLockTime || lock_height, exactly as GetBlockHeader hashes it.
+    HashWriter ss{};
+    ss << share.version << share.bits << share.height << share.total_work << share.anchor << share.prev_root << share.fruits_root;
+    ss << COMPACTSIZE(share.miner.GetWitnessVersion());
+    ss << share.miner.GetWitnessProgram();
+    bool invalid = false;
+    const uint256 root = ComputeMerkleMapRootFromBranch(ss.GetHash(), share.wit.commit, share.wit.share_chain_path, &invalid);
+    if (invalid) {
+        return false;
+    }
+    DataStream ds{};
+    ds.write(MakeByteSpan(share.wit.cb1));
+    ds << root;
+    ds.write(MakeByteSpan(SHARE_COMMIT_ID));
+    ds << share.wit.nLockTime;
+    ds << share.wit.lock_height;
+    try {
+        ds >> TX_NO_WITNESS(cb);
+    } catch (const std::exception&) {
+        return false;
+    }
+    return ds.empty();
+}
+
+arith_uint256 ShareChainstateManager::ShareTarget() const
+{
+    arith_uint256 target;
+    target.SetCompact(Params().ShareBits());
+    return target;
+}
+
+arith_uint256 ShareChainstateManager::ChainTarget() const
+{
+    return ShareTarget() / std::max<uint32_t>(1, Params().ChainFactor());
+}
+
+void ShareChainstateManager::Initialize()
+{
+    if (!m_active_chainstate) {
+        m_active_chainstate = std::make_shared<ShareChainstate>();
+    }
+}
+
+std::optional<FruitInfo> ShareChainstateManager::LookupFruit(const uint256& hash) const
+{
+    const auto& fruits = ActiveChainstate().fruits;
+    auto it = fruits.find(hash);
+    if (it == fruits.end()) {
+        return std::nullopt;
+    }
+    return FruitInfo{it->second.miner, it->second.bits};
+}
+
+bool ShareChainstateManager::CheckLinkage(const Share& share, const ShareIndex** anchor_out, std::string& reason) const
+{
+    const ShareChainstate& state = ActiveChainstate();
+    const ShareIndex* anchor = nullptr;
+    if (!share.anchor.IsNull()) {
+        auto it = state.chain_shares.find(share.anchor);
+        if (it == state.chain_shares.end()) {
+            reason = "share-anchor-unknown";
+            return false;
+        }
+        anchor = it->second.get();
+    } else if (!state.chain_shares.empty()) {
+        reason = "share-anchor-null";
+        return false;
+    }
+    const uint32_t expected_height = anchor ? anchor->share.height + 1 : 0;
+    if (share.height != expected_height) {
+        reason = "share-bad-height";
+        return false;
+    }
+    arith_uint256 expected_work = 0;
+    if (anchor) {
+        expected_work = UintToArith256(anchor->share.total_work) + GetShareWork(anchor->share.bits);
+    }
+    if (UintToArith256(share.total_work) != expected_work) {
+        reason = "share-bad-total-work";
+        return false;
+    }
+    if (share.prev_root != PrevRootAfter(anchor)) {
+        reason = "share-bad-prev-root";
+        return false;
+    }
+    if (share.bits != Params().ShareBits()) {
+        reason = "share-bad-bits";
+        return false;
+    }
+    if (share.wit.share_chain_path != Params().ChainId()) {
+        reason = "share-bad-chain-id";
+        return false;
+    }
+    if (anchor_out) {
+        *anchor_out = anchor;
+    }
+    return true;
+}
+
+bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* anchor, std::string& reason) const
+{
+    CMutableTransaction cb;
+    if (!ReconstructShareCoinbase(share, cb)) {
+        reason = "share-bad-coinbase";
+        return false;
+    }
+    if (cb.vout.empty()) {
+        reason = "share-coinbase-no-outputs";
+        return false;
+    }
+    // The last output is the commitment; everything before it is the payout vector.
+    CAmount total = 0;
+    for (const CTxOut& out : cb.vout) {
+        total += out.nValue;
+    }
+    // The window is sized by the Freicoin target the template was built for;
+    // the share header has no such field, so the coinbase's own bits are not
+    // available here: use the share chain's notion (window in shares) via the
+    // Freicoin header's nBits carried in the witness.
+    const arith_uint256 window = GetShareWork(share.wit.nBits) * Params().WindowK();
+    const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
+    ShareCredits credits = ComputeShareCredits(anchor, window, lookup);
+    const auto payouts = ComputeSharePayouts(std::move(credits), total, share.miner, Params().Dust(), Params().MaxPayees());
+    if (cb.vout.size() != payouts.size() + 1) {
+        reason = "share-bad-payout-count";
+        return false;
+    }
+    for (size_t i = 0; i < payouts.size(); ++i) {
+        const CScript expected = GetScriptForDestination(payouts[i].first);
+        if (cb.vout[i].nValue != payouts[i].second || cb.vout[i].scriptPubKey != expected) {
+            reason = "share-bad-payout";
+            return false;
+        }
+    }
+    if (cb.vout.back().nValue != 0) {
+        reason = "share-bad-commitment-output";
+        return false;
+    }
+    return true;
+}
+
+bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason)
+{
+    ShareChainstate& state = ActiveChainstate();
+    const uint256 hash = share.GetHash();
+    if (state.fruits.count(hash)) {
+        reason = "share-duplicate";
+        return false;
+    }
+    const ShareIndex* anchor = nullptr;
+    if (!CheckLinkage(share, &anchor, reason)) {
+        return false;
+    }
+    bool mutated = false;
+    const uint256 pow_hash = share.GetBlockHeader(&mutated).GetHash();
+    if (mutated || UintToArith256(pow_hash) > ShareTarget()) {
+        reason = "share-high-hash";
+        return false;
+    }
+    if (!CheckPayouts(share, anchor, reason)) {
+        return false;
+    }
+    state.fruits.emplace(hash, share);
+    return true;
+}
+
+std::vector<uint256> ShareChainstateManager::ListableFruits(const ShareIndex* tip) const
+{
+    const ShareChainstate& state = ActiveChainstate();
+    const uint32_t new_height = tip ? tip->share.height + 1 : 0;
+    const uint32_t recency = Params().Recency();
+    // Fruits listed by the last R chain shares are excluded.
+    std::set<uint256> listed;
+    {
+        const ShareIndex* cur = tip;
+        for (uint32_t i = 0; cur && i < recency; ++i, cur = cur->prev_share.get()) {
+            listed.insert(cur->fruits.begin(), cur->fruits.end());
+        }
+    }
+    std::vector<uint256> out;
+    for (const auto& item : state.fruits) {
+        const Share& f = item.second;
+        if (listed.count(item.first)) continue;
+        // anchor must be on the chain below the new share, within recency
+        const ShareIndex* a = nullptr;
+        if (!f.anchor.IsNull()) {
+            auto it = state.chain_shares.find(f.anchor);
+            if (it == state.chain_shares.end()) continue;
+            a = it->second.get();
+            if (a->share.height + recency < new_height) continue;
+            // on the active chain?
+            const ShareIndex* cur = tip;
+            while (cur && cur->share.height > a->share.height) cur = cur->prev_share.get();
+            if (cur != a) continue;
+        } else if (tip && new_height > recency) {
+            continue;
+        }
+        out.push_back(item.first);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+ShareChainstateManager::TemplateState ShareChainstateManager::GetTemplateState(const WitnessUnknown& miner, CAmount total, uint32_t frc_bits) const
+{
+    const std::shared_ptr<ShareIndex> tip = ActiveTip();
+    TemplateState st;
+    st.anchor = tip ? tip->GetHash() : uint256();
+    st.prev_root = PrevRootAfter(tip.get());
+    st.height = tip ? tip->share.height + 1 : 0;
+    st.total_work = tip ? ArithToUint256(UintToArith256(tip->share.total_work) + GetShareWork(tip->share.bits)) : uint256();
+    st.bits = Params().ShareBits();
+    st.fruits = ListableFruits(tip.get());
+    st.fruits_root = FruitsRoot(st.fruits);
+    const arith_uint256 window = GetShareWork(frc_bits) * Params().WindowK();
+    const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
+    st.payouts = ComputeSharePayouts(ComputeShareCredits(tip.get(), window, lookup), total, miner, Params().Dust(), Params().MaxPayees());
+    return st;
+}
+
+bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason)
+{
+    ShareChainstate& state = ActiveChainstate();
+    const uint256 hash = share.GetHash();
+    if (state.chain_shares.count(hash)) {
+        reason = "chainshare-duplicate";
+        return false;
+    }
+    // A chain share is a share: record it as a fruit first (idempotent).
+    if (!state.fruits.count(hash)) {
+        if (!AcceptFruit(share, reason)) {
+            return false;
+        }
+    }
+    const ShareIndex* parent = nullptr;
+    if (!CheckLinkage(share, &parent, reason)) {
+        return false;
+    }
+    bool mutated = false;
+    const uint256 pow_hash = share.GetBlockHeader(&mutated).GetHash();
+    if (mutated || UintToArith256(pow_hash) > ChainTarget()) {
+        reason = "chainshare-high-hash";
+        return false;
+    }
+    // C1: the peaks are the MMR of the chain shares before this one, i.e. the
+    // accumulator whose root (after appending the parent) is prev_root.
+    MmrAccumulator expected_peaks = parent ? parent->peaks : MmrAccumulator();
+    if (parent) {
+        expected_peaks.Append(parent->GetHash());
+    }
+    if (expected_peaks.GetHash() != peaks.GetHash() || peaks.GetHash() != share.prev_root) {
+        reason = "chainshare-bad-peaks";
+        return false;
+    }
+    // C2: fruit list sorted, unique, known, anchored within recency, not listed
+    // by the last R ancestors.
+    if (!std::is_sorted(fruits.begin(), fruits.end()) || std::adjacent_find(fruits.begin(), fruits.end()) != fruits.end()) {
+        reason = "chainshare-fruits-unsorted";
+        return false;
+    }
+    if (FruitsRoot(fruits) != share.fruits_root) {
+        reason = "chainshare-bad-fruits-root";
+        return false;
+    }
+    {
+        std::set<uint256> listed;
+        const ShareIndex* cur = parent;
+        for (uint32_t i = 0; cur && i < Params().Recency(); ++i, cur = cur->prev_share.get()) {
+            listed.insert(cur->fruits.begin(), cur->fruits.end());
+        }
+        for (const uint256& f : fruits) {
+            auto it = state.fruits.find(f);
+            if (it == state.fruits.end()) {
+                reason = "chainshare-fruit-unknown";
+                return false;
+            }
+            if (listed.count(f)) {
+                reason = "chainshare-fruit-relisted";
+                return false;
+            }
+            const Share& fruit = it->second;
+            if (!fruit.anchor.IsNull()) {
+                auto a = state.chain_shares.find(fruit.anchor);
+                if (a == state.chain_shares.end()) {
+                    reason = "chainshare-fruit-anchor-unknown";
+                    return false;
+                }
+                if (a->second->share.height + Params().Recency() < share.height) {
+                    reason = "chainshare-fruit-stale";
+                    return false;
+                }
+            }
+        }
+    }
+    auto index = std::make_shared<ShareIndex>();
+    index->share = share;
+    index->peaks = peaks;
+    index->fruits = fruits;
+    if (parent) {
+        index->prev_share = state.chain_shares.at(share.anchor);
+    }
+    state.chain_shares.emplace(hash, index);
+    // C3: most work wins; ties keep the current tip.
+    const std::shared_ptr<ShareIndex> tip = ActiveTip();
+    const arith_uint256 new_work = UintToArith256(share.total_work) + GetShareWork(share.bits);
+    const arith_uint256 tip_work = tip ? UintToArith256(tip->share.total_work) + GetShareWork(tip->share.bits) : arith_uint256(0);
+    if (!tip || new_work > tip_work) {
+        SetActiveTip(index);
+    }
+    return true;
+}
+
+void ShareChainstateManager::SetActiveTip(const std::shared_ptr<ShareIndex>& tip)
+{
+    std::vector<std::shared_ptr<ShareIndex>> chain;
+    for (std::shared_ptr<const ShareIndex> cur = tip; cur; cur = cur->prev_share) {
+        chain.push_back(std::const_pointer_cast<ShareIndex>(cur));
+    }
+    std::reverse(chain.begin(), chain.end());
+    ActiveChain().chain = std::move(chain);
 }
 
 static RPCHelpMan getsharechaininfo() {
