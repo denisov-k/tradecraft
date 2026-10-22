@@ -935,7 +935,7 @@ std::vector<ShareMessage> ShareChainstateManager::TakeOrphans()
 }
 
 namespace {
-constexpr uint64_t SHARECHAIN_DUMP_VERSION = 1;
+constexpr uint64_t SHARECHAIN_DUMP_VERSION = 2;
 } // namespace
 
 bool ShareChainstateManager::DumpToFile(const fs::path& path) const
@@ -970,6 +970,9 @@ bool ShareChainstateManager::DumpToFile(const fs::path& path) const
     }
     try {
         file << SHARECHAIN_DUMP_VERSION;
+        // the active tip, so equal-work forks resolve the same way after a restart
+        const std::shared_ptr<ShareIndex> tip = ActiveTip();
+        file << (tip ? tip->GetHash() : uint256());
         file << static_cast<uint64_t>(entries.size());
         for (const ShareMessage& m : entries) {
             file << m;
@@ -1004,6 +1007,8 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
             LogPrintf("Share chain: unsupported dump version %d\n", version);
             return false;
         }
+        uint256 saved_tip;
+        file >> saved_tip;
         file >> count;
         std::vector<ShareMessage> deferred_msgs;
         for (uint64_t i = 0; i < count; ++i) {
@@ -1025,6 +1030,13 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
     } catch (const std::exception& e) {
         LogPrintf("Share chain: failed to load %s: %s\n", fs::PathToString(path), e.what());
         return false;
+    }
+    // Restore the tip we had: among equal-work forks the load order is arbitrary.
+    {
+        auto it = ActiveChainstate().chain_shares.find(saved_tip);
+        if (it != ActiveChainstate().chain_shares.end()) {
+            SetActiveTip(it->second);
+        }
     }
     Prune();
     LogPrintf("Share chain: loaded %d shares from %s (%d rejected, %d unresolved), tip height %d, base %d\n", accepted, fs::PathToString(path), rejected, deferred, ActiveHeight(), BaseHeight());
