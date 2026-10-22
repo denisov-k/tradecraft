@@ -321,7 +321,7 @@ inline const std::array ALL_NET_MESSAGE_TYPES{std::to_array<std::string>({
     NetMsgType::GETCFCHECKPT,
     NetMsgType::CFCHECKPT,
     NetMsgType::WTXIDRELAY,
-    NetMsgType::SENDTXRCNCL,,
+    NetMsgType::SENDTXRCNCL,
     NetMsgType::SHARE,
     NetMsgType::GETSHARES,
 })};
