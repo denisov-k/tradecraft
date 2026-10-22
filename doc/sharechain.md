@@ -15,10 +15,14 @@ Implemented in freicoind on top of 28.1 and the `tmp` skeleton, following `doc/s
 - stratum: payout vector + `OP_RETURN <root‖4b4a4948>` last in the coinbase (before the segwit
   commitment is computed), share target to native miners and in `mining.aux.notify`, acceptance on
   `mining.submit` and `mining.aux.submit`, no credit for second-stage submissions;
-- P2P: `NODE_SHARECHAIN` (1<<12), `share` and `getshares`, relay to peers with the bit;
+- P2P: `NODE_SHARECHAIN` (1<<12), `share`, `getshares`, `getshrchain` (locator) and `shares` (batch);
+  relay to peers with the bit; range sync on connect and when a relayed share's anchor is unknown;
+  stratum work is refreshed whenever the share chain tip moves;
 - `getsharechaininfo` reports target, height, tip, chain shares, fruits.
 
 Verified on regtest (`contrib/sharechain/regtest*`): single node two miners, merge mining through
-mergemine bitcoind, two nodes with relay and restart. Not yet: mainnet parameters beyond the initial
-target, share-chain sync for a node that joins late (only the orphan pool + `getshares`), bandwidth
-limits, light-client proofs, the skeleton's `SOLO` type.
+mergemine bitcoind, two nodes with relay and restart. `test/functional/feature_sharechain.py` (run by
+`test_runner.py`) covers two mining nodes converging, coinbase payouts and commitment, a late third
+node syncing with `getshrchain`, and reload from `sharechain.dat` after a restart. Not yet: mainnet parameters beyond the initial
+target, pruning of old shares from memory, bandwidth limits, light-client proofs, the skeleton's
+`SOLO` type.
