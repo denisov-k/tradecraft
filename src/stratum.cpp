@@ -29,6 +29,7 @@
 #include <rpc/util.h>
 #include <net_processing.h> // for PeerManager::RelayShare
 #include <sharechain.h> // for SelectShareParams
+#include <atomic>
 #include <serialize.h>
 #include <streams.h>
 #include <txmempool.h>
@@ -281,6 +282,16 @@ void UpdateSegwitCommitment(const ChainstateManager& chainman, const StratumWork
     // Calculate right-branch
     auto pathmask = ComputeMerklePathAndMask(current_work.m_bf_branch.size() + 1, current_work.GetBlock().vtx.size() - 1);
     cb_branch.push_back(ComputeStableMerkleRootFromBranch(bf.GetHash(), current_work.m_bf_branch, pathmask.first, pathmask.second, nullptr));
+}
+
+//! Set when the share chain tip changes; BlockWatcher then pushes new work to
+//! every client, not only to those whose block tip changed.
+static std::atomic<bool> g_share_tip_changed{false};
+
+void StratumNotifyShareTipChanged()
+{
+    g_share_tip_changed = true;
+    g_best_block_cv.notify_all();
 }
 
 //! The default address to use for mining rewards if no address is provided.
@@ -562,12 +573,23 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
         half_solved_work = std::nullopt;
     }
 
+    // The share chain tip moved since the current template was built: a share
+    // anchored to the old tip would be a fork at best and, on an empty chain,
+    // invalid (share-anchor-null).
+    bool share_tip_stale = false;
+    if (g_context->sharechainman && !half_solved_work && work_templates.count(job_id) && work_templates[job_id].m_share_state) {
+        LOCK(::cs_main);
+        const std::shared_ptr<ShareIndex> sc_tip = g_context->sharechainman->ActiveTip();
+        const uint256 sc_hash = sc_tip ? sc_tip->GetHash() : uint256();
+        share_tip_stale = work_templates[job_id].m_share_state->anchor != sc_hash;
+    }
+
     if (half_solved_work) {
         job_id = *half_solved_work;
     } else
     // Update the block template if the tip has changed or it's been more than 5
     // seconds and there are new transactions.
-    if (tip != tip_new || (mempool.GetTransactionsUpdated() != transactions_updated_last && (GetTime() - last_update_time) > 5) || !work_templates.count(job_id))
+    if (tip != tip_new || share_tip_stale || (mempool.GetTransactionsUpdated() != transactions_updated_last && (GetTime() - last_update_time) > 5) || !work_templates.count(job_id))
     {
         CTxDestination coinbase_dest = g_default_mining_address;
         WitnessUnknown witness_dest = g_default_share_address;
@@ -960,6 +982,7 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
                                 LogPrintf("NEW CHAIN SHARE by %s: %s height %d fruits %d\n", EncodeDestination(client.m_addr), share.GetHash().ToString(), share.height, current_work.m_share_state->fruits.size());
                                 if (g_context->peerman) { ShareMessage m; m.share = share; m.has_body = true; m.body.peaks = current_work.m_share_state->peaks; m.body.fruits = current_work.m_share_state->fruits; g_context->peerman->RelayShare(m, -1); }
                                 client.m_send_work = true;
+                                StratumNotifyShareTipChanged();
                             } else {
                                 LogPrintf("Share chain: chain share rejected (%s) from %s\n", reason, EncodeDestination(client.m_addr));
                             }
@@ -1080,6 +1103,7 @@ bool SubmitAuxiliaryBlock(StratumClient& client, const CTxDestination& addr, con
                                 LogPrintf("NEW CHAIN SHARE (aux) by %s: %s height %d fruits %d\n", EncodeDestination(addr), share.GetHash().ToString(), share.height, current_work.m_share_state->fruits.size());
                                 if (g_context->peerman) { ShareMessage m; m.share = share; m.has_body = true; m.body.peaks = current_work.m_share_state->peaks; m.body.fruits = current_work.m_share_state->fruits; g_context->peerman->RelayShare(m, -1); }
                                 client.m_send_work = true;
+                                StratumNotifyShareTipChanged();
                             } else {
                                 LogPrintf("Share chain: aux chain share rejected (%s) from %s\n", reason, EncodeDestination(addr));
                             }
@@ -1768,6 +1792,7 @@ void BlockWatcher()
         if (g_shutdown) {
             break;
         }
+        const bool share_tip_changed = g_share_tip_changed.exchange(false);
 
         CBlockIndex* tip = nullptr;
         if (g_context && g_context->chainman) {
@@ -1791,7 +1816,7 @@ void BlockWatcher()
             // work notification again, moments later.  Due to race conditions
             // there could be more than one miner that have already received an
             // update, however.
-            if (client.m_last_tip == tip) {
+            if (client.m_last_tip == tip && !share_tip_changed) {
                 continue;
             }
             // Get new work

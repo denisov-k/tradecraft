@@ -67,7 +67,23 @@ class StratumMiner:
             if m.get("method") == "mining.notify":
                 if self.extranonce1 is None:
                     continue
-                return self.solve_and_submit(m["params"])
+                # work may have been superseded while we were idle (new block or share chain
+                # tip): drain queued notifications and mine the newest
+                job = m["params"]
+                self.sock.settimeout(0.5)
+                try:
+                    while True:
+                        extra = self.f.readline()
+                        if not extra:
+                            break
+                        em = json.loads(extra)
+                        if em.get("method") == "mining.notify":
+                            job = em["params"]
+                except (socket.timeout, TimeoutError):
+                    pass
+                finally:
+                    self.sock.settimeout(60)
+                return self.solve_and_submit(job)
             if m.get("method") == "mining.set_difficulty":
                 continue
             if m.get("id") == 1 and m.get("result"):

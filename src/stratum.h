@@ -19,6 +19,10 @@ void InterruptStratumServer();
 /** Cleanup stratum server network connections and free resources. */
 void StopStratumServer();
 
+/** Wake the stratum work loop: the share chain tip changed, every miner needs a template
+ *  anchored to the new tip. Safe to call from any thread. */
+void StratumNotifyShareTipChanged();
+
 #endif // FREICOIN_STRATUM_H
 
 // End of File

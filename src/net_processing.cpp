@@ -45,6 +45,7 @@
 #include <random.h>
 #include <scheduler.h>
 #include <sharechain.h>
+#include <stratum.h>
 #include <streams.h>
 #include <sync.h>
 #include <tinyformat.h>
@@ -4621,6 +4622,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         if (result == ShareAccept::ACCEPTED) {
             LogPrint(BCLog::NET, "share %s accepted from peer=%d (%s)\n", msg.share.GetHash().ToString(), pfrom.GetId(), msg.has_body ? "chain share" : "fruit");
             RelayShare(msg, pfrom.GetId());
+            if (msg.has_body) StratumNotifyShareTipChanged();
             // dependencies may have been waiting for it
             for (const ShareMessage& orphan : retry) {
                 std::vector<uint256> m2;
@@ -4685,6 +4687,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             }
         }
         LogPrint(BCLog::NET, "shares batch from peer=%d: %d accepted, %d duplicate, %d invalid, %d waiting\n", pfrom.GetId(), accepted, dup, invalid, missing_n);
+        if (accepted > 0) StratumNotifyShareTipChanged();
         if (batch.size() >= 500 && accepted > 0) {
             std::vector<uint256> locator;
             {
