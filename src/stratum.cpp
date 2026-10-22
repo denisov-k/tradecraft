@@ -456,14 +456,9 @@ void CustomizeWork(const ChainstateManager& chainman, const StratumClient& clien
         }
     }
 
-    cb_branch = current_work.m_cb_branch;
-    if (!current_work.m_aux_hash2 && current_work.m_is_witness_enabled) {
-        bf = CMutableTransaction(*current_work.GetBlock().vtx.back());
-        UpdateSegwitCommitment(chainman, current_work, cb, bf, cb_branch);
-        LogPrint(BCLog::STRATUM, "Updated segwit commitment in coinbase.\n");
-    }
     // Share chain: the payout vector replaces the single reward output and the
-    // share commitment goes last (doc/sharechain.md section 5).
+    // share commitment goes last (doc/sharechain.md section 5).  This must come
+    // before the segwit commitment, which hashes the final coinbase.
     if (!current_work.m_aux_hash2 && current_work.m_share_state && !cb.vout.empty()) {
         const CTxDestination dest = IsValidDestination(addr) ? addr : current_work.m_coinbase_dest;
         const std::optional<WitnessUnknown> miner = WitnessUnknownFromDestination(dest);
@@ -481,6 +476,12 @@ void CustomizeWork(const ChainstateManager& chainman, const StratumClient& clien
             vout.emplace_back(0, ShareCommitmentScript(root));
             cb.vout = std::move(vout);
         }
+    }
+    cb_branch = current_work.m_cb_branch;
+    if (!current_work.m_aux_hash2 && current_work.m_is_witness_enabled) {
+        bf = CMutableTransaction(*current_work.GetBlock().vtx.back());
+        UpdateSegwitCommitment(chainman, current_work, cb, bf, cb_branch);
+        LogPrint(BCLog::STRATUM, "Updated segwit commitment in coinbase.\n");
     }
 }
 
