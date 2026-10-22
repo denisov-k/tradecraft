@@ -1000,6 +1000,7 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
         return false;
     }
     size_t accepted = 0, rejected = 0, deferred = 0;
+    uint256 saved_tip;
     try {
         uint64_t version = 0, count = 0;
         file >> version;
@@ -1007,7 +1008,6 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
             LogPrintf("Share chain: unsupported dump version %d\n", version);
             return false;
         }
-        uint256 saved_tip;
         file >> saved_tip;
         file >> count;
         std::vector<ShareMessage> deferred_msgs;
