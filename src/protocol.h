@@ -244,7 +244,7 @@ inline constexpr const char* GETSHARES{"getshares"};
 /**
  * getsharechain: locator of chain-share hashes; answered with a shares batch from the fork point.
  */
-inline constexpr const char* GETSHARECHAIN{"getsharechain"};
+inline constexpr const char* GETSHARECHAIN{"getshrchain"}; // wire names are at most 12 bytes
 /**
  * shares: a batch of share messages in validation order (fruits before the chain share listing them).
  */
