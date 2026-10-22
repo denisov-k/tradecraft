@@ -98,6 +98,9 @@ class StratumMiner:
 
 
 class ShareChainTest(FreicoinTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser, legacy=False)
+
     def set_test_params(self):
         self.num_nodes = 3
         self.setup_clean_chain = True
