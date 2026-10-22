@@ -932,7 +932,9 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
         uint256 hash = blkhdr.GetHash();
         // Share chain: every submission that meets the share target is a share;
         // one that also meets the chain target is a chain share.
-        if (g_context->sharechainman && current_work.m_share_state) {
+        // (not for the second stage of a merge-mined block: its hash is the low-work bias stage
+        // and the share was already credited when the first stage arrived)
+        if (g_context->sharechainman && current_work.m_share_state && !current_work.m_aux_hash2) {
             const std::optional<WitnessUnknown> miner = WitnessUnknownFromDestination(IsValidDestination(client.m_addr) ? client.m_addr : current_work.m_coinbase_dest);
             if (miner) {
                 Share share = ShareFromTemplateState(*current_work.m_share_state, *miner);
@@ -1050,7 +1052,6 @@ bool SubmitAuxiliaryBlock(StratumClient& client, const CTxDestination& addr, con
         const std::optional<WitnessUnknown> miner = WitnessUnknownFromDestination(addr);
         if (miner) {
             Share share = ShareFromTemplateState(*current_work.m_share_state, *miner);
-            share.version |= 1; // aux witness
             CBlockHeader frc_header(current_work.GetBlock());
             frc_header.nTime = blkhdr.nTime;
             if (!FillNativeShareWitness(share, cb, cb_branch, frc_header, ShareParams().ChainId())) {
