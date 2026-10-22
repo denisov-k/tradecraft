@@ -415,7 +415,7 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
     // The last output is the commitment; everything before it is the payout vector.
     CAmount total = 0;
     for (const CTxOut& out : cb.vout) {
-        total += out.nValue;
+        total += out.GetReferenceValue();
     }
     // The window is sized by the Freicoin target the template was built for;
     // the share header has no such field, so the coinbase's own bits are not
@@ -431,14 +431,14 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
     }
     for (size_t i = 0; i < payouts.size(); ++i) {
         const CScript expected = GetScriptForDestination(payouts[i].first);
-        if (cb.vout[i].nValue != payouts[i].second || cb.vout[i].scriptPubKey != expected) {
+        if (cb.vout[i].GetReferenceValue() != payouts[i].second || cb.vout[i].scriptPubKey != expected) {
             reason = "share-bad-payout";
             return false;
         }
     }
     // Anything between the payouts and the commitment (none today) must carry no value.
     for (size_t i = payouts.size(); i < cb.vout.size(); ++i) {
-        if (cb.vout[i].nValue != 0) {
+        if (cb.vout[i].GetReferenceValue() != 0) {
             reason = "share-bad-extra-output";
             return false;
         }

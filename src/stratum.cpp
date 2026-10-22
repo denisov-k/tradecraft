@@ -468,7 +468,7 @@ void CustomizeWork(const ChainstateManager& chainman, const StratumClient& clien
         const std::optional<WitnessUnknown> miner = WitnessUnknownFromDestination(dest);
         if (miner) {
             const ShareChainParams& sp = ShareParams();
-            const CAmount total = cb.vout.front().nValue;
+            const CAmount total = cb.vout.front().GetReferenceValue();
             const auto payouts = ComputeSharePayouts(current_work.m_share_state->credits, total, *miner, sp.Dust(), sp.MaxPayees());
             std::vector<CTxOut> vout;
             for (const auto& p : payouts) {
@@ -591,7 +591,7 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
         work_templates[job_id] = StratumWork(coinbase_dest, *new_work, new_work->block.vtx[0]->HasWitness());
         if (g_context->sharechainman && !new_work->block.vtx.empty() && !new_work->block.vtx[0]->vout.empty()) {
             LOCK(::cs_main);
-            const CAmount total = new_work->block.vtx[0]->vout[0].nValue;
+            const CAmount total = new_work->block.vtx[0]->vout[0].GetReferenceValue();
             const uint32_t frc_bits = new_work->block.m_aux_pow.IsNull() ? new_work->block.nBits : new_work->block.m_aux_pow.m_commit_bits;
             work_templates[job_id].m_share_state = g_context->sharechainman->GetTemplateState(witness_dest, total, frc_bits);
             LogPrint(BCLog::STRATUM, "Share chain template state: height %d anchor %s fruits %d\n", work_templates[job_id].m_share_state->height, work_templates[job_id].m_share_state->anchor.ToString(), work_templates[job_id].m_share_state->fruits.size());
