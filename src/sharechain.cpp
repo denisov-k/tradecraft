@@ -914,8 +914,8 @@ bool ShareChainstateManager::DumpToFile(const fs::path& path) const
         for (const ShareMessage& m : entries) {
             file << m;
         }
-        if (!FileCommit(file.Get())) {
-            throw std::runtime_error("FileCommit failed");
+        if (!file.Commit()) {
+            throw std::runtime_error("Commit failed");
         }
         file.fclose();
         if (!RenameOver(tmp, path)) {
