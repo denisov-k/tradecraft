@@ -24,6 +24,7 @@
 #include <tinyformat.h>
 #include <univalue.h>
 #include <util/chaintype.h>
+#include <util/sharechaintype.h>
 #include <util/check.h>
 #include <util/fs.h>
 #include <util/fs_helpers.h>
@@ -826,6 +827,9 @@ std::variant<ShareChainType, std::string> ArgsManager::GetShareChainArg() const
     }
     if (sharechain == "0") {
         return ShareChainType::SOLO;
+    }
+    if (auto parsed = ShareChainTypeFromString(sharechain)) {
+        return *parsed;
     }
     return sharechain;
 }
