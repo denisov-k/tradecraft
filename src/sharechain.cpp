@@ -76,6 +76,8 @@ const ShareChainParams& ShareParams() {
 
 void swap(ShareWitness& lhs, ShareWitness& rhs) {
     using std::swap; // for ADL
+    swap(lhs.flags, rhs.flags);
+    swap(lhs.aux, rhs.aux);
     swap(lhs.commit, rhs.commit);
     swap(lhs.cb1, rhs.cb1);
     swap(lhs.nLockTime, rhs.nLockTime);
@@ -165,7 +167,30 @@ CBlockHeader Share::GetBlockHeader(bool *mutated) const {
     blkhdr.nTime = wit.nTime;
     blkhdr.nBits = wit.nBits;
     blkhdr.nNonce = wit.nNonce;
+    if (IsAux()) {
+        blkhdr.m_aux_pow = *wit.aux;
+    }
     return blkhdr;
+}
+
+uint256 Share::GetPoWHash(const Consensus::Params& params, bool* mutated) const
+{
+    bool local_mutated = false;
+    const CBlockHeader blkhdr = GetBlockHeader(&local_mutated);
+    if (!IsAux()) {
+        if (mutated) *mutated = local_mutated;
+        return blkhdr.GetHash();
+    }
+    bool aux_mutated = false;
+    const uint256 hash = blkhdr.GetAuxiliaryHash(params, &aux_mutated).first;
+    if (mutated) *mutated = local_mutated || aux_mutated;
+    return hash;
+}
+
+void SetAuxShareWitness(Share& share, const AuxProofOfWork& aux_pow)
+{
+    share.wit.flags |= ShareWitness::FLAG_AUX;
+    share.wit.aux = aux_pow;
 }
 
 arith_uint256 GetShareWork(uint32_t bits)
@@ -448,6 +473,28 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
     return true;
 }
 
+bool ShareChainstateManager::CheckAuxBinding(const Share& share, std::string& reason) const
+{
+    // The parent header hash covers the Freicoin template through the aux-pow
+    // commit fields; the commit Merkle root is computed from the coinbase with
+    // an empty scriptSig (CustomizeCommitHash).  Recompute it from the witness
+    // coinbase so the payouts and the share commitment are what was mined.
+    CMutableTransaction cb;
+    if (!ReconstructShareCoinbase(share, cb) || cb.vin.empty()) {
+        reason = "share-bad-coinbase";
+        return false;
+    }
+    CMutableTransaction cb2(cb);
+    cb2.vin[0].scriptSig = CScript();
+    cb2.vin[0].nSequence = 0;
+    const uint256 commit_root = ComputeMerkleRootFromBranch(cb2.GetHash(), share.wit.branch, 0);
+    if (commit_root != share.wit.aux->m_commit_hash_merkle_root) {
+        reason = "share-aux-commit-mismatch";
+        return false;
+    }
+    return true;
+}
+
 bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason)
 {
     ShareChainstate& state = ActiveChainstate();
@@ -461,9 +508,12 @@ bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason
         return false;
     }
     bool mutated = false;
-    const uint256 pow_hash = share.GetBlockHeader(&mutated).GetHash();
+    const uint256 pow_hash = share.GetPoWHash(m_options.chainparams.GetConsensus(), &mutated);
     if (mutated || UintToArith256(pow_hash) > ShareTarget()) {
         reason = "share-high-hash";
+        return false;
+    }
+    if (share.IsAux() && !CheckAuxBinding(share, reason)) {
         return false;
     }
     if (!CheckPayouts(share, anchor, reason)) {
@@ -551,7 +601,7 @@ bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccum
         return false;
     }
     bool mutated = false;
-    const uint256 pow_hash = share.GetBlockHeader(&mutated).GetHash();
+    const uint256 pow_hash = share.GetPoWHash(m_options.chainparams.GetConsensus(), &mutated);
     if (mutated || UintToArith256(pow_hash) > ChainTarget()) {
         reason = "chainshare-high-hash";
         return false;

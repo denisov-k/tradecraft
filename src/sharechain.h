@@ -8,7 +8,8 @@
 #include <common/args.h> // for ArgsManager
 #include <consensus/merklerange.h> // for MmrAccumulator
 #include <kernel/sharechainstatemanager_opts.h> // for kernel::ShareChainstateManagerOpts
-#include <primitives/block.h> // for CBlockHeader
+#include <consensus/params.h> // for Consensus::Params
+#include <primitives/block.h> // for CBlockHeader, AuxProofOfWork
 #include <primitives/transaction.h> // for CMutableTransaction
 #include <script/script.h> // for CScript
 #include <serialize.h> // for Serialize, Unserialize, VARINT
@@ -83,6 +84,14 @@ void SelectShareParams(const ShareChainType share_chain);
 const ShareChainParams& ShareParams();
 
 struct ShareWitness {
+    //! bit 0: merge-mined share, `aux` is present and the proof of work is
+    //! the parent (Bitcoin) header hash reached through it.
+    static constexpr uint8_t FLAG_AUX = 0x01;
+    uint8_t flags{0};
+    //! The auxiliary proof-of-work of the Freicoin header, for merge-mined
+    //! shares (FLAG_AUX).  Carries the commit fields, secret, midstate, aux
+    //! branch and the parent header, exactly as freicoind received it.
+    std::optional<AuxProofOfWork> aux;
     // A share is committed to at the end of the coinbase transaction, which
     // allows for midstate compression in some use cases.  This is not one of
     // those use cases, as the rest of the transaction is required to validate
@@ -120,6 +129,10 @@ struct ShareWitness {
 
     template<typename Stream>
     void Serialize(Stream &s) const {
+        ::Serialize(s, flags);
+        if (flags & FLAG_AUX) {
+            ::Serialize(s, aux ? *aux : AuxProofOfWork());
+        }
         // NB: We use Pieter Wuille's VARINT encoding for vector lengths,
         //     which requires doing our own manual serialization of vectors
         //     and arrays.
@@ -158,6 +171,13 @@ struct ShareWitness {
 
     template<typename Stream>
     void Unserialize(Stream &s) {
+        ::Unserialize(s, flags);
+        aux.reset();
+        if (flags & FLAG_AUX) {
+            AuxProofOfWork pow;
+            ::Unserialize(s, pow);
+            aux = std::move(pow);
+        }
         // The commitment proof.
         size_t len = 0;
         ::Unserialize(s, VARINT(len));
@@ -257,6 +277,10 @@ struct Share {
 
     //! Hash of the share header fields alone (what the coinbase commits to).
     uint256 GetHeaderHash() const;
+    //! The hash the share target applies to: the Freicoin header hash for a
+    //! native share, the parent header hash for a merge-mined one.
+    uint256 GetPoWHash(const Consensus::Params& params, bool* mutated) const;
+    bool IsAux() const { return (wit.flags & ShareWitness::FLAG_AUX) && wit.aux.has_value(); }
     //! The block header for this share.
     CBlockHeader GetBlockHeader(bool* mutated) const;
 
@@ -440,6 +464,8 @@ private:
     //! Linkage checks shared by fruits and chain shares: anchor known (or
     //! null on an empty chain), height, total_work, prev_root.
     bool CheckLinkage(const Share& share, const ShareIndex** anchor_out, std::string& reason) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Merge-mined share: the aux-pow commit root really covers the witness coinbase.
+    bool CheckAuxBinding(const Share& share, std::string& reason) const;
     //! Coinbase outputs of the share equal PPLNS(anchor) (A2).
     bool CheckPayouts(const Share& share, const ShareIndex* anchor, std::string& reason) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Rebuild the active chain vector from a tip.
@@ -459,6 +485,8 @@ bool ReconstructShareCoinbase(const Share& share, CMutableTransaction& cb);
 Share ShareFromTemplateState(const ShareChainstateManager::TemplateState& st, const WitnessUnknown& miner);
 /** Fill a native witness from the mined coinbase and header; false if the coinbase does not end with a share commitment. */
 bool FillNativeShareWitness(Share& share, const CMutableTransaction& cb, const std::vector<uint256>& cb_branch, const CBlockHeader& header, const uint256& chain_id);
+/** Attach the auxiliary proof-of-work of a merge-mined submission to a share witness. */
+void SetAuxShareWitness(Share& share, const AuxProofOfWork& aux_pow);
 /** Witness-program form of a destination, if it has one. */
 std::optional<WitnessUnknown> WitnessUnknownFromDestination(const CTxDestination& dest);
 

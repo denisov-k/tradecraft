@@ -658,6 +658,12 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
         uint32_t bits = aux_pow.m_commit_bits;
         bits += static_cast<uint32_t>(bias / 8) << 24;
         bias = bias % 8;
+        if (current_work.m_share_state) {
+            // Share chain: the aux work server works at the share target, so
+            // every share reaches us; blocks are told apart on submission.
+            bits = current_work.m_share_state->bits;
+            bias = 0;
+        }
         params.push_back(HexInt4(bits));
         params.push_back(UniValue((int)bias));
 
@@ -1035,6 +1041,47 @@ bool SubmitAuxiliaryBlock(StratumClient& client, const CTxDestination& addr, con
 
     const Consensus::Params& params = Params().GetConsensus();
     auto aux_hash = blkhdr.GetAuxiliaryHash(params);
+    // Share chain: a merge-mined submission whose parent header hash meets the
+    // share target is a fruit (and a chain share if it meets the chain target).
+    if (g_context->sharechainman && current_work.m_share_state) {
+        const std::optional<WitnessUnknown> miner = WitnessUnknownFromDestination(addr);
+        if (miner) {
+            Share share = ShareFromTemplateState(*current_work.m_share_state, *miner);
+            share.version |= 1; // aux witness
+            CBlockHeader frc_header(current_work.GetBlock());
+            frc_header.nTime = blkhdr.nTime;
+            if (!FillNativeShareWitness(share, cb, cb_branch, frc_header, ShareParams().ChainId())) {
+                LogPrintf("Share chain: cannot build witness for aux share from %s\n", EncodeDestination(addr));
+            } else {
+                SetAuxShareWitness(share, blkhdr.m_aux_pow);
+                bool mutated = false;
+                const uint256 pow_hash = share.GetPoWHash(params, &mutated);
+                if (mutated || pow_hash != aux_hash.first) {
+                    LogPrintf("Share chain: BUG: reconstructed aux share hash %s != %s\n", pow_hash.ToString(), aux_hash.first.ToString());
+                } else {
+                    LOCK(::cs_main);
+                    ShareChainstateManager& man = *g_context->sharechainman;
+                    const arith_uint256 h = UintToArith256(pow_hash);
+                    std::string reason;
+                    if (h <= man.ShareTarget()) {
+                        if (man.AcceptFruit(share, reason)) {
+                            LogPrintf("NEW SHARE CHAIN FRUIT (aux) by %s: %s\n", EncodeDestination(addr), share.GetHash().ToString());
+                        } else {
+                            LogPrintf("Share chain: aux fruit rejected (%s) from %s\n", reason, EncodeDestination(addr));
+                        }
+                        if (h <= man.ChainTarget()) {
+                            if (man.AcceptChainShare(share, current_work.m_share_state->peaks, current_work.m_share_state->fruits, reason)) {
+                                LogPrintf("NEW CHAIN SHARE (aux) by %s: %s height %d fruits %d\n", EncodeDestination(addr), share.GetHash().ToString(), share.height, current_work.m_share_state->fruits.size());
+                                client.m_send_work = true;
+                            } else {
+                                LogPrintf("Share chain: aux chain share rejected (%s) from %s\n", reason, EncodeDestination(addr));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     if (!CheckAuxiliaryProofOfWork(blkhdr, params)) {
         LogPrintf("NEW AUXILIARY SHARE!!! by %s: %s, %s\n", EncodeDestination(addr), aux_hash.first.ToString(), aux_hash.second.ToString());
         return false;
