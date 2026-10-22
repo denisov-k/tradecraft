@@ -1029,10 +1029,17 @@ static RPCHelpMan getsharechaininfo() {
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::BOOL, "enabled", "whether the share chain service is enabled"},
             {RPCResult::Type::STR, "network", /*optional=*/true, "which share chain the mining service is using"},
+            {RPCResult::Type::STR_HEX, "sharebits", /*optional=*/true, "compact share target (ShareBits)"},
+            {RPCResult::Type::NUM, "chainfactor", /*optional=*/true, "a chain share must meet share target / chainfactor"},
+            {RPCResult::Type::NUM, "recency", /*optional=*/true, "chain heights a fruit stays listable after its anchor"},
+            {RPCResult::Type::NUM, "height", /*optional=*/true, "height of the active share chain tip (-1 when empty)"},
+            {RPCResult::Type::STR_HEX, "tip", /*optional=*/true, "hash of the active share chain tip (empty when none)"},
+            {RPCResult::Type::NUM, "chainshares", /*optional=*/true, "known chain shares (all forks)"},
+            {RPCResult::Type::NUM, "fruits", /*optional=*/true, "known shares"},
         }},
         RPCExamples{
-            HelpExampleCli("getstratuminfo", "")
-            + HelpExampleRpc("getstratuminfo", "")
+            HelpExampleCli("getsharechaininfo", "")
+            + HelpExampleRpc("getsharechaininfo", "")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
