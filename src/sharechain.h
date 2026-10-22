@@ -3,6 +3,8 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <addresstype.h> // for WitnessUnknown
+#include <arith_uint256.h> // for arith_uint256
+#include <consensus/amount.h> // for CAmount
 #include <common/args.h> // for ArgsManager
 #include <consensus/merklerange.h> // for MmrAccumulator
 #include <kernel/sharechainstatemanager_opts.h> // for kernel::ShareChainstateManagerOpts
@@ -13,7 +15,12 @@
 #include <util/sharechaintype.h> // for ShareChainType, ShareChainTypeToString
 #include <validation.h> // for cs_main
 
+#include <functional> // for std::function
+#include <map> // for std::map
 #include <memory> // for std::shared_ptr
+#include <optional> // for std::optional
+#include <utility> // for std::pair
+#include <vector> // for std::vector
 #include <string> // for std::string
 
 #include <stdint.h> // for uint32_t
@@ -178,15 +185,26 @@ struct Share {
     //! The aggregate work done on the share chain up to but not including
     //! this share.
     uint256 total_work;
-    //! A Merkle Mountain Range of the previous shares in the share chain.
-    MmrAccumulator prev_shares;
+    //! The chain share this share hangs from: its anchor.  Null for the
+    //! first chain share of a share chain.
+    uint256 anchor;
+    //! Root of the Merkle Mountain Range of the chain shares up to and
+    //! including the anchor.  Only the root is in the header; the peaks
+    //! travel with chain shares (ShareIndex::peaks).
+    uint256 prev_root;
+    //! Merkle root of the sorted list of fruit (share) hashes that this
+    //! template records, or null for an empty list.  The list only matters
+    //! if the share turns out to meet the chain target, but it has to be
+    //! committed in every header because the template is hashed before
+    //! anyone knows that (2-for-1 mining).
+    uint256 fruits_root;
     //! The address of the miner who submitted this share.  Typically this
     //! wouldn't actually be an unknown witness type, but rather one of the
     //! existing (and understood) witness types in <script/standard.h>.
     //! However (1) we don't actually need to know the type of the witness
     //! here, and (2) we want to support future witness types too.  So we
     //! treat everything as WitnessUnknown.
-    WitnessUnknown miner; // sizeof(WitnessUnknown) == 48 bytes
+    WitnessUnknown miner{0u, std::vector<unsigned char>{}};
 
     // Next we have the witness data, which proves the commitment to the share
     // header within the context of a bitcoin block, as well as the necessary
@@ -200,7 +218,9 @@ struct Share {
         READWRITE(obj.bits);
         READWRITE(obj.height);
         READWRITE(obj.total_work);
-        READWRITE(obj.prev_shares);
+        READWRITE(obj.anchor);
+        READWRITE(obj.prev_root);
+        READWRITE(obj.fruits_root);
         // WitnessUnknown has no public fields on 28.x: serialize through copies and rebuild on read.
         uint64_t miner_version = obj.miner.GetWitnessVersion();
         std::vector<unsigned char> miner_program = obj.miner.GetWitnessProgram();
@@ -219,12 +239,44 @@ struct Share {
 
 void swap(Share& lhs, Share& rhs);
 
+/** Work of a share with the given compact target: 2^256 / (target + 1), the
+ *  same formula as GetBlockProof.  Zero for an invalid target. */
+arith_uint256 GetShareWork(uint32_t bits);
+
+/** What ComputeShareCredits needs to know about a listed fruit. */
+struct FruitInfo {
+    WitnessUnknown miner{0u, std::vector<unsigned char>{}};
+    uint32_t bits{0};
+};
+using FruitLookup = std::function<std::optional<FruitInfo>(const uint256&)>;
+
+/** Work credited to each miner over the PPLNS window: walk the chain shares
+ *  backwards from `anchor`, adding the work of every fruit they list, until
+ *  the accumulated work reaches `window_work` (the chain share that crosses
+ *  the boundary is counted in full).  Fruits the lookup does not know are
+ *  skipped; a verifier must make sure they are all known first. */
+using ShareCredits = std::map<WitnessUnknown, arith_uint256>;
+ShareCredits ComputeShareCredits(const ShareIndex* anchor, const arith_uint256& window_work, const FruitLookup& lookup);
+
+/** Turn credits into coinbase payouts (doc/sharechain.md section 9):
+ *  credits are scaled so their sum fits in 190 bits; out_m = floor(total *
+ *  credit_m / sum); the flooring remainder goes to `builder`; outputs below
+ *  `dust` (other than the builder's) are dropped and the split recomputed
+ *  once; if more than `max_payees` remain, the largest credits are kept and
+ *  the split recomputed once; the result is in canonical order (version,
+ *  program).  The amounts always sum to `total`. */
+std::vector<std::pair<WitnessUnknown, CAmount>> ComputeSharePayouts(ShareCredits credits, CAmount total, const WitnessUnknown& builder, CAmount dust, size_t max_payees);
+
 struct ShareIndex {
     //! The share header and witness data.
     Share share;
-    //! The previous share in the share chain, or nullptr if this is the
-    //! genesis share.
+    //! The previous chain share in the share chain, or nullptr if this is
+    //! the genesis chain share.
     std::shared_ptr<const ShareIndex> prev_share;
+    //! Chain-share body: the MMR peaks behind share.prev_root, and the
+    //! sorted fruit hashes behind share.fruits_root.
+    MmrAccumulator peaks;
+    std::vector<uint256> fruits;
 
     uint256 GetHash() const { return share.GetHash(); }
 };

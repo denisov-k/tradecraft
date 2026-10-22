@@ -12,6 +12,7 @@
 #include <span.h> // for Span, MakeUCharSpan
 #include <util/check.h> // for Assert
 
+#include <algorithm> // for std::sort
 #include <array> // for std::array
 #include <utility> // for std::swap
 
@@ -73,7 +74,9 @@ void swap(Share& lhs, Share& rhs) {
     swap(lhs.bits, rhs.bits);
     swap(lhs.height, rhs.height);
     swap(lhs.total_work, rhs.total_work);
-    swap(lhs.prev_shares, rhs.prev_shares);
+    swap(lhs.anchor, rhs.anchor);
+    swap(lhs.prev_root, rhs.prev_root);
+    swap(lhs.fruits_root, rhs.fruits_root);
     swap(lhs.miner, rhs.miner);
     swap(lhs.wit, rhs.wit);
 }
@@ -89,10 +92,9 @@ CBlockHeader Share::GetBlockHeader(bool *mutated) const {
     ss << bits;
     ss << height;
     ss << total_work;
-    // When being hashed, we include only the root hash of the Merkle
-    // mountain range structure, which has the advantage of making the
-    // share header a fixed sized structure.
-    ss << prev_shares.GetHash();
+    ss << anchor;
+    ss << prev_root;
+    ss << fruits_root;
     ss << COMPACTSIZE(miner.GetWitnessVersion()); // will always be single byte
     ss << miner.GetWitnessProgram();
     uint256 hash = ss.GetHash();
@@ -138,6 +140,111 @@ CBlockHeader Share::GetBlockHeader(bool *mutated) const {
     blkhdr.nBits = wit.nBits;
     blkhdr.nNonce = wit.nNonce;
     return blkhdr;
+}
+
+arith_uint256 GetShareWork(uint32_t bits)
+{
+    arith_uint256 target;
+    bool negative = false, overflow = false;
+    target.SetCompact(bits, &negative, &overflow);
+    if (negative || overflow || target == 0) {
+        return 0;
+    }
+    // 2**256 / (target+1) == ~target / (target+1) + 1, see GetBlockProof.
+    return (~target / (target + 1)) + 1;
+}
+
+ShareCredits ComputeShareCredits(const ShareIndex* anchor, const arith_uint256& window_work, const FruitLookup& lookup)
+{
+    ShareCredits credits;
+    arith_uint256 acc = 0;
+    for (const ShareIndex* cur = anchor; cur && acc < window_work; cur = cur->prev_share.get()) {
+        for (const uint256& fruit : cur->fruits) {
+            std::optional<FruitInfo> info = lookup(fruit);
+            if (!info) {
+                continue;
+            }
+            const arith_uint256 work = GetShareWork(info->bits);
+            credits[info->miner] += work;
+            acc += work;
+        }
+    }
+    return credits;
+}
+
+namespace {
+// out_m = floor(total * credit_m / sum), remainder to the builder.
+std::map<WitnessUnknown, CAmount> SplitPayout(const ShareCredits& credits, CAmount total, const WitnessUnknown& builder)
+{
+    arith_uint256 sum = 0;
+    for (const auto& item : credits) {
+        sum += item.second;
+    }
+    std::map<WitnessUnknown, CAmount> outs;
+    CAmount paid = 0;
+    if (sum != 0) {
+        const arith_uint256 total256(static_cast<uint64_t>(total));
+        for (const auto& item : credits) {
+            const CAmount amount = static_cast<CAmount>((total256 * item.second / sum).GetLow64());
+            outs[item.first] = amount;
+            paid += amount;
+        }
+    }
+    const CAmount remainder = total - paid;
+    if (remainder > 0 || outs.count(builder)) {
+        outs[builder] += remainder;
+    }
+    return outs;
+}
+} // namespace
+
+std::vector<std::pair<WitnessUnknown, CAmount>> ComputeSharePayouts(ShareCredits credits, CAmount total, const WitnessUnknown& builder, CAmount dust, size_t max_payees)
+{
+    // Scale so that total * credit cannot overflow 256 bits: keep the sum
+    // below 2^190 (total is below 2^63).
+    arith_uint256 sum = 0;
+    for (const auto& item : credits) {
+        sum += item.second;
+    }
+    const unsigned int bits = sum.bits();
+    if (bits > 190) {
+        const unsigned int shift = bits - 190;
+        for (auto& item : credits) {
+            item.second >>= shift;
+        }
+    }
+
+    std::map<WitnessUnknown, CAmount> outs = SplitPayout(credits, total, builder);
+
+    // Drop dust (never the builder's output) and recompute once.
+    bool dropped = false;
+    for (const auto& item : outs) {
+        if (item.second < dust && !(item.first == builder)) {
+            credits.erase(item.first);
+            dropped = true;
+        }
+    }
+    if (dropped) {
+        outs = SplitPayout(credits, total, builder);
+    }
+
+    // Cap the number of payees: keep the largest credits (ties by canonical
+    // order) and recompute once.
+    if (outs.size() > max_payees) {
+        std::vector<std::pair<WitnessUnknown, arith_uint256>> ranked(credits.begin(), credits.end());
+        std::sort(ranked.begin(), ranked.end(), [](const auto& a, const auto& b) {
+            if (a.second != b.second) return a.second > b.second;
+            return a.first < b.first;
+        });
+        ShareCredits kept;
+        for (size_t i = 0; i < ranked.size() && i < max_payees; ++i) {
+            kept.insert(ranked[i]);
+        }
+        credits = std::move(kept);
+        outs = SplitPayout(credits, total, builder);
+    }
+
+    return std::vector<std::pair<WitnessUnknown, CAmount>>(outs.begin(), outs.end());
 }
 
 static RPCHelpMan getsharechaininfo() {
