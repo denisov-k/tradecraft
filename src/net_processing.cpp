@@ -4738,10 +4738,12 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         size_t accepted = 0, dup = 0, invalid = 0, missing_n = 0;
         {
             LOCK(::cs_main);
+            // With no chain of our own yet, the first chain share the batch starts from is our base.
+            const bool fresh = g_sharechainman->ActiveHeight() < 0;
             for (const ShareMessage& m : batch) {
                 std::vector<uint256> missing;
                 std::string reason;
-                switch (g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false)) {
+                switch (g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false, /*allow_base=*/fresh)) {
                 case ShareAccept::ACCEPTED: ++accepted; break;
                 case ShareAccept::DUPLICATE: ++dup; break;
                 case ShareAccept::MISSING: ++missing_n; g_sharechainman->AddOrphan(m); break;
@@ -4753,7 +4755,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 for (const ShareMessage& m : g_sharechainman->TakeOrphans()) {
                     std::vector<uint256> missing;
                     std::string reason;
-                    const ShareAccept r = g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false);
+                    const ShareAccept r = g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false, /*allow_base=*/fresh);
                     if (r == ShareAccept::ACCEPTED) { ++accepted; --missing_n; }
                     else if (r == ShareAccept::MISSING) g_sharechainman->AddOrphan(m);
                 }

@@ -371,6 +371,22 @@ arith_uint256 ShareChainstateManager::ChainTarget() const
     return ShareTarget() / std::max<uint32_t>(1, Params().ChainFactor());
 }
 
+arith_uint256 ShareChainstateManager::ShareTargetFor(uint32_t bits) const
+{
+    arith_uint256 target;
+    bool negative = false, overflow = false;
+    target.SetCompact(bits, &negative, &overflow);
+    if (negative || overflow || target == 0) {
+        return 0;
+    }
+    return target;
+}
+
+arith_uint256 ShareChainstateManager::ChainTargetFor(uint32_t bits) const
+{
+    return ShareTargetFor(bits) / std::max<uint32_t>(1, Params().ChainFactor());
+}
+
 void ShareChainstateManager::Initialize()
 {
     if (!m_active_chainstate) {
@@ -434,6 +450,26 @@ bool ShareChainstateManager::CheckLinkage(const Share& share, const ShareIndex**
     return true;
 }
 
+namespace {
+/** Whether the PPLNS window walked back from `anchor` runs into a trusted base
+ *  (a chain share whose own anchor was never seen) before it is full: the
+ *  credits below are history this node does not have. */
+bool WindowReachesBase(const ShareIndex* anchor, const arith_uint256& window, const FruitLookup& lookup)
+{
+    arith_uint256 acc = 0;
+    for (const ShareIndex* cur = anchor; cur && acc < window; cur = cur->prev_share.get()) {
+        for (const uint256& f : cur->fruits) {
+            const std::optional<FruitInfo> info = lookup(f);
+            if (info) acc += GetShareWork(info->bits);
+        }
+        if (acc < window && !cur->prev_share && !cur->share.anchor.IsNull()) {
+            return true;
+        }
+    }
+    return false;
+}
+} // namespace
+
 bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* anchor, std::string& reason) const
 {
     CMutableTransaction cb;
@@ -456,6 +492,12 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
     // Freicoin header's nBits carried in the witness.
     const arith_uint256 window = GetShareWork(share.wit.nBits) * Params().WindowK();
     const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
+    if (WindowReachesBase(anchor, window, lookup)) {
+        // Below our trusted base: the share was built from credits we never saw, so
+        // its split cannot be checked.  It is history; its own payout only matters
+        // if it became a Freicoin block, which the block chain validated.
+        return true;
+    }
     ShareCredits credits = ComputeShareCredits(anchor, window, lookup);
     const auto payouts = ComputeSharePayouts(std::move(credits), total, share.miner, Params().Dust(), Params().MaxPayees());
     if (cb.vout.size() < payouts.size() + 1) {
@@ -517,7 +559,7 @@ bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason
     }
     bool mutated = false;
     const uint256 pow_hash = share.GetPoWHash(m_options.chainparams.GetConsensus(), &mutated);
-    if (mutated || UintToArith256(pow_hash) > ShareTarget()) {
+    if (mutated || UintToArith256(pow_hash) > ShareTargetFor(share.bits)) {
         reason = "share-high-hash";
         return false;
     }
@@ -646,7 +688,7 @@ bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccum
     }
     bool mutated = false;
     const uint256 pow_hash = share.GetPoWHash(m_options.chainparams.GetConsensus(), &mutated);
-    if (mutated || UintToArith256(pow_hash) > ChainTarget()) {
+    if (mutated || UintToArith256(pow_hash) > ChainTargetFor(share.bits)) {
         reason = "chainshare-high-hash";
         return false;
     }
@@ -661,7 +703,9 @@ bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccum
         return false;
     }
     // C2: fruit list sorted, unique, known, anchored within recency, not listed
-    // by the last R ancestors.
+    // by the last R ancestors.  Just above a trusted base the listed fruits may
+    // hang from pruned ancestors we never saw; they are below the window.
+    const bool near_base = NearBase(parent, share.height);
     if (!std::is_sorted(fruits.begin(), fruits.end()) || std::adjacent_find(fruits.begin(), fruits.end()) != fruits.end()) {
         reason = "chainshare-fruits-unsorted";
         return false;
@@ -679,6 +723,7 @@ bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccum
         for (const uint256& f : fruits) {
             auto it = state.fruits.find(f);
             if (it == state.fruits.end()) {
+                if (near_base) continue;
                 reason = "chainshare-fruit-unknown";
                 return false;
             }
@@ -690,6 +735,7 @@ bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccum
             if (!fruit.anchor.IsNull()) {
                 auto a = state.chain_shares.find(fruit.anchor);
                 if (a == state.chain_shares.end()) {
+                    if (near_base) continue;
                     reason = "chainshare-fruit-anchor-unknown";
                     return false;
                 }
@@ -704,18 +750,91 @@ bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccum
     index->share = share;
     index->peaks = peaks;
     index->fruits = fruits;
+    index->base_total_work = parent ? parent->base_total_work : share.total_work;
     if (parent) {
         index->prev_share = state.chain_shares.at(share.anchor);
     }
     state.chain_shares.emplace(hash, index);
-    // C3: most work wins; ties keep the current tip.
+    // C3: most verified work wins; ties keep the current tip.
     const std::shared_ptr<ShareIndex> tip = ActiveTip();
-    const arith_uint256 new_work = UintToArith256(share.total_work) + GetShareWork(share.bits);
-    const arith_uint256 tip_work = tip ? UintToArith256(tip->share.total_work) + GetShareWork(tip->share.bits) : arith_uint256(0);
-    if (!tip || new_work > tip_work) {
+    if (!tip || GetVerifiedChainWork(*index) > GetVerifiedChainWork(*tip)) {
         SetActiveTip(index);
         Prune();
     }
+    return true;
+}
+
+arith_uint256 GetVerifiedChainWork(const ShareIndex& index)
+{
+    return UintToArith256(index.share.total_work) + GetShareWork(index.share.bits) - UintToArith256(index.base_total_work);
+}
+
+bool ShareChainstateManager::NearBase(const ShareIndex* parent, uint32_t height) const
+{
+    const ShareIndex* base = parent;
+    while (base && base->prev_share) base = base->prev_share.get();
+    // a genesis chain share (null anchor) is not a trusted base: everything below it exists
+    return base && !base->share.anchor.IsNull() && height <= base->share.height + Params().Recency();
+}
+
+bool ShareChainstateManager::AcceptBaseChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason)
+{
+    ShareChainstate& state = ActiveChainstate();
+    if (!ActiveChain().chain.empty()) {
+        reason = "base-chain-not-empty";
+        return false;
+    }
+    if (share.anchor.IsNull()) {
+        reason = "base-is-genesis"; // a genesis share validates the normal way
+        return false;
+    }
+    if (share.wit.share_chain_path != Params().ChainId()) {
+        reason = "share-bad-chain-id";
+        return false;
+    }
+    // Its bits are a claim too, but never easier than the chain allows.
+    if (ShareTargetFor(share.bits) == 0 || ShareTargetFor(share.bits) > ShareTarget()) {
+        reason = "share-bad-bits";
+        return false;
+    }
+    bool mutated = false;
+    const uint256 pow_hash = share.GetPoWHash(m_options.chainparams.GetConsensus(), &mutated);
+    if (mutated || UintToArith256(pow_hash) > ChainTargetFor(share.bits)) {
+        reason = "chainshare-high-hash";
+        return false;
+    }
+    if (share.IsAux() && !CheckAuxBinding(share, reason)) {
+        return false;
+    }
+    if (peaks.GetHash() != share.prev_root) {
+        reason = "chainshare-bad-peaks";
+        return false;
+    }
+    if (!std::is_sorted(fruits.begin(), fruits.end()) || std::adjacent_find(fruits.begin(), fruits.end()) != fruits.end()) {
+        reason = "chainshare-fruits-unsorted";
+        return false;
+    }
+    if (FruitsRoot(fruits) != share.fruits_root) {
+        reason = "chainshare-bad-fruits-root";
+        return false;
+    }
+    {
+        const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(m_options.adjusted_time_callback().time_since_epoch()).count();
+        if (static_cast<int64_t>(share.wit.nTime) > now + 2 * 60 * 60) {
+            reason = "share-time-too-new";
+            return false;
+        }
+    }
+    const uint256 hash = share.GetHash();
+    state.fruits.emplace(hash, share);
+    auto index = std::make_shared<ShareIndex>();
+    index->share = share;
+    index->peaks = peaks;
+    index->fruits = fruits;
+    index->base_total_work = share.total_work;
+    state.chain_shares.emplace(hash, index);
+    SetActiveTip(index);
+    LogPrintf("Share chain: starting from trusted base %s at height %d\n", hash.ToString(), share.height);
     return true;
 }
 
@@ -892,17 +1011,33 @@ std::optional<ShareMessage> ShareChainstateManager::GetShareMessage(const uint25
     return std::nullopt;
 }
 
-ShareAccept ShareChainstateManager::ProcessShareMessage(const ShareMessage& msg, std::vector<uint256>& missing, std::string& reason, bool live)
+ShareAccept ShareChainstateManager::ProcessShareMessage(const ShareMessage& msg, std::vector<uint256>& missing, std::string& reason, bool live, bool allow_base)
 {
     ShareChainstate& state = ActiveChainstate();
     const uint256 hash = msg.share.GetHash();
     missing.clear();
-    if (!msg.share.anchor.IsNull() && !state.chain_shares.count(msg.share.anchor)) {
+    const bool anchor_unknown = !msg.share.anchor.IsNull() && !state.chain_shares.count(msg.share.anchor);
+    if (anchor_unknown) {
+        // A node with no chain yet takes the first chain share of a sync batch as its base.
+        if (allow_base && msg.has_body && ActiveChain().chain.empty()) {
+            if (state.chain_shares.count(hash)) {
+                return ShareAccept::DUPLICATE;
+            }
+            return AcceptBaseChainShare(msg.share, msg.body.peaks, msg.body.fruits, reason) ? ShareAccept::ACCEPTED : ShareAccept::INVALID;
+        }
+        // Below a trusted base nothing can be verified and nothing is needed.
+        const std::shared_ptr<ShareIndex> base = ActiveChain().Genesis();
+        if (base && !base->share.anchor.IsNull() && msg.share.height <= base->share.height) {
+            reason = "share-below-base";
+            return ShareAccept::INVALID;
+        }
         missing.push_back(msg.share.anchor);
     }
     if (msg.has_body) {
+        const ShareIndex* parent = (!anchor_unknown && !msg.share.anchor.IsNull()) ? state.chain_shares.at(msg.share.anchor).get() : nullptr;
+        const bool near_base = NearBase(parent, msg.share.height);
         for (const uint256& f : msg.body.fruits) {
-            if (!state.fruits.count(f)) missing.push_back(f);
+            if (!state.fruits.count(f) && !near_base) missing.push_back(f);
         }
     }
     if (!missing.empty()) {
@@ -1053,7 +1188,25 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
                 else if (r == ShareAccept::MISSING) still.push_back(m);
                 else { ++rejected; --deferred; }
             }
-            if (still.size() == deferred_msgs.size()) break;
+            if (still.size() == deferred_msgs.size()) {
+                // Nothing resolves: a pruned dump starts above its anchors. Our own
+                // file is trusted, so its lowest chain share becomes the base.
+                if (!ActiveChain().chain.empty()) break;
+                auto lowest = still.end();
+                for (auto it = still.begin(); it != still.end(); ++it) {
+                    if (it->has_body && (lowest == still.end() || it->share.height < lowest->share.height)) lowest = it;
+                }
+                if (lowest == still.end()) break;
+                std::vector<uint256> missing;
+                std::string reason;
+                if (ProcessShareMessage(*lowest, missing, reason, /*live=*/false, /*allow_base=*/true) != ShareAccept::ACCEPTED) {
+                    LogPrintf("Share chain: cannot start from %s: %s\n", lowest->share.GetHash().ToString(), reason);
+                    break;
+                }
+                ++accepted;
+                --deferred;
+                still.erase(lowest);
+            }
             deferred_msgs = std::move(still);
         }
     } catch (const std::exception& e) {

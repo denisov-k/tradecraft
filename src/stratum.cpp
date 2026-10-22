@@ -857,13 +857,15 @@ static void SubmitShareToChain(const Share& share, const uint256& pow_hash, cons
     LOCK(::cs_main);
     ShareChainstateManager& man = *g_context->sharechainman;
     const arith_uint256 h = UintToArith256(pow_hash);
-    if (h > man.ShareTarget()) {
+    const arith_uint256 share_target = man.ShareTargetFor(share.bits);
+    const arith_uint256 chain_target = man.ChainTargetFor(share.bits);
+    if (h > share_target) {
         return;
     }
     std::string reason;
     if (man.AcceptFruit(share, reason)) {
         LogPrintf("NEW SHARE CHAIN FRUIT%s by %s: %s\n", kind, EncodeDestination(who), share.GetHash().ToString());
-        if (h > man.ChainTarget() && g_context->peerman) {
+        if (h > chain_target && g_context->peerman) {
             ShareMessage m;
             m.share = share;
             g_context->peerman->RelayShare(m, -1);
@@ -871,7 +873,7 @@ static void SubmitShareToChain(const Share& share, const uint256& pow_hash, cons
     } else {
         LogPrintf("Share chain:%s fruit rejected (%s) from %s\n", kind, reason, EncodeDestination(who));
     }
-    if (h > man.ChainTarget()) {
+    if (h > chain_target) {
         return;
     }
     const auto& st = *current_work.m_share_state;

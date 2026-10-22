@@ -340,9 +340,17 @@ struct ShareIndex {
     //! sorted fruit hashes behind share.fruits_root.
     MmrAccumulator peaks;
     std::vector<uint256> fruits;
+    //! total_work claimed by the lowest chain share this one descends from
+    //! (the chain's base).  Work above it has been verified by this node;
+    //! the base's own claim has not, so forks are compared by the difference.
+    uint256 base_total_work;
 
     uint256 GetHash() const { return share.GetHash(); }
 };
+
+/** Work of the chain ending in `index` that this node has verified: from
+ *  the base (exclusive of its claim) through `index` inclusive. */
+arith_uint256 GetVerifiedChainWork(const ShareIndex& index);
 
 /** Body a chain share transmits behind its roots. */
 struct ChainShareBody {
@@ -492,6 +500,17 @@ struct ShareChainstateManager {
     //! Validate and record a share that also met the chain target, with the
     //! body behind its roots (C1, C2); updates the active chain if it has more work (C3).
     bool AcceptChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason, bool live = true) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Start an empty chain from a chain share whose anchor we do not have:
+    //! the trusted base of a node that joins a running chain (or reloads a
+    //! pruned sharechain.dat).  Only the share's own consistency and proof of
+    //! work are checked; its total_work is taken as a claim (see
+    //! GetVerifiedChainWork).
+    bool AcceptBaseChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Targets a share with the given compact bits has to meet (its own
+    //! bits are fixed by CheckLinkage); ShareTarget()/ChainTarget() are the
+    //! easiest the chain allows.
+    arith_uint256 ShareTargetFor(uint32_t bits) const;
+    arith_uint256 ChainTargetFor(uint32_t bits) const;
 
     //! Share target a share hanging from `anchor` must meet: ShareBits(), or
     //! the LWMA retarget over the anchor's chain when Params().Retarget().
@@ -502,7 +521,9 @@ struct ShareChainstateManager {
     //! orphan pool by the caller via AddOrphan.
     //! `live`: the share was just mined or relayed (template-age rule applies); false for
     //! sync batches and sharechain.dat.
-    ShareAccept ProcessShareMessage(const ShareMessage& msg, std::vector<uint256>& missing, std::string& reason, bool live = true) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! `allow_base`: while the chain is empty, a chain share with an unknown
+    //! anchor becomes the trusted base instead of a missing dependency.
+    ShareAccept ProcessShareMessage(const ShareMessage& msg, std::vector<uint256>& missing, std::string& reason, bool live = true, bool allow_base = false) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! A known share as a message (with body for chain shares).
     std::optional<ShareMessage> GetShareMessage(const uint256& hash) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Locator over the active chain (tip, then exponentially sparser), for getsharechain.
@@ -535,6 +556,9 @@ private:
     bool CheckAuxBinding(const Share& share, std::string& reason) const;
     //! Coinbase outputs of the share equal PPLNS(anchor) (A2).
     bool CheckPayouts(const Share& share, const ShareIndex* anchor, std::string& reason) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Whether a chain share at `height` on top of `parent` is within Recency()
+    //! of a trusted base, where listed fruits may hang from pruned ancestors.
+    bool NearBase(const ShareIndex* parent, uint32_t height) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Rebuild the active chain vector from a tip.
     void SetActiveTip(const std::shared_ptr<ShareIndex>& tip) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Shares waiting for an anchor or fruits we have not seen yet.
