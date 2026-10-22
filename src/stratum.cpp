@@ -200,6 +200,8 @@ struct StratumWork {
     // The cached 2nd-stage auxiliary hash value, if an auxiliary proof-of-work
     // solution has been found.
     std::optional<uint256> m_aux_hash2;
+    //! Share chain state captured when the template was built (if a share chain is active).
+    std::optional<ShareChainstateManager::TemplateState> m_share_state;
 
     StratumWork() : m_is_witness_enabled(false) {};
     StratumWork(const CTxDestination& coinbase_dest, const node::CBlockTemplate& block_template, bool is_witness_enabled);
@@ -459,6 +461,26 @@ void CustomizeWork(const ChainstateManager& chainman, const StratumClient& clien
         UpdateSegwitCommitment(chainman, current_work, cb, bf, cb_branch);
         LogPrint(BCLog::STRATUM, "Updated segwit commitment in coinbase.\n");
     }
+    // Share chain: the payout vector replaces the single reward output and the
+    // share commitment goes last (doc/sharechain.md section 5).
+    if (!current_work.m_aux_hash2 && current_work.m_share_state && !cb.vout.empty()) {
+        const CTxDestination dest = IsValidDestination(addr) ? addr : current_work.m_coinbase_dest;
+        const std::optional<WitnessUnknown> miner = WitnessUnknownFromDestination(dest);
+        if (miner) {
+            const ShareChainParams& sp = ShareParams();
+            const CAmount total = cb.vout.front().nValue;
+            const auto payouts = ComputeSharePayouts(current_work.m_share_state->credits, total, *miner, sp.Dust(), sp.MaxPayees());
+            std::vector<CTxOut> vout;
+            for (const auto& p : payouts) {
+                vout.emplace_back(p.second, GetScriptForDestination(p.first));
+            }
+            vout.insert(vout.end(), cb.vout.begin() + 1, cb.vout.end());
+            const Share share = ShareFromTemplateState(*current_work.m_share_state, *miner);
+            const uint256 root = ComputeMerkleMapRootFromBranch(share.GetHeaderHash(), {}, sp.ChainId(), nullptr);
+            vout.emplace_back(0, ShareCommitmentScript(root));
+            cb.vout = std::move(vout);
+        }
+    }
 }
 
 uint256 CustomizeCommitHash(const ChainstateManager& chainman, const StratumClient& client, const CTxDestination& addr, const JobId& job_id, const StratumWork& current_work, const uint256& secret)
@@ -567,6 +589,13 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
 
         job_id = JobId(new_work->block.GetHash());
         work_templates[job_id] = StratumWork(coinbase_dest, *new_work, new_work->block.vtx[0]->HasWitness());
+        if (g_context->sharechainman && !new_work->block.vtx.empty() && !new_work->block.vtx[0]->vout.empty()) {
+            LOCK(::cs_main);
+            const CAmount total = new_work->block.vtx[0]->vout[0].nValue;
+            const uint32_t frc_bits = new_work->block.m_aux_pow.IsNull() ? new_work->block.nBits : new_work->block.m_aux_pow.m_commit_bits;
+            work_templates[job_id].m_share_state = g_context->sharechainman->GetTemplateState(witness_dest, total, frc_bits);
+            LogPrint(BCLog::STRATUM, "Share chain template state: height %d anchor %s fruits %d\n", work_templates[job_id].m_share_state->height, work_templates[job_id].m_share_state->anchor.ToString(), work_templates[job_id].m_share_state->fruits.size());
+        }
         tip = tip_new;
 
         LogPrint(BCLog::STRATUM, "New stratum block template (%d total): %s\n", work_templates.size(), HexStr(job_id));
@@ -648,6 +677,9 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
     if (!current_work.GetBlock().m_aux_pow.IsNull() && !current_work.m_aux_hash2) {
         // Auxiliary proof-of-work difficulty
         tmp_index.nBits = current_work.GetBlock().m_aux_pow.m_commit_bits;
+    } else if (current_work.m_share_state) {
+        // Share chain: miners work at the share target
+        tmp_index.nBits = current_work.m_share_state->bits;
     } else {
         // Native proof-of-work difficulty
         tmp_index.nBits = current_work.GetBlock().nBits;
@@ -891,6 +923,39 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
         const Consensus::Params& params = Params().GetConsensus();
         res = IsProtocolCleanupActive(params, current_work.GetBlock()) || CheckProofOfWork(blkhdr, params);
         uint256 hash = blkhdr.GetHash();
+        // Share chain: every submission that meets the share target is a share;
+        // one that also meets the chain target is a chain share.
+        if (g_context->sharechainman && current_work.m_share_state) {
+            const std::optional<WitnessUnknown> miner = WitnessUnknownFromDestination(IsValidDestination(client.m_addr) ? client.m_addr : current_work.m_coinbase_dest);
+            if (miner) {
+                Share share = ShareFromTemplateState(*current_work.m_share_state, *miner);
+                if (!FillNativeShareWitness(share, cb, cb_branch, blkhdr, ShareParams().ChainId())) {
+                    LogPrintf("Share chain: cannot build witness for share from %s\n", EncodeDestination(client.m_addr));
+                } else if (share.GetBlockHeader(nullptr).GetHash() != hash) {
+                    LogPrintf("Share chain: BUG: reconstructed share header hash %s != submitted %s\n", share.GetBlockHeader(nullptr).GetHash().ToString(), hash.ToString());
+                } else {
+                    LOCK(::cs_main);
+                    ShareChainstateManager& man = *g_context->sharechainman;
+                    const arith_uint256 h = UintToArith256(hash);
+                    std::string reason;
+                    if (h <= man.ShareTarget()) {
+                        if (man.AcceptFruit(share, reason)) {
+                            LogPrintf("NEW SHARE CHAIN FRUIT by %s: %s\n", EncodeDestination(client.m_addr), share.GetHash().ToString());
+                        } else {
+                            LogPrintf("Share chain: fruit rejected (%s) from %s\n", reason, EncodeDestination(client.m_addr));
+                        }
+                        if (h <= man.ChainTarget()) {
+                            if (man.AcceptChainShare(share, current_work.m_share_state->peaks, current_work.m_share_state->fruits, reason)) {
+                                LogPrintf("NEW CHAIN SHARE by %s: %s height %d fruits %d\n", EncodeDestination(client.m_addr), share.GetHash().ToString(), share.height, current_work.m_share_state->fruits.size());
+                                client.m_send_work = true;
+                            } else {
+                                LogPrintf("Share chain: chain share rejected (%s) from %s\n", reason, EncodeDestination(client.m_addr));
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if (res) {
             LogPrintf("GOT BLOCK!!! by %s: %s\n", EncodeDestination(client.m_addr), hash.ToString());
             CBlock block(current_work.GetBlock());
@@ -1732,6 +1797,8 @@ bool InitStratumServer(node::NodeContext& node)
             .adjusted_time_callback = []() { return NodeClock::now(); },
         };
         node.sharechainman = std::make_unique<ShareChainstateManager>(sharechainman_opts);
+        LOCK(::cs_main);
+        node.sharechainman->Initialize();
     }
 
     // Either -defaultminingaddress or -stratumwallet can be set, but not both.
@@ -1772,11 +1839,11 @@ bool InitStratumServer(node::NodeContext& node)
         LogPrintf("WARNING: -defaultminingaddress=%s is not a witness program, and therefore cannot be used as a share address, but no -defaultshareaddress is set.  Are you sure this is what you want?\n", EncodeDestination(g_default_mining_address));
     }
 
-    std::optional<std::string> mindiff = gArgs.GetArg("-miningmindifficulty");
+    std::optional<std::string> mindiff = gArgs.GetArg("-miningmindiff");
     if (mindiff) {
         double diff = std::stod(*mindiff);
         if (diff < 0.0) {
-            LogPrintf("Invalid -miningmindifficulty=%s: must be non-negative\n", *mindiff);
+            LogPrintf("Invalid -miningmindiff=%s: must be non-negative\n", *mindiff);
             return false;
         }
         g_min_difficulty = diff;

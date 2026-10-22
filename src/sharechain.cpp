@@ -8,6 +8,10 @@
 #include <hash.h> // for CHash256, HashWriter
 #include <primitives/block.h> // for CBlockHeader
 #include <rpc/server.h> // for CRPCTable
+#include <rpc/server_util.h> // for EnsureAnyNodeContext
+#include <node/context.h> // for NodeContext
+#include <util/strencodings.h> // for strprintf via tinyformat
+#include <tinyformat.h>
 #include <streams.h> // for DataStream
 #include <span.h> // for Span, MakeUCharSpan
 #include <util/check.h> // for Assert
@@ -98,12 +102,7 @@ void swap(Share& lhs, Share& rhs) {
     swap(lhs.wit, rhs.wit);
 }
 
-CBlockHeader Share::GetBlockHeader(bool *mutated) const {
-    if (mutated) {
-        *mutated = false;
-    }
-
-    // Compute the hash of the share header.
+uint256 Share::GetHeaderHash() const {
     HashWriter ss{};
     ss << version;
     ss << bits;
@@ -114,7 +113,16 @@ CBlockHeader Share::GetBlockHeader(bool *mutated) const {
     ss << fruits_root;
     ss << COMPACTSIZE(miner.GetWitnessVersion()); // will always be single byte
     ss << miner.GetWitnessProgram();
-    uint256 hash = ss.GetHash();
+    return ss.GetHash();
+}
+
+CBlockHeader Share::GetBlockHeader(bool *mutated) const {
+    if (mutated) {
+        *mutated = false;
+    }
+
+    // Compute the hash of the share header.
+    uint256 hash = GetHeaderHash();
 
     // Compute the commitment root hash.
     // The share chain commitment might be stored alongside other
@@ -299,12 +307,8 @@ bool ReconstructShareCoinbase(const Share& share, CMutableTransaction& cb)
 {
     // The witness stores the coinbase up to the commitment root; the rest is
     // root || id || nLockTime || lock_height, exactly as GetBlockHeader hashes it.
-    HashWriter ss{};
-    ss << share.version << share.bits << share.height << share.total_work << share.anchor << share.prev_root << share.fruits_root;
-    ss << COMPACTSIZE(share.miner.GetWitnessVersion());
-    ss << share.miner.GetWitnessProgram();
     bool invalid = false;
-    const uint256 root = ComputeMerkleMapRootFromBranch(ss.GetHash(), share.wit.commit, share.wit.share_chain_path, &invalid);
+    const uint256 root = ComputeMerkleMapRootFromBranch(share.GetHeaderHash(), share.wit.commit, share.wit.share_chain_path, &invalid);
     if (invalid) {
         return false;
     }
@@ -421,7 +425,7 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
     const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
     ShareCredits credits = ComputeShareCredits(anchor, window, lookup);
     const auto payouts = ComputeSharePayouts(std::move(credits), total, share.miner, Params().Dust(), Params().MaxPayees());
-    if (cb.vout.size() != payouts.size() + 1) {
+    if (cb.vout.size() < payouts.size() + 1) {
         reason = "share-bad-payout-count";
         return false;
     }
@@ -432,10 +436,15 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
             return false;
         }
     }
-    if (cb.vout.back().nValue != 0) {
-        reason = "share-bad-commitment-output";
-        return false;
+    // Anything between the payouts and the commitment (none today) must carry no value.
+    for (size_t i = payouts.size(); i < cb.vout.size(); ++i) {
+        if (cb.vout[i].nValue != 0) {
+            reason = "share-bad-extra-output";
+            return false;
+        }
     }
+    // The commitment output itself is implied: ReconstructShareCoinbase appended the root
+    // derived from this header, and AcceptFruit checks the resulting block hash against the PoW.
     return true;
 }
 
@@ -512,9 +521,14 @@ ShareChainstateManager::TemplateState ShareChainstateManager::GetTemplateState(c
     st.bits = Params().ShareBits();
     st.fruits = ListableFruits(tip.get());
     st.fruits_root = FruitsRoot(st.fruits);
+    if (tip) {
+        st.peaks = tip->peaks;
+        st.peaks.Append(tip->GetHash());
+    }
     const arith_uint256 window = GetShareWork(frc_bits) * Params().WindowK();
     const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
-    st.payouts = ComputeSharePayouts(ComputeShareCredits(tip.get(), window, lookup), total, miner, Params().Dust(), Params().MaxPayees());
+    st.credits = ComputeShareCredits(tip.get(), window, lookup);
+    st.payouts = ComputeSharePayouts(st.credits, total, miner, Params().Dust(), Params().MaxPayees());
     return st;
 }
 
@@ -620,6 +634,62 @@ void ShareChainstateManager::SetActiveTip(const std::shared_ptr<ShareIndex>& tip
     ActiveChain().chain = std::move(chain);
 }
 
+Share ShareFromTemplateState(const ShareChainstateManager::TemplateState& st, const WitnessUnknown& miner)
+{
+    Share share;
+    share.version = 0; // native witness
+    share.bits = st.bits;
+    share.height = st.height;
+    share.total_work = st.total_work;
+    share.anchor = st.anchor;
+    share.prev_root = st.prev_root;
+    share.fruits_root = st.fruits_root;
+    share.miner = miner;
+    return share;
+}
+
+bool FillNativeShareWitness(Share& share, const CMutableTransaction& cb, const std::vector<uint256>& cb_branch, const CBlockHeader& header, const uint256& chain_id)
+{
+    DataStream ds{};
+    ds << TX_NO_WITNESS(cb);
+    const Span<const unsigned char> span = MakeUCharSpan(ds);
+    const std::vector<unsigned char> bytes(span.begin(), span.end());
+    // tail = root(32) || id(4) || nLockTime(4) || lock_height(4)
+    if (bytes.size() < 44 || cb.vout.empty()) {
+        return false;
+    }
+    share.wit.commit.clear(); // single-entry Merkle map: the branch is empty
+    share.wit.cb1.assign(bytes.begin(), bytes.end() - 44);
+    share.wit.nLockTime = cb.nLockTime;
+    share.wit.lock_height = cb.lock_height;
+    share.wit.branch = cb_branch;
+    share.wit.nVersion = header.nVersion;
+    share.wit.hashPrevBlock = header.hashPrevBlock;
+    share.wit.share_chain_path = chain_id;
+    share.wit.nTime = header.nTime;
+    share.wit.nBits = header.nBits;
+    share.wit.nNonce = header.nNonce;
+    return true;
+}
+
+namespace {
+struct ToWitnessUnknown {
+    std::optional<WitnessUnknown> operator()(const CNoDestination&) const { return std::nullopt; }
+    std::optional<WitnessUnknown> operator()(const PubKeyDestination&) const { return std::nullopt; }
+    std::optional<WitnessUnknown> operator()(const PKHash&) const { return std::nullopt; }
+    std::optional<WitnessUnknown> operator()(const ScriptHash&) const { return std::nullopt; }
+    std::optional<WitnessUnknown> operator()(const PayToAnchor&) const { return std::nullopt; }
+    std::optional<WitnessUnknown> operator()(const WitnessV0LongHash& id) const { return WitnessUnknown(0u, std::vector<unsigned char>(id.begin(), id.end())); }
+    std::optional<WitnessUnknown> operator()(const WitnessV0ShortHash& id) const { return WitnessUnknown(0u, std::vector<unsigned char>(id.begin(), id.end())); }
+    std::optional<WitnessUnknown> operator()(const WitnessUnknown& id) const { return id; }
+};
+} // namespace
+
+std::optional<WitnessUnknown> WitnessUnknownFromDestination(const CTxDestination& dest)
+{
+    return std::visit(ToWitnessUnknown(), dest);
+}
+
 static RPCHelpMan getsharechaininfo() {
     return RPCHelpMan{"getsharechaininfo",
         "\nReturns an object containing various state info regarding the share chain.\n",
@@ -641,6 +711,19 @@ static RPCHelpMan getsharechaininfo() {
     }
     const auto& shareparams = *g_share_chain_params;
     obj.pushKV("network", shareparams.GetShareChainTypeString());
+    obj.pushKV("sharebits", strprintf("%08x", shareparams.ShareBits()));
+    obj.pushKV("chainfactor", (int)shareparams.ChainFactor());
+    obj.pushKV("recency", (int)shareparams.Recency());
+    const node::NodeContext& node = EnsureAnyNodeContext(request.context);
+    if (node.sharechainman) {
+        LOCK(::cs_main);
+        const ShareChainstateManager& man = *node.sharechainman;
+        const std::shared_ptr<ShareIndex> tip = man.ActiveTip();
+        obj.pushKV("height", tip ? (int64_t)tip->share.height : -1);
+        obj.pushKV("tip", tip ? tip->GetHash().GetHex() : "");
+        obj.pushKV("chainshares", (int64_t)man.ActiveChainstate().chain_shares.size());
+        obj.pushKV("fruits", (int64_t)man.ActiveChainstate().fruits.size());
+    }
     return obj;
 },
     };

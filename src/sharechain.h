@@ -255,6 +255,8 @@ struct Share {
         READWRITE(obj.wit);
     }
 
+    //! Hash of the share header fields alone (what the coinbase commits to).
+    uint256 GetHeaderHash() const;
     //! The block header for this share.
     CBlockHeader GetBlockHeader(bool* mutated) const;
 
@@ -410,6 +412,11 @@ struct ShareChainstateManager {
         uint32_t bits{0};
         std::vector<uint256> fruits;
         uint256 fruits_root;
+        //! MMR of the chain shares up to and including the anchor: the body a
+        //! chain share built from this state transmits.
+        MmrAccumulator peaks;
+        //! Credits over the window; payouts per builder come from ComputeSharePayouts.
+        ShareCredits credits;
         std::vector<std::pair<WitnessUnknown, CAmount>> payouts;
     };
     //! `total` is the coinbase value to split; `frc_bits` the Freicoin aux target
@@ -448,5 +455,11 @@ uint256 FruitsRoot(const std::vector<uint256>& fruits);
 CScript ShareCommitmentScript(const uint256& commitment_root);
 /** Rebuild the full coinbase of a share from its witness (cb1 || root || id || nLockTime || lock_height). */
 bool ReconstructShareCoinbase(const Share& share, CMutableTransaction& cb);
+/** The share header a template built from `st` for `miner` commits to (native witness, version 0). */
+Share ShareFromTemplateState(const ShareChainstateManager::TemplateState& st, const WitnessUnknown& miner);
+/** Fill a native witness from the mined coinbase and header; false if the coinbase does not end with a share commitment. */
+bool FillNativeShareWitness(Share& share, const CMutableTransaction& cb, const std::vector<uint256>& cb_branch, const CBlockHeader& header, const uint256& chain_id);
+/** Witness-program form of a destination, if it has one. */
+std::optional<WitnessUnknown> WitnessUnknownFromDestination(const CTxDestination& dest);
 
 // End of File
