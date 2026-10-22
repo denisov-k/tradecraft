@@ -487,11 +487,11 @@ struct ShareChainstateManager {
 
     //! Validate and record a share that met the share target (doc/sharechain-uncles.md A1, A2).
     //! On success the share is in fruits (it may also become a chain share via AcceptChainShare).
-    bool AcceptFruit(const Share& share, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    bool AcceptFruit(const Share& share, std::string& reason, bool live = true) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
 
     //! Validate and record a share that also met the chain target, with the
     //! body behind its roots (C1, C2); updates the active chain if it has more work (C3).
-    bool AcceptChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    bool AcceptChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason, bool live = true) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
 
     //! Share target a share hanging from `anchor` must meet: ShareBits(), or
     //! the LWMA retarget over the anchor's chain when Params().Retarget().
@@ -500,7 +500,9 @@ struct ShareChainstateManager {
     //! Validate a share received from a peer or read from disk.  MISSING lists
     //! the hashes (anchor, fruits) we need first; the message is parked in the
     //! orphan pool by the caller via AddOrphan.
-    ShareAccept ProcessShareMessage(const ShareMessage& msg, std::vector<uint256>& missing, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! `live`: the share was just mined or relayed (template-age rule applies); false for
+    //! sync batches and sharechain.dat.
+    ShareAccept ProcessShareMessage(const ShareMessage& msg, std::vector<uint256>& missing, std::string& reason, bool live = true) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! A known share as a message (with body for chain shares).
     std::optional<ShareMessage> GetShareMessage(const uint256& hash) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Locator over the active chain (tip, then exponentially sparser), for getsharechain.

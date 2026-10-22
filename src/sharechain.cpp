@@ -503,7 +503,7 @@ bool ShareChainstateManager::CheckAuxBinding(const Share& share, std::string& re
     return true;
 }
 
-bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason)
+bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason, bool live)
 {
     ShareChainstate& state = ActiveChainstate();
     const uint256 hash = share.GetHash();
@@ -535,9 +535,9 @@ bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason
             return false;
         }
         // Template age: the Freicoin block the template builds on must be known, and a
-        // fresh share (mined in the last 20 minutes) must build on one of the last
-        // MaxTemplateAge() blocks. Historical shares arriving in a sync keep only the
-        // known-block requirement.
+        // live share (just mined or relayed) must build on one of the last
+        // MaxTemplateAge() blocks. Shares from a sync batch or sharechain.dat keep only
+        // the known-block requirement.
         const int tip_height = m_options.tip_height_callback ? m_options.tip_height_callback() : -1;
         if (tip_height >= 0 && m_options.block_height_callback) {
             const std::optional<int> prev_height = m_options.block_height_callback(share.wit.hashPrevBlock);
@@ -545,8 +545,7 @@ bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason
                 reason = "share-unknown-prev-block";
                 return false;
             }
-            const bool fresh = static_cast<int64_t>(share.wit.nTime) + 20 * 60 >= now;
-            if (fresh && *prev_height + Params().MaxTemplateAge() < tip_height) {
+            if (live && *prev_height + Params().MaxTemplateAge() < tip_height) {
                 reason = "share-stale-template";
                 return false;
             }
@@ -618,7 +617,7 @@ ShareChainstateManager::TemplateState ShareChainstateManager::GetTemplateState(c
     return st;
 }
 
-bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason)
+bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason, bool live)
 {
     ShareChainstate& state = ActiveChainstate();
     const uint256 hash = share.GetHash();
@@ -628,7 +627,7 @@ bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccum
     }
     // A chain share is a share: record it as a fruit first (idempotent).
     if (!state.fruits.count(hash)) {
-        if (!AcceptFruit(share, reason)) {
+        if (!AcceptFruit(share, reason, live)) {
             return false;
         }
     }
@@ -884,7 +883,7 @@ std::optional<ShareMessage> ShareChainstateManager::GetShareMessage(const uint25
     return std::nullopt;
 }
 
-ShareAccept ShareChainstateManager::ProcessShareMessage(const ShareMessage& msg, std::vector<uint256>& missing, std::string& reason)
+ShareAccept ShareChainstateManager::ProcessShareMessage(const ShareMessage& msg, std::vector<uint256>& missing, std::string& reason, bool live)
 {
     ShareChainstate& state = ActiveChainstate();
     const uint256 hash = msg.share.GetHash();
@@ -905,12 +904,12 @@ ShareAccept ShareChainstateManager::ProcessShareMessage(const ShareMessage& msg,
         if (state.chain_shares.count(hash)) {
             return ShareAccept::DUPLICATE;
         }
-        return AcceptChainShare(msg.share, msg.body.peaks, msg.body.fruits, reason) ? ShareAccept::ACCEPTED : ShareAccept::INVALID;
+        return AcceptChainShare(msg.share, msg.body.peaks, msg.body.fruits, reason, live) ? ShareAccept::ACCEPTED : ShareAccept::INVALID;
     }
     if (state.fruits.count(hash)) {
         return ShareAccept::DUPLICATE;
     }
-    return AcceptFruit(msg.share, reason) ? ShareAccept::ACCEPTED : ShareAccept::INVALID;
+    return AcceptFruit(msg.share, reason, live) ? ShareAccept::ACCEPTED : ShareAccept::INVALID;
 }
 
 void ShareChainstateManager::AddOrphan(const ShareMessage& msg)
@@ -1009,7 +1008,7 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
             file >> m;
             std::vector<uint256> missing;
             std::string reason;
-            const ShareAccept r = ProcessShareMessage(m, missing, reason);
+            const ShareAccept r = ProcessShareMessage(m, missing, reason, /*live=*/false);
             if (r == ShareAccept::ACCEPTED || r == ShareAccept::DUPLICATE) ++accepted;
             else if (r == ShareAccept::MISSING) { deferred_msgs.push_back(m); ++deferred; }
             else ++rejected;
@@ -1018,7 +1017,7 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
         for (const ShareMessage& m : deferred_msgs) {
             std::vector<uint256> missing;
             std::string reason;
-            if (ProcessShareMessage(m, missing, reason) == ShareAccept::ACCEPTED) { ++accepted; --deferred; }
+            if (ProcessShareMessage(m, missing, reason, /*live=*/false) == ShareAccept::ACCEPTED) { ++accepted; --deferred; }
         }
     } catch (const std::exception& e) {
         LogPrintf("Share chain: failed to load %s: %s\n", fs::PathToString(path), e.what());

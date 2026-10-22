@@ -4724,7 +4724,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             for (const ShareMessage& m : batch) {
                 std::vector<uint256> missing;
                 std::string reason;
-                switch (g_sharechainman->ProcessShareMessage(m, missing, reason)) {
+                switch (g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false)) {
                 case ShareAccept::ACCEPTED: ++accepted; break;
                 case ShareAccept::DUPLICATE: ++dup; break;
                 case ShareAccept::MISSING: ++missing_n; g_sharechainman->AddOrphan(m); break;
@@ -4736,7 +4736,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 for (const ShareMessage& m : g_sharechainman->TakeOrphans()) {
                     std::vector<uint256> missing;
                     std::string reason;
-                    const ShareAccept r = g_sharechainman->ProcessShareMessage(m, missing, reason);
+                    const ShareAccept r = g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false);
                     if (r == ShareAccept::ACCEPTED) { ++accepted; --missing_n; }
                     else if (r == ShareAccept::MISSING) g_sharechainman->AddOrphan(m);
                 }
