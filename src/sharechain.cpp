@@ -18,6 +18,9 @@
 
 #include <algorithm> // for std::sort
 #include <set> // for std::set
+#include <chrono> // for std::chrono
+#include <util/fs_helpers.h> // for FileCommit, RenameOver
+#include <logging.h> // for LogPrintf
 #include <array> // for std::array
 #include <utility> // for std::swap
 
@@ -37,6 +40,9 @@ struct MainShareChainParams : public ShareChainParams {
         is_valid = true;
         m_share_chain_type = ShareChainType::MAIN;
         m_chain_id = uint256S("5348415245434841494e2d4d41494e0000000000000000000000000000000001"); // 'SHARECHAIN-MAIN' || 1
+        m_share_bits = 0x1b068db2;   // difficulty 10000: ~43 TH for 10 s shares; also the easiest target allowed
+        m_retarget = true;
+        m_share_interval = 10;
     }
 };
 
@@ -47,6 +53,7 @@ struct RegtestShareChainParams : public ShareChainParams {
         m_share_bits = 0x207fffff;   // every hash is a share: tests and the regtest stack
         m_chain_factor = 4;
         m_recency = 10;
+        m_retarget = false;
         m_chain_id = uint256S("5348415245434841494e2d5245475445535400000000000000000000000001");
     }
 };
@@ -412,7 +419,7 @@ bool ShareChainstateManager::CheckLinkage(const Share& share, const ShareIndex**
         reason = "share-bad-prev-root";
         return false;
     }
-    if (share.bits != Params().ShareBits()) {
+    if (share.bits != RequiredShareBits(anchor)) {
         reason = "share-bad-bits";
         return false;
     }
@@ -516,6 +523,17 @@ bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason
     if (share.IsAux() && !CheckAuxBinding(share, reason)) {
         return false;
     }
+    {
+        const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(m_options.adjusted_time_callback().time_since_epoch()).count();
+        if (static_cast<int64_t>(share.wit.nTime) > now + 2 * 60 * 60) {
+            reason = "share-time-too-new";
+            return false;
+        }
+        if (anchor && static_cast<int64_t>(share.wit.nTime) + 10 * 60 < static_cast<int64_t>(anchor->share.wit.nTime)) {
+            reason = "share-time-too-old";
+            return false;
+        }
+    }
     if (!CheckPayouts(share, anchor, reason)) {
         return false;
     }
@@ -568,7 +586,7 @@ ShareChainstateManager::TemplateState ShareChainstateManager::GetTemplateState(c
     st.prev_root = PrevRootAfter(tip.get());
     st.height = tip ? tip->share.height + 1 : 0;
     st.total_work = tip ? ArithToUint256(UintToArith256(tip->share.total_work) + GetShareWork(tip->share.bits)) : uint256();
-    st.bits = Params().ShareBits();
+    st.bits = RequiredShareBits(tip.get());
     st.fruits = ListableFruits(tip.get());
     st.fruits_root = FruitsRoot(st.fruits);
     if (tip) {
@@ -738,6 +756,218 @@ struct ToWitnessUnknown {
 std::optional<WitnessUnknown> WitnessUnknownFromDestination(const CTxDestination& dest)
 {
     return std::visit(ToWitnessUnknown(), dest);
+}
+
+ShareChainstateManager* g_sharechainman = nullptr;
+
+uint32_t ShareChainstateManager::RequiredShareBits(const ShareIndex* anchor) const
+{
+    const ShareChainParams& p = Params();
+    if (!p.Retarget() || !anchor || !anchor->prev_share) {
+        return p.ShareBits();
+    }
+    // LWMA over the last N chain shares ending at the anchor (newest weighs most).
+    constexpr size_t N = 60;
+    std::vector<const ShareIndex*> v;
+    for (const ShareIndex* cur = anchor; cur && v.size() < N; cur = cur->prev_share.get()) {
+        v.push_back(cur);
+    }
+    if (v.size() < 2) {
+        return p.ShareBits();
+    }
+    const int64_t T = p.ShareInterval();
+    int64_t sum_wt = 0, sum_w = 0;
+    arith_uint256 sum_target = 0;
+    size_t k = 0;
+    for (size_t i = v.size() - 1; i > 0; --i) { // oldest pair first
+        const int64_t prev_t = v[i]->share.wit.nTime;
+        const int64_t cur_t = v[i - 1]->share.wit.nTime;
+        const int64_t solve = std::clamp<int64_t>(cur_t - prev_t, 1, 6 * T);
+        ++k;
+        sum_wt += static_cast<int64_t>(k) * solve;
+        sum_w += static_cast<int64_t>(k);
+        arith_uint256 t;
+        t.SetCompact(v[i - 1]->share.bits);
+        sum_target += t;
+    }
+    const arith_uint256 avg_target = sum_target / static_cast<uint64_t>(k);
+    const int64_t lwma = std::max<int64_t>(1, sum_wt / sum_w);
+    arith_uint256 next = avg_target * static_cast<uint64_t>(lwma) / static_cast<uint64_t>(T);
+    // Per-step clamp against the anchor's target, and never easier than the chain's easiest target.
+    arith_uint256 anchor_target;
+    anchor_target.SetCompact(anchor->share.bits);
+    const arith_uint256 upper = anchor_target / 4 * 5;
+    const arith_uint256 lower = anchor_target / 4 * 3;
+    if (next > upper) next = upper;
+    if (next < lower) next = lower;
+    arith_uint256 easiest;
+    easiest.SetCompact(p.ShareBits());
+    if (next > easiest) next = easiest;
+    return next.GetCompact();
+}
+
+std::optional<ShareMessage> ShareChainstateManager::GetShareMessage(const uint256& hash) const
+{
+    const ShareChainstate& state = ActiveChainstate();
+    ShareMessage msg;
+    auto cs = state.chain_shares.find(hash);
+    if (cs != state.chain_shares.end()) {
+        msg.share = cs->second->share;
+        msg.has_body = true;
+        msg.body.peaks = cs->second->peaks;
+        msg.body.fruits = cs->second->fruits;
+        return msg;
+    }
+    auto f = state.fruits.find(hash);
+    if (f != state.fruits.end()) {
+        msg.share = f->second;
+        return msg;
+    }
+    return std::nullopt;
+}
+
+ShareAccept ShareChainstateManager::ProcessShareMessage(const ShareMessage& msg, std::vector<uint256>& missing, std::string& reason)
+{
+    ShareChainstate& state = ActiveChainstate();
+    const uint256 hash = msg.share.GetHash();
+    missing.clear();
+    if (!msg.share.anchor.IsNull() && !state.chain_shares.count(msg.share.anchor)) {
+        missing.push_back(msg.share.anchor);
+    }
+    if (msg.has_body) {
+        for (const uint256& f : msg.body.fruits) {
+            if (!state.fruits.count(f)) missing.push_back(f);
+        }
+    }
+    if (!missing.empty()) {
+        reason = "share-missing-dependencies";
+        return ShareAccept::MISSING;
+    }
+    if (msg.has_body) {
+        if (state.chain_shares.count(hash)) {
+            return ShareAccept::DUPLICATE;
+        }
+        return AcceptChainShare(msg.share, msg.body.peaks, msg.body.fruits, reason) ? ShareAccept::ACCEPTED : ShareAccept::INVALID;
+    }
+    if (state.fruits.count(hash)) {
+        return ShareAccept::DUPLICATE;
+    }
+    return AcceptFruit(msg.share, reason) ? ShareAccept::ACCEPTED : ShareAccept::INVALID;
+}
+
+void ShareChainstateManager::AddOrphan(const ShareMessage& msg)
+{
+    if (m_orphans.size() >= 500) {
+        m_orphans.erase(m_orphans.begin());
+    }
+    m_orphans[msg.share.GetHash()] = msg;
+}
+
+std::vector<ShareMessage> ShareChainstateManager::TakeOrphans()
+{
+    std::vector<ShareMessage> out;
+    out.reserve(m_orphans.size());
+    for (auto& item : m_orphans) {
+        out.push_back(std::move(item.second));
+    }
+    m_orphans.clear();
+    return out;
+}
+
+namespace {
+constexpr uint64_t SHARECHAIN_DUMP_VERSION = 1;
+} // namespace
+
+bool ShareChainstateManager::DumpToFile(const fs::path& path) const
+{
+    const ShareChainstate& state = ActiveChainstate();
+    // Chain shares by height so parents load first, then the remaining fruits.
+    std::vector<std::shared_ptr<ShareIndex>> chain_shares;
+    for (const auto& item : state.chain_shares) chain_shares.push_back(item.second);
+    std::sort(chain_shares.begin(), chain_shares.end(), [](const auto& a, const auto& b) { return a->share.height < b->share.height; });
+    std::vector<ShareMessage> entries;
+    std::set<uint256> seen;
+    for (const auto& cs : chain_shares) {
+        ShareMessage m;
+        m.share = cs->share;
+        m.has_body = true;
+        m.body.peaks = cs->peaks;
+        m.body.fruits = cs->fruits;
+        entries.push_back(std::move(m));
+        seen.insert(cs->GetHash());
+    }
+    for (const auto& item : state.fruits) {
+        if (seen.count(item.first)) continue;
+        ShareMessage m;
+        m.share = item.second;
+        entries.push_back(std::move(m));
+    }
+    const fs::path tmp = path + ".new";
+    AutoFile file{fsbridge::fopen(tmp, "wb")};
+    if (file.IsNull()) {
+        LogPrintf("Share chain: cannot open %s for writing\n", fs::PathToString(tmp));
+        return false;
+    }
+    try {
+        file << SHARECHAIN_DUMP_VERSION;
+        file << static_cast<uint64_t>(entries.size());
+        for (const ShareMessage& m : entries) {
+            file << m;
+        }
+        if (!FileCommit(file.Get())) {
+            throw std::runtime_error("FileCommit failed");
+        }
+        file.fclose();
+        if (!RenameOver(tmp, path)) {
+            throw std::runtime_error("Rename failed");
+        }
+    } catch (const std::exception& e) {
+        LogPrintf("Share chain: failed to dump %s: %s\n", fs::PathToString(path), e.what());
+        return false;
+    }
+    LogPrintf("Share chain: dumped %d chain shares and %d shares to %s\n", chain_shares.size(), entries.size() - chain_shares.size(), fs::PathToString(path));
+    return true;
+}
+
+bool ShareChainstateManager::LoadFromFile(const fs::path& path)
+{
+    AutoFile file{fsbridge::fopen(path, "rb")};
+    if (file.IsNull()) {
+        LogPrintf("Share chain: no %s to load\n", fs::PathToString(path));
+        return false;
+    }
+    size_t accepted = 0, rejected = 0, deferred = 0;
+    try {
+        uint64_t version = 0, count = 0;
+        file >> version;
+        if (version != SHARECHAIN_DUMP_VERSION) {
+            LogPrintf("Share chain: unsupported dump version %d\n", version);
+            return false;
+        }
+        file >> count;
+        std::vector<ShareMessage> deferred_msgs;
+        for (uint64_t i = 0; i < count; ++i) {
+            ShareMessage m;
+            file >> m;
+            std::vector<uint256> missing;
+            std::string reason;
+            const ShareAccept r = ProcessShareMessage(m, missing, reason);
+            if (r == ShareAccept::ACCEPTED || r == ShareAccept::DUPLICATE) ++accepted;
+            else if (r == ShareAccept::MISSING) { deferred_msgs.push_back(m); ++deferred; }
+            else ++rejected;
+        }
+        // one retry pass for entries whose dependencies came later in the file
+        for (const ShareMessage& m : deferred_msgs) {
+            std::vector<uint256> missing;
+            std::string reason;
+            if (ProcessShareMessage(m, missing, reason) == ShareAccept::ACCEPTED) { ++accepted; --deferred; }
+        }
+    } catch (const std::exception& e) {
+        LogPrintf("Share chain: failed to load %s: %s\n", fs::PathToString(path), e.what());
+        return false;
+    }
+    LogPrintf("Share chain: loaded %d shares from %s (%d rejected, %d unresolved), tip height %d\n", accepted, fs::PathToString(path), rejected, deferred, ActiveHeight());
+    return true;
 }
 
 static RPCHelpMan getsharechaininfo() {

@@ -15,6 +15,7 @@
 #include <serialize.h> // for Serialize, Unserialize, VARINT
 #include <uint256.h> // for uint256
 #include <util/check.h> // for Assert
+#include <util/fs.h> // for fs::path
 #include <util/sharechaintype.h> // for ShareChainType, ShareChainTypeToString
 #include <validation.h> // for cs_main
 
@@ -46,6 +47,10 @@ struct ShareChainParams {
     size_t MaxPayees() const { return m_max_payees; }
     //! Key of the share commitment in the coinbase Merkle hash map.
     const uint256& ChainId() const { return m_chain_id; }
+    //! Whether the share target follows the chain (LWMA) or stays at ShareBits().
+    bool Retarget() const { return m_retarget; }
+    //! Target spacing of shares, seconds.
+    int64_t ShareInterval() const { return m_share_interval; }
 
 protected:
     bool is_valid{false};
@@ -57,6 +62,8 @@ protected:
     CAmount m_dust{1000};
     size_t m_max_payees{100};
     uint256 m_chain_id;
+    bool m_retarget{true};
+    int64_t m_share_interval{10};
 };
 
 /**
@@ -334,6 +341,31 @@ struct ShareIndex {
     uint256 GetHash() const { return share.GetHash(); }
 };
 
+/** Body a chain share transmits behind its roots. */
+struct ChainShareBody {
+    MmrAccumulator peaks;
+    std::vector<uint256> fruits;
+    SERIALIZE_METHODS(ChainShareBody, obj) { READWRITE(obj.peaks, obj.fruits); }
+};
+
+/** A share on the wire and on disk: header + witness, plus the body for chain shares. */
+struct ShareMessage {
+    Share share;
+    bool has_body{false};
+    ChainShareBody body;
+    SERIALIZE_METHODS(ShareMessage, obj) {
+        READWRITE(obj.share);
+        uint8_t hb = obj.has_body ? 1 : 0;
+        READWRITE(hb);
+        SER_READ(obj, obj.has_body = (hb != 0));
+        if (obj.has_body) {
+            READWRITE(obj.body);
+        }
+    }
+};
+
+enum class ShareAccept { ACCEPTED, DUPLICATE, MISSING, INVALID };
+
 struct ShareChain {
     std::vector<std::shared_ptr<ShareIndex>> chain;
 
@@ -455,6 +487,22 @@ struct ShareChainstateManager {
     //! body behind its roots (C1, C2); updates the active chain if it has more work (C3).
     bool AcceptChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
 
+    //! Share target a share hanging from `anchor` must meet: ShareBits(), or
+    //! the LWMA retarget over the anchor's chain when Params().Retarget().
+    uint32_t RequiredShareBits(const ShareIndex* anchor) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+
+    //! Validate a share received from a peer or read from disk.  MISSING lists
+    //! the hashes (anchor, fruits) we need first; the message is parked in the
+    //! orphan pool by the caller via AddOrphan.
+    ShareAccept ProcessShareMessage(const ShareMessage& msg, std::vector<uint256>& missing, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! A known share as a message (with body for chain shares).
+    std::optional<ShareMessage> GetShareMessage(const uint256& hash) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    void AddOrphan(const ShareMessage& msg) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    std::vector<ShareMessage> TakeOrphans() EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Persist / restore the whole share chain state (sharechain.dat).
+    bool DumpToFile(const fs::path& path) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    bool LoadFromFile(const fs::path& path) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+
     //! Fruits that a new chain share on top of `tip` may list: known, anchored
     //! within Recency() of the new height, not listed by the last Recency()
     //! ancestors, sorted, unique.
@@ -470,7 +518,12 @@ private:
     bool CheckPayouts(const Share& share, const ShareIndex* anchor, std::string& reason) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Rebuild the active chain vector from a tip.
     void SetActiveTip(const std::shared_ptr<ShareIndex>& tip) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Shares waiting for an anchor or fruits we have not seen yet.
+    std::map<uint256, ShareMessage> m_orphans;
 };
+
+//! The active share chain manager, for net_processing (set by InitStratumServer).
+extern ShareChainstateManager* g_sharechainman;
 
 /** MMR root that a share hanging from `anchor` must carry as prev_root:
  *  the accumulator of all chain shares up to and including the anchor. */

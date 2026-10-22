@@ -330,6 +330,10 @@ void Shutdown(NodeContext& node)
     if (node.mempool && node.mempool->GetLoadTried() && ShouldPersistMempool(*node.args)) {
         DumpMempool(*node.mempool, MempoolPath(*node.args));
     }
+    if (node.sharechainman) {
+        LOCK(::cs_main);
+        node.sharechainman->DumpToFile(node.args->GetDataDirNet() / "sharechain.dat");
+    }
 
     // Drop transactions we were still watching, record fee estimations and unregister
     // fee estimator from validation interface.
@@ -976,6 +980,10 @@ bool AppInitParameterInteraction(const ArgsManager& args)
     // Signal NODE_P2P_V2 if BIP324 v2 transport is enabled.
     if (args.GetBoolArg("-v2transport", DEFAULT_V2_TRANSPORT)) {
         nLocalServices = ServiceFlags(nLocalServices | NODE_P2P_V2);
+    }
+    // Signal NODE_SHARECHAIN when the stratum server (and with it the share chain) is on.
+    if (args.GetBoolArg("-stratum", DEFAULT_STRATUM_ENABLE)) {
+        nLocalServices = ServiceFlags(nLocalServices | NODE_SHARECHAIN);
     }
 
     // Signal NODE_COMPACT_FILTERS if peerblockfilters and basic filters index are both enabled.

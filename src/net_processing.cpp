@@ -44,6 +44,7 @@
 #include <primitives/transaction.h>
 #include <random.h>
 #include <scheduler.h>
+#include <sharechain.h>
 #include <streams.h>
 #include <sync.h>
 #include <tinyformat.h>
@@ -531,6 +532,7 @@ public:
     PeerManagerInfo GetInfo() const override EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex);
     void SendPings() override EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex);
     void RelayTransaction(const uint256& txid, const uint256& wtxid) override EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex);
+    void RelayShare(const ShareMessage& msg, NodeId from) override EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex);
     void SetBestBlock(int height, std::chrono::seconds time) override
     {
         m_best_height = height;
@@ -2373,6 +2375,22 @@ void PeerManagerImpl::SendPings()
 {
     LOCK(m_peer_mutex);
     for(auto& it : m_peer_map) it.second->m_ping_queued = true;
+}
+
+void PeerManagerImpl::RelayShare(const ShareMessage& msg, NodeId from)
+{
+    LOCK(m_peer_mutex);
+    for (auto& it : m_peer_map) {
+        if (it.first == from) continue;
+        const Peer& peer = *it.second;
+        if (!(peer.m_their_services & NODE_SHARECHAIN)) continue;
+        m_connman.ForNode(it.first, [&](CNode* pnode) {
+            if (pnode->fSuccessfullyConnected && !pnode->fDisconnect) {
+                MakeAndPushMessage(*pnode, NetMsgType::SHARE, msg);
+            }
+            return true;
+        });
+    }
 }
 
 void PeerManagerImpl::RelayTransaction(const uint256& txid, const uint256& wtxid)
@@ -4552,6 +4570,67 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         // in the SendMessages logic.
         nodestate->pindexBestHeaderSent = pindex ? pindex : m_chainman.ActiveChain().Tip();
         MakeAndPushMessage(pfrom, NetMsgType::HEADERS, TX_WITH_WITNESS(vHeaders));
+        return;
+    }
+
+    if (msg_type == NetMsgType::SHARE) {
+        if (!g_sharechainman) return;
+        ShareMessage msg;
+        vRecv >> msg;
+        std::vector<uint256> missing;
+        std::string reason;
+        ShareAccept result;
+        std::vector<ShareMessage> retry;
+        {
+            LOCK(::cs_main);
+            result = g_sharechainman->ProcessShareMessage(msg, missing, reason);
+            if (result == ShareAccept::MISSING) {
+                g_sharechainman->AddOrphan(msg);
+            } else if (result == ShareAccept::ACCEPTED) {
+                retry = g_sharechainman->TakeOrphans();
+            }
+        }
+        if (result == ShareAccept::MISSING) {
+            LogPrint(BCLog::NET, "share %s from peer=%d needs %d parents; requesting\n", msg.share.GetHash().ToString(), pfrom.GetId(), missing.size());
+            MakeAndPushMessage(pfrom, NetMsgType::GETSHARES, missing);
+            return;
+        }
+        if (result == ShareAccept::INVALID) {
+            LogPrint(BCLog::NET, "share %s from peer=%d rejected: %s\n", msg.share.GetHash().ToString(), pfrom.GetId(), reason);
+            return;
+        }
+        if (result == ShareAccept::ACCEPTED) {
+            LogPrint(BCLog::NET, "share %s accepted from peer=%d (%s)\n", msg.share.GetHash().ToString(), pfrom.GetId(), msg.has_body ? "chain share" : "fruit");
+            RelayShare(msg, pfrom.GetId());
+            // dependencies may have been waiting for it
+            for (const ShareMessage& orphan : retry) {
+                std::vector<uint256> m2;
+                std::string r2;
+                ShareAccept r;
+                {
+                    LOCK(::cs_main);
+                    r = g_sharechainman->ProcessShareMessage(orphan, m2, r2);
+                    if (r == ShareAccept::MISSING) g_sharechainman->AddOrphan(orphan);
+                }
+                if (r == ShareAccept::ACCEPTED) RelayShare(orphan, -1);
+            }
+        }
+        return;
+    }
+
+    if (msg_type == NetMsgType::GETSHARES) {
+        if (!g_sharechainman) return;
+        std::vector<uint256> hashes;
+        vRecv >> hashes;
+        if (hashes.size() > 500) hashes.resize(500);
+        for (const uint256& h : hashes) {
+            std::optional<ShareMessage> msg;
+            {
+                LOCK(::cs_main);
+                msg = g_sharechainman->GetShareMessage(h);
+            }
+            if (msg) MakeAndPushMessage(pfrom, NetMsgType::SHARE, *msg);
+        }
         return;
     }
 

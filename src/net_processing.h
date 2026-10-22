@@ -24,6 +24,7 @@
 
 class AddrMan;
 class CChainParams;
+struct ShareMessage;
 class CTxMemPool;
 class ChainstateManager;
 
@@ -109,6 +110,9 @@ public:
 
     /** Relay transaction to all peers. */
     virtual void RelayTransaction(const uint256& txid, const uint256& wtxid) = 0;
+
+    /** Relay a share chain share to all peers advertising NODE_SHARECHAIN (except `from`). */
+    virtual void RelayShare(const ShareMessage& msg, NodeId from) = 0;
 
     /** Send ping message to all peers */
     virtual void SendPings() = 0;

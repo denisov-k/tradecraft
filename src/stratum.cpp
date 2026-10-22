@@ -27,6 +27,7 @@
 #include <rpc/protocol.h>
 #include <rpc/server.h>
 #include <rpc/util.h>
+#include <net_processing.h> // for PeerManager::RelayShare
 #include <sharechain.h> // for SelectShareParams
 #include <serialize.h>
 #include <streams.h>
@@ -947,12 +948,14 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
                     if (h <= man.ShareTarget()) {
                         if (man.AcceptFruit(share, reason)) {
                             LogPrintf("NEW SHARE CHAIN FRUIT by %s: %s\n", EncodeDestination(client.m_addr), share.GetHash().ToString());
+                            if (h > man.ChainTarget() && g_context->peerman) { ShareMessage m; m.share = share; g_context->peerman->RelayShare(m, -1); }
                         } else {
                             LogPrintf("Share chain: fruit rejected (%s) from %s\n", reason, EncodeDestination(client.m_addr));
                         }
                         if (h <= man.ChainTarget()) {
                             if (man.AcceptChainShare(share, current_work.m_share_state->peaks, current_work.m_share_state->fruits, reason)) {
                                 LogPrintf("NEW CHAIN SHARE by %s: %s height %d fruits %d\n", EncodeDestination(client.m_addr), share.GetHash().ToString(), share.height, current_work.m_share_state->fruits.size());
+                                if (g_context->peerman) { ShareMessage m; m.share = share; m.has_body = true; m.body.peaks = current_work.m_share_state->peaks; m.body.fruits = current_work.m_share_state->fruits; g_context->peerman->RelayShare(m, -1); }
                                 client.m_send_work = true;
                             } else {
                                 LogPrintf("Share chain: chain share rejected (%s) from %s\n", reason, EncodeDestination(client.m_addr));
@@ -1066,12 +1069,14 @@ bool SubmitAuxiliaryBlock(StratumClient& client, const CTxDestination& addr, con
                     if (h <= man.ShareTarget()) {
                         if (man.AcceptFruit(share, reason)) {
                             LogPrintf("NEW SHARE CHAIN FRUIT (aux) by %s: %s\n", EncodeDestination(addr), share.GetHash().ToString());
+                            if (h > man.ChainTarget() && g_context->peerman) { ShareMessage m; m.share = share; g_context->peerman->RelayShare(m, -1); }
                         } else {
                             LogPrintf("Share chain: aux fruit rejected (%s) from %s\n", reason, EncodeDestination(addr));
                         }
                         if (h <= man.ChainTarget()) {
                             if (man.AcceptChainShare(share, current_work.m_share_state->peaks, current_work.m_share_state->fruits, reason)) {
                                 LogPrintf("NEW CHAIN SHARE (aux) by %s: %s height %d fruits %d\n", EncodeDestination(addr), share.GetHash().ToString(), share.height, current_work.m_share_state->fruits.size());
+                                if (g_context->peerman) { ShareMessage m; m.share = share; m.has_body = true; m.body.peaks = current_work.m_share_state->peaks; m.body.fruits = current_work.m_share_state->fruits; g_context->peerman->RelayShare(m, -1); }
                                 client.m_send_work = true;
                             } else {
                                 LogPrintf("Share chain: aux chain share rejected (%s) from %s\n", reason, EncodeDestination(addr));
@@ -1846,6 +1851,8 @@ bool InitStratumServer(node::NodeContext& node)
         node.sharechainman = std::make_unique<ShareChainstateManager>(sharechainman_opts);
         LOCK(::cs_main);
         node.sharechainman->Initialize();
+        g_sharechainman = node.sharechainman.get();
+        node.sharechainman->LoadFromFile(gArgs.GetDataDirNet() / "sharechain.dat");
     }
 
     // Either -defaultminingaddress or -stratumwallet can be set, but not both.

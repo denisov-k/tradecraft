@@ -234,6 +234,14 @@ inline constexpr const char* BLOCKTXN{"blocktxn"};
  */
 inline constexpr const char* GETCFILTERS{"getcfilters"};
 /**
+ * share: one share chain share (header, witness, optional chain-share body).
+ */
+inline constexpr const char* SHARE{"share"};
+/**
+ * getshares: request shares by hash; answered with share messages.
+ */
+inline constexpr const char* GETSHARES{"getshares"};
+/**
  * cfilter is a response to a getcfilters request containing a single compact
  * filter.
  */
@@ -313,7 +321,9 @@ inline const std::array ALL_NET_MESSAGE_TYPES{std::to_array<std::string>({
     NetMsgType::GETCFCHECKPT,
     NetMsgType::CFCHECKPT,
     NetMsgType::WTXIDRELAY,
-    NetMsgType::SENDTXRCNCL,
+    NetMsgType::SENDTXRCNCL,,
+    NetMsgType::SHARE,
+    NetMsgType::GETSHARES,
 })};
 
 /** nServices flags */
@@ -339,6 +349,9 @@ enum ServiceFlags : uint64_t {
 
     // NODE_P2P_V2 means the node supports BIP324 transport
     NODE_P2P_V2 = (1 << 11),
+
+    // NODE_SHARECHAIN means the node relays share chain shares (share/getshares messages)
+    NODE_SHARECHAIN = (1 << 12),
 
     // Bits 24-31 are reserved for temporary experiments. Just pick a bit that
     // isn't getting used, or one not being used much, and notify the
