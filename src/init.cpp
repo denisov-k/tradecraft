@@ -1867,6 +1867,12 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         return false;
     }
 
+    // Share chain: restore sharechain.dat now that block headers are available for validation.
+    if (node.sharechainman) {
+        LOCK(::cs_main);
+        node.sharechainman->LoadFromFile(args.GetDataDirNet() / "sharechain.dat");
+    }
+
     // ********************************************************* Step 12: start node
 
     //// debug print

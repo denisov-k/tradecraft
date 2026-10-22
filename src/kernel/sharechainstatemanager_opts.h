@@ -8,6 +8,8 @@
 #include <util/time.h>
 
 #include <cstdint>
+#include <optional>
+#include <uint256.h>
 #include <functional>
 
 class CChainParams;
@@ -24,6 +26,10 @@ struct ShareChainstateManagerOpts {
     const CChainParams& chainparams;
     const ShareChainParams& sharechainparams;
     const std::function<NodeClock::time_point()> adjusted_time_callback{nullptr};
+    //! Height of a known block hash, or nullopt (template-age rule).
+    std::function<std::optional<int>(const uint256&)> block_height_callback{nullptr};
+    //! Height of the active block chain tip, or -1 when the chain is not loaded yet.
+    std::function<int()> tip_height_callback{nullptr};
 };
 
 } // namespace kernel

@@ -49,6 +49,8 @@ struct ShareChainParams {
     const uint256& ChainId() const { return m_chain_id; }
     //! Whether the share target follows the chain (LWMA) or stays at ShareBits().
     bool Retarget() const { return m_retarget; }
+    //! A fresh share may build on a Freicoin block at most this many blocks behind the tip.
+    int MaxTemplateAge() const { return m_max_template_age; }
     //! Target spacing of shares, seconds.
     int64_t ShareInterval() const { return m_share_interval; }
 
@@ -64,6 +66,7 @@ protected:
     uint256 m_chain_id;
     bool m_retarget{true};
     int64_t m_share_interval{10};
+    int m_max_template_age{2};
 };
 
 /**
@@ -367,6 +370,8 @@ struct ShareMessage {
 enum class ShareAccept { ACCEPTED, DUPLICATE, MISSING, INVALID };
 
 struct ShareChain {
+    //! Height of chain[0]: everything below has been pruned.
+    int base{0};
     std::vector<std::shared_ptr<ShareIndex>> chain;
 
     ShareChain() = default;
@@ -385,15 +390,16 @@ struct ShareChain {
 
     /** Returns the index entry at a particular height in this chain, or nullptr if no such height exists. */
     std::shared_ptr<ShareIndex> operator[](int height) const {
-        if (height < 0 || height >= (int)chain.size())
+        if (height < base || height - base >= (int)chain.size())
             return nullptr;
-        return chain[height];
+        return chain[height - base];
     }
 
     /** Efficiently check whether a block is present in this chain. */
     bool Contains(const ShareIndex& index) const
     {
-        return (*this)[index.share.height]->GetHash() == index.GetHash();
+        const std::shared_ptr<ShareIndex> at = (*this)[index.share.height];
+        return at && at->GetHash() == index.GetHash();
     }
 
     /** Find the successor of a block in this chain, or nullptr if the given index is not found or is the tip. */
@@ -408,7 +414,7 @@ struct ShareChain {
     /** Return the maximal height in the chain. Is equal to chain.Tip() ? chain.Tip()->nHeight : -1. */
     int Height() const
     {
-        return int(chain.size()) - 1;
+        return chain.empty() ? -1 : base + int(chain.size()) - 1;
     }
 
 };
@@ -505,6 +511,11 @@ struct ShareChainstateManager {
     std::vector<ShareMessage> GetShareRange(const std::vector<uint256>& locator, size_t max_entries) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     void AddOrphan(const ShareMessage& msg) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     std::vector<ShareMessage> TakeOrphans() EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Drop chain shares (and the fruits hanging from them) below the PPLNS window
+    //! plus recency and locator margins; keeps memory bounded.
+    void Prune() EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Lowest chain height still retained.
+    int BaseHeight() const EXCLUSIVE_LOCKS_REQUIRED(GetMutex()) { return ActiveChain().base; }
     //! Persist / restore the whole share chain state (sharechain.dat).
     bool DumpToFile(const fs::path& path) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     bool LoadFromFile(const fs::path& path) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());

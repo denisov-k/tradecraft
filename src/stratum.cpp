@@ -1874,12 +1874,24 @@ bool InitStratumServer(node::NodeContext& node)
             .sharechainparams = sharechainparams,
             // 28.x has no network-adjusted time any more (timedata.h was removed); use the node clock.
             .adjusted_time_callback = []() { return NodeClock::now(); },
+            .block_height_callback = [&node](const uint256& hash) -> std::optional<int> {
+                if (!node.chainman) return std::nullopt;
+                LOCK(::cs_main);
+                const CBlockIndex* index = node.chainman->m_blockman.LookupBlockIndex(hash);
+                if (!index) return std::nullopt;
+                return index->nHeight;
+            },
+            .tip_height_callback = [&node]() -> int {
+                if (!node.chainman) return -1;
+                LOCK(::cs_main);
+                return node.chainman->ActiveChain().Height();
+            },
         };
         node.sharechainman = std::make_unique<ShareChainstateManager>(sharechainman_opts);
         LOCK(::cs_main);
         node.sharechainman->Initialize();
         g_sharechainman = node.sharechainman.get();
-        node.sharechainman->LoadFromFile(gArgs.GetDataDirNet() / "sharechain.dat");
+        // sharechain.dat is loaded from init once the block chain is available (template-age rule).
     }
 
     // Either -defaultminingaddress or -stratumwallet can be set, but not both.

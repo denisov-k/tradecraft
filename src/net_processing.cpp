@@ -821,6 +821,20 @@ private:
     /** Protects m_peer_map. This mutex must not be locked while holding a lock
      *  on any of the mutexes inside a Peer object. */
     mutable Mutex m_peer_mutex;
+
+    /** Share chain traffic accounting per peer (shares/min, locator requests/min, batches we asked for). */
+    struct ShareRate {
+        int64_t window_start{0};
+        int shares{0};
+        int locators{0};
+        int batches_allowed{0};
+    };
+    Mutex m_share_rate_mutex;
+    std::map<NodeId, ShareRate> m_share_rate GUARDED_BY(m_share_rate_mutex);
+    //! Returns false when the peer exceeded its budget for `kind` ('s' share, 'l' locator request).
+    bool ShareBudget(NodeId id, char kind) EXCLUSIVE_LOCKS_REQUIRED(!m_share_rate_mutex);
+    //! Send getshrchain with our locator and allow one shares batch in return.
+    void RequestShareChain(CNode& pfrom) EXCLUSIVE_LOCKS_REQUIRED(!m_share_rate_mutex);
     /**
      * Map of all Peer objects, keyed by peer id. This map is protected
      * by the m_peer_mutex. Once a shared pointer reference is
@@ -1775,6 +1789,10 @@ void PeerManagerImpl::FinalizeNode(const CNode& node)
 {
     NodeId nodeid = node.GetId();
     {
+        LOCK(m_share_rate_mutex);
+        m_share_rate.erase(nodeid);
+    }
+    {
     LOCK(cs_main);
     {
         // We remove the PeerRef from g_peer_map here, but we don't always
@@ -2376,6 +2394,37 @@ void PeerManagerImpl::SendPings()
 {
     LOCK(m_peer_mutex);
     for(auto& it : m_peer_map) it.second->m_ping_queued = true;
+}
+
+bool PeerManagerImpl::ShareBudget(NodeId id, char kind)
+{
+    constexpr int SHARES_PER_MINUTE = 120;
+    constexpr int LOCATORS_PER_MINUTE = 6;
+    LOCK(m_share_rate_mutex);
+    ShareRate& r = m_share_rate[id];
+    const int64_t now = GetTime();
+    if (now - r.window_start >= 60) {
+        r.window_start = now;
+        r.shares = 0;
+        r.locators = 0;
+    }
+    if (kind == 's') return ++r.shares <= SHARES_PER_MINUTE;
+    if (kind == 'l') return ++r.locators <= LOCATORS_PER_MINUTE;
+    return true;
+}
+
+void PeerManagerImpl::RequestShareChain(CNode& pfrom)
+{
+    std::vector<uint256> locator;
+    {
+        LOCK(::cs_main);
+        locator = g_sharechainman->GetShareLocator();
+    }
+    {
+        LOCK(m_share_rate_mutex);
+        m_share_rate[pfrom.GetId()].batches_allowed = std::min(4, m_share_rate[pfrom.GetId()].batches_allowed + 1);
+    }
+    MakeAndPushMessage(pfrom, NetMsgType::GETSHARECHAIN, locator);
 }
 
 void PeerManagerImpl::RelayShare(const ShareMessage& msg, NodeId from)
@@ -4009,12 +4058,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
         // Share chain: ask a share-relaying peer for everything after our tip.
         if (g_sharechainman && (peer->m_their_services & NODE_SHARECHAIN)) {
-            std::vector<uint256> locator;
-            {
-                LOCK(::cs_main);
-                locator = g_sharechainman->GetShareLocator();
-            }
-            MakeAndPushMessage(pfrom, NetMsgType::GETSHARECHAIN, locator);
+            RequestShareChain(pfrom);
         }
 
         if (m_txreconciliation) {
@@ -4585,6 +4629,10 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::SHARE) {
         if (!g_sharechainman) return;
+        if (!ShareBudget(pfrom.GetId(), 's')) {
+            LogPrint(BCLog::NET, "share rate limit exceeded by peer=%d; ignoring\n", pfrom.GetId());
+            return;
+        }
         ShareMessage msg;
         vRecv >> msg;
         std::vector<uint256> missing;
@@ -4604,12 +4652,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             LogPrint(BCLog::NET, "share %s from peer=%d needs %d parents; requesting\n", msg.share.GetHash().ToString(), pfrom.GetId(), missing.size());
             const bool anchor_missing = !msg.share.anchor.IsNull() && missing.front() == msg.share.anchor;
             if (anchor_missing) {
-                std::vector<uint256> locator;
-                {
-                    LOCK(::cs_main);
-                    locator = g_sharechainman->GetShareLocator();
-                }
-                MakeAndPushMessage(pfrom, NetMsgType::GETSHARECHAIN, locator);
+                RequestShareChain(pfrom);
             } else {
                 MakeAndPushMessage(pfrom, NetMsgType::GETSHARES, missing);
             }
@@ -4641,6 +4684,10 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::GETSHARECHAIN) {
         if (!g_sharechainman) return;
+        if (!ShareBudget(pfrom.GetId(), 'l')) {
+            LogPrint(BCLog::NET, "getshrchain rate limit exceeded by peer=%d; ignoring\n", pfrom.GetId());
+            return;
+        }
         std::vector<uint256> locator;
         vRecv >> locator;
         if (locator.size() > 64) locator.resize(64);
@@ -4656,6 +4703,15 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::SHARES) {
         if (!g_sharechainman) return;
+        {
+            LOCK(m_share_rate_mutex);
+            ShareRate& r = m_share_rate[pfrom.GetId()];
+            if (r.batches_allowed <= 0) {
+                LogPrint(BCLog::NET, "unsolicited shares batch from peer=%d; ignoring\n", pfrom.GetId());
+                return;
+            }
+            --r.batches_allowed;
+        }
         std::vector<ShareMessage> batch;
         vRecv >> batch;
         if (batch.size() > 500) {
@@ -4689,12 +4745,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         LogPrint(BCLog::NET, "shares batch from peer=%d: %d accepted, %d duplicate, %d invalid, %d waiting\n", pfrom.GetId(), accepted, dup, invalid, missing_n);
         if (accepted > 0) StratumNotifyShareTipChanged();
         if (batch.size() >= 500 && accepted > 0) {
-            std::vector<uint256> locator;
-            {
-                LOCK(::cs_main);
-                locator = g_sharechainman->GetShareLocator();
-            }
-            MakeAndPushMessage(pfrom, NetMsgType::GETSHARECHAIN, locator);
+            RequestShareChain(pfrom);
         }
         return;
     }

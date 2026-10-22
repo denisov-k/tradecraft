@@ -534,6 +534,23 @@ bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason
             reason = "share-time-too-old";
             return false;
         }
+        // Template age: the Freicoin block the template builds on must be known, and a
+        // fresh share (mined in the last 20 minutes) must build on one of the last
+        // MaxTemplateAge() blocks. Historical shares arriving in a sync keep only the
+        // known-block requirement.
+        const int tip_height = m_options.tip_height_callback ? m_options.tip_height_callback() : -1;
+        if (tip_height >= 0 && m_options.block_height_callback) {
+            const std::optional<int> prev_height = m_options.block_height_callback(share.wit.hashPrevBlock);
+            if (!prev_height) {
+                reason = "share-unknown-prev-block";
+                return false;
+            }
+            const bool fresh = static_cast<int64_t>(share.wit.nTime) + 20 * 60 >= now;
+            if (fresh && *prev_height + Params().MaxTemplateAge() < tip_height) {
+                reason = "share-stale-template";
+                return false;
+            }
+        }
     }
     if (!CheckPayouts(share, anchor, reason)) {
         return false;
@@ -689,6 +706,7 @@ bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccum
     const arith_uint256 tip_work = tip ? UintToArith256(tip->share.total_work) + GetShareWork(tip->share.bits) : arith_uint256(0);
     if (!tip || new_work > tip_work) {
         SetActiveTip(index);
+        Prune();
     }
     return true;
 }
@@ -700,7 +718,46 @@ void ShareChainstateManager::SetActiveTip(const std::shared_ptr<ShareIndex>& tip
         chain.push_back(std::const_pointer_cast<ShareIndex>(cur));
     }
     std::reverse(chain.begin(), chain.end());
+    ActiveChain().base = chain.empty() ? 0 : static_cast<int>(chain.front()->share.height);
     ActiveChain().chain = std::move(chain);
+}
+
+void ShareChainstateManager::Prune()
+{
+    ShareChainstate& state = ActiveChainstate();
+    const std::shared_ptr<ShareIndex> tip = ActiveTip();
+    if (!tip) return;
+    // Window floor: walk back the work the PPLNS window needs (sized like CheckPayouts does).
+    const arith_uint256 window = GetShareWork(tip->share.wit.nBits) * Params().WindowK();
+    arith_uint256 acc = 0;
+    int floor_height = static_cast<int>(tip->share.height);
+    for (const ShareIndex* cur = tip.get(); cur; cur = cur->prev_share.get()) {
+        floor_height = static_cast<int>(cur->share.height);
+        for (const uint256& f : cur->fruits) {
+            auto it = state.fruits.find(f);
+            if (it != state.fruits.end()) acc += GetShareWork(it->second.bits);
+        }
+        if (acc >= window) break;
+    }
+    const int keep_from = std::max(0, floor_height - static_cast<int>(Params().Recency()) - 64);
+    if (keep_from <= state.chain.base) return;
+    // Drop chain shares below keep_from (active chain and forks) and cut the links into them.
+    for (auto it = state.chain_shares.begin(); it != state.chain_shares.end();) {
+        if (static_cast<int>(it->second->share.height) < keep_from) it = state.chain_shares.erase(it);
+        else ++it;
+    }
+    for (auto& item : state.chain_shares) {
+        if (item.second->prev_share && static_cast<int>(item.second->prev_share->share.height) < keep_from) item.second->prev_share = nullptr;
+    }
+    // Drop fruits whose anchor is gone (they can never be listed or verified again).
+    size_t dropped = 0;
+    for (auto it = state.fruits.begin(); it != state.fruits.end();) {
+        const bool is_chain = state.chain_shares.count(it->first) > 0;
+        const bool anchor_gone = it->second.anchor.IsNull() ? keep_from > 0 : !state.chain_shares.count(it->second.anchor);
+        if (!is_chain && anchor_gone) { it = state.fruits.erase(it); ++dropped; } else ++it;
+    }
+    SetActiveTip(tip);
+    LogPrint(BCLog::NET, "Share chain: pruned below height %d (%d chain shares, %d fruits kept, %d fruits dropped)\n", keep_from, state.chain_shares.size(), state.fruits.size(), dropped);
 }
 
 Share ShareFromTemplateState(const ShareChainstateManager::TemplateState& st, const WitnessUnknown& miner)
@@ -967,7 +1024,8 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
         LogPrintf("Share chain: failed to load %s: %s\n", fs::PathToString(path), e.what());
         return false;
     }
-    LogPrintf("Share chain: loaded %d shares from %s (%d rejected, %d unresolved), tip height %d\n", accepted, fs::PathToString(path), rejected, deferred, ActiveHeight());
+    Prune();
+    LogPrintf("Share chain: loaded %d shares from %s (%d rejected, %d unresolved), tip height %d, base %d\n", accepted, fs::PathToString(path), rejected, deferred, ActiveHeight(), BaseHeight());
     return true;
 }
 
@@ -977,7 +1035,7 @@ std::vector<uint256> ShareChainstateManager::GetShareLocator() const
     const ShareChain& chain = ActiveChain();
     int h = chain.Height();
     int step = 1;
-    while (h >= 0 && locator.size() < 32) {
+    while (h >= chain.base && locator.size() < 32) {
         locator.push_back(chain[h]->GetHash());
         if (locator.size() >= 10) step *= 2;
         h -= step;
@@ -999,6 +1057,7 @@ std::vector<ShareMessage> ShareChainstateManager::GetShareRange(const std::vecto
             break;
         }
     }
+    start = std::max(start, chain.base);
     std::vector<ShareMessage> out;
     std::set<uint256> sent;
     // Emit a chain share after everything it depends on: its listed fruits, and for a listed
@@ -1066,6 +1125,7 @@ static RPCHelpMan getsharechaininfo() {
             {RPCResult::Type::STR_HEX, "tip", /*optional=*/true, "hash of the active share chain tip (empty when none)"},
             {RPCResult::Type::NUM, "chainshares", /*optional=*/true, "known chain shares (all forks)"},
             {RPCResult::Type::NUM, "fruits", /*optional=*/true, "known shares"},
+            {RPCResult::Type::NUM, "baseheight", /*optional=*/true, "lowest chain height still kept (older shares were pruned)"},
         }},
         RPCExamples{
             HelpExampleCli("getsharechaininfo", "")
@@ -1092,6 +1152,7 @@ static RPCHelpMan getsharechaininfo() {
         obj.pushKV("tip", tip ? tip->GetHash().GetHex() : "");
         obj.pushKV("chainshares", (int64_t)man.ActiveChainstate().chain_shares.size());
         obj.pushKV("fruits", (int64_t)man.ActiveChainstate().fruits.size());
+        obj.pushKV("baseheight", (int64_t)man.BaseHeight());
     }
     return obj;
 },
