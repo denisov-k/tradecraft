@@ -4,10 +4,11 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Share chain end to end: shares mined through the stratum server on two nodes are relayed,
 both nodes converge on one share chain, coinbases pay every contributor, a late node syncs the
-whole chain with getsharechain, and the chain survives a restart (sharechain.dat)."""
+whole chain with getshrchain, and the chain survives a restart (sharechain.dat)."""
 
 import hashlib
 import json
+import select
 import socket
 import struct
 import time
@@ -35,11 +36,14 @@ def swap32(h):
 
 class StratumMiner:
     """Just enough stratum v1 to take one work unit, find a hash under the share target and
-    submit it. Message dispatch looks at `method` first: the server reuses small ids."""
+    submit it. Lines are read with select() on the raw socket (a timed-out makefile() object
+    cannot be read again). Message dispatch looks at `method` first: the server reuses small
+    ids."""
 
     def __init__(self, port, address, log):
         self.sock = socket.create_connection(("127.0.0.1", port), timeout=60)
-        self.f = self.sock.makefile("rw")
+        self.sock.setblocking(True)
+        self.buf = b""
         self.log = log
         self.address = address
         self.extranonce1 = None
@@ -48,8 +52,7 @@ class StratumMiner:
         self.send({"id": 2, "method": "mining.authorize", "params": [address + "+0.000001", "x"]})
 
     def send(self, m):
-        self.f.write(json.dumps(m) + "\n")
-        self.f.flush()
+        self.sock.sendall((json.dumps(m) + "\n").encode())
 
     def close(self):
         try:
@@ -57,32 +60,41 @@ class StratumMiner:
         except OSError:
             pass
 
+    def readline(self, timeout=60):
+        """One JSON line, or None when nothing arrives within `timeout` seconds."""
+        deadline = time.time() + timeout
+        while b"\n" not in self.buf:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                return None
+            ready, _, _ = select.select([self.sock], [], [], remaining)
+            if not ready:
+                return None
+            chunk = self.sock.recv(65536)
+            if not chunk:
+                raise AssertionError("stratum connection closed")
+            self.buf += chunk
+        line, self.buf = self.buf.split(b"\n", 1)
+        return json.loads(line)
+
     def mine_one(self):
         """Wait for work, solve it, submit, and return the submit result."""
         while True:
-            line = self.f.readline()
-            if not line:
-                raise AssertionError("stratum connection closed")
-            m = json.loads(line)
+            m = self.readline()
+            if m is None:
+                raise AssertionError("no stratum work within 60 s")
             if m.get("method") == "mining.notify":
                 if self.extranonce1 is None:
                     continue
                 # work may have been superseded while we were idle (new block or share chain
                 # tip): drain queued notifications and mine the newest
                 job = m["params"]
-                self.sock.settimeout(0.5)
-                try:
-                    while True:
-                        extra = self.f.readline()
-                        if not extra:
-                            break
-                        em = json.loads(extra)
-                        if em.get("method") == "mining.notify":
-                            job = em["params"]
-                except (socket.timeout, TimeoutError):
-                    pass
-                finally:
-                    self.sock.settimeout(60)
+                while True:
+                    extra = self.readline(timeout=0.5)
+                    if extra is None:
+                        break
+                    if extra.get("method") == "mining.notify":
+                        job = extra["params"]
                 return self.solve_and_submit(job)
             if m.get("method") == "mining.set_difficulty":
                 continue
@@ -104,10 +116,9 @@ class StratumMiner:
                 self.send({"id": 100, "method": "mining.submit", "params": [self.address + "+0.000001", job_id, en2hex, ntime, "%08x" % nonce]})
                 # the reply may be preceded by new work; keep reading until the id-100 reply
                 while True:
-                    line = self.f.readline()
-                    if not line:
-                        raise AssertionError("stratum connection closed after submit")
-                    r = json.loads(line)
+                    r = self.readline()
+                    if r is None:
+                        raise AssertionError("no reply to mining.submit within 60 s")
                     if r.get("id") == 100:
                         return r.get("result"), r.get("error")
         raise AssertionError("no share found in 2^20 nonces")
@@ -194,7 +205,7 @@ class ShareChainTest(FreicoinTestFramework):
         assert commit.startswith("6a24") and commit.endswith(SHARE_COMMIT_ID), commit
         assert_equal(vout[-1]["value"], 0)
 
-        self.log.info("node2 joins late and syncs the whole share chain with getsharechain")
+        self.log.info("node2 joins late and syncs the whole share chain with getshrchain")
         self.connect_nodes(2, 0)
         self.sync_blocks()
         self.wait_same_tip(n0, n2, timeout=90)
