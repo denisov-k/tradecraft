@@ -25,15 +25,7 @@ while True:
     line = f.readline()
     if not line: print("disconnected"); break
     m = json.loads(line)
-    if m.get("method") == "mining.set_difficulty":
-        srv = float(m["params"][0]); difficulty = force_diff or srv; print("server difficulty", srv, "-> using", difficulty, flush=True)
-    elif m.get("id") == 1 and m.get("result"):
-        extranonce1 = m["result"][1]; en2size = m["result"][2]; print("subscribed extranonce1=%s en2size=%d" % (extranonce1, en2size), flush=True)
-    elif m.get("id") == 2: print("authorized:", m.get("result"), m.get("error"), flush=True)
-    elif m.get("id", 0) >= 100:
-        shares += 1; accepted += 1 if m.get("result") else 0
-        print("share result:", m.get("result"), m.get("error"), "(%d/%d accepted)" % (accepted, shares), flush=True)
-    elif m.get("method") == "mining.notify":
+    if m.get("method") == "mining.notify":
         job = m["params"]; job_id, prevhash, coinb1, coinb2, merkle, version, nbits, ntime, clean = job[:9]
         if extranonce1 is None: continue
         target = target_from_diff(difficulty)
@@ -61,3 +53,11 @@ while True:
                     s.setblocking(True)
                     if peek: found = True; break   # new message pending: go handle it
             en2 += 1
+    elif m.get("method") == "mining.set_difficulty":
+        srv = float(m["params"][0]); difficulty = force_diff or srv; print("server difficulty", srv, "-> using", difficulty, flush=True)
+    elif m.get("id") == 1 and m.get("result"):
+        extranonce1 = m["result"][1]; en2size = m["result"][2]; print("subscribed extranonce1=%s en2size=%d" % (extranonce1, en2size), flush=True)
+    elif m.get("id") == 2: print("authorized:", m.get("result"), m.get("error"), flush=True)
+    elif m.get("id", 0) >= 100:
+        shares += 1; accepted += 1 if m.get("result") else 0
+        print("share result:", m.get("result"), m.get("error"), "(%d/%d accepted)" % (accepted, shares), flush=True)

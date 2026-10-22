@@ -9,3 +9,15 @@ output `OP_RETURN <root || 4b4a4948>`.
 
 Observed 2026-10-22 (3 minutes, two miners): 26 blocks, 27 chain shares at height 25 (two forks
 resolved by work), last coinbase 37.5 + 12.5 FRC to the two miners + commitment.
+
+## Sibling stacks
+
+- `../regtest-aux/`: merge mining through mergemine bitcoind (image `freicoin/mergemine:v29.0.0.1`,
+  see `prototypes/mergemine-stack` in the free-money workspace): shares arrive as
+  `mining.aux.submit`, are accepted as aux fruits/chain shares, Freicoin blocks come through the
+  two-stage path. Observed 2026-10-22: 15 aux fruits, 15 chain shares, FRC +10, BTC +15 in 4 min.
+- `../regtest-p2p/`: two nodes, one miner each, `-connect` between them. Shares are relayed
+  (`share`/`getshares`), both nodes end on the same share chain tip, each coinbase pays both
+  miners, and node1 reloads its chain from `sharechain.dat` after a restart. Observed 2026-10-22:
+  28 chain shares at height 25 on both nodes, blocks 136/136, payouts 37.5 + 12.5 FRC.
+- `../Dockerfile.build`: the server build with a ccache cache mount (first build ~45 min, then ~8).

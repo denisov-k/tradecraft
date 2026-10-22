@@ -1,0 +1,73 @@
+name: frc-scaux
+services:
+  freicoind:
+    image: freicoin/freicoind:sharechain
+    container_name: frc-scaux-freicoind
+    command:
+      - -regtest
+      - -server=1
+      - -rpcbind=0.0.0.0
+      - -rpcallowip=172.16.0.0/12
+      - -rpcuser=frc
+      - -rpcpassword=frcpass
+      - -listen=0
+      - -dnsseed=0
+      - -txindex=1
+      # BIP9 deployment: signalled by the first 288 generated blocks, then active (mirrors mainnet history)
+      - -vbparams=auxpow:0:999999999999
+      - -stratum=1
+      - -stratumbind=0.0.0.0
+      - -stratumport=29638
+      - -stratumallowip=172.16.0.0/12
+      - -sharechain=regtest
+      - ${SHARE_ARG:--listen=0}
+      - -debug=stratum
+      - -printtoconsole=1
+    volumes:
+      - frc-data:/data
+    networks: [frcnet]
+
+  bitcoind:
+    image: freicoin/mergemine:v29.0.0.1
+    container_name: frc-scaux-bitcoind
+    depends_on: [freicoind]
+    command:
+      - -regtest
+      - -server=1
+      - -rpcbind=0.0.0.0
+      - -rpcallowip=172.16.0.0/12
+      - -rpcuser=btc
+      - -rpcpassword=btcpass
+      - -listen=0
+      - -dnsseed=0
+      - -stratum=1
+      - -stratumbind=0.0.0.0
+      - -stratumport=3333
+      - -stratumallowip=172.16.0.0/12
+      - -miningmindiff=0.001
+      - -mergemine=freicoind:29638
+      - -mergeminedefault=regtest:${FRC_ADDR:-}
+      - -debug=stratum
+      - -debug=mergemine
+      - -printtoconsole=1
+    volumes:
+      - btc-data:/data
+    networks: [frcnet]
+
+  # dependency-free Python stratum miner (cpuminer-multi rejects this stratum's subscribe reply)
+  pyminer:
+    image: python:3.12-slim
+    container_name: frc-scaux-pyminer
+    depends_on: [bitcoind]
+    profiles: [mine]
+    volumes:
+      - ./pyminer.py:/pyminer.py:ro
+    command: ["python", "-u", "/pyminer.py", "bitcoind", "3333", "${BTC_ADDR:-}+0.001", "x", "0.001"]
+    networks: [frcnet]
+
+volumes:
+  frc-data: {}
+  btc-data: {}
+
+networks:
+  frcnet: {}

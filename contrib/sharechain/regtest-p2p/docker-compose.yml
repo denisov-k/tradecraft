@@ -1,0 +1,31 @@
+# Two freicoind nodes with the share chain, connected over P2P; one CPU miner on each.
+name: frc-scp2p
+x-node: &node
+  image: freicoin/freicoind:sharechain
+  networks: [p2pnet]
+services:
+  node1:
+    <<: *node
+    container_name: frc-scp2p-node1
+    command: ["-regtest","-server=1","-rpcbind=0.0.0.0","-rpcallowip=172.16.0.0/12","-rpcuser=frc","-rpcpassword=frcpass","-listen=1","-port=18444","-dnsseed=0","-txindex=1","-stratum=1","-stratumbind=0.0.0.0","-stratumport=29638","-stratumallowip=172.16.0.0/12","-miningmindiff=0.001","-sharechain=regtest","${SHARE_ARG1:--printtoconsole=1}","-debug=net","-printtoconsole=1"]
+  node2:
+    <<: *node
+    container_name: frc-scp2p-node2
+    depends_on: [node1]
+    command: ["-regtest","-server=1","-rpcbind=0.0.0.0","-rpcallowip=172.16.0.0/12","-rpcuser=frc","-rpcpassword=frcpass","-listen=1","-port=18444","-dnsseed=0","-txindex=1","-connect=node1:18444","-stratum=1","-stratumbind=0.0.0.0","-stratumport=29638","-stratumallowip=172.16.0.0/12","-miningmindiff=0.001","-sharechain=regtest","${SHARE_ARG2:--printtoconsole=1}","-debug=net","-printtoconsole=1"]
+  miner1:
+    image: python:3.12-slim
+    container_name: frc-scp2p-miner1
+    profiles: [mine]
+    volumes: ["./pyminer.py:/pyminer.py:ro"]
+    command: ["python","-u","/pyminer.py","node1","29638","${ADDR1:-}+0.001","x","0.001"]
+    networks: [p2pnet]
+  miner2:
+    image: python:3.12-slim
+    container_name: frc-scp2p-miner2
+    profiles: [mine]
+    volumes: ["./pyminer.py:/pyminer.py:ro"]
+    command: ["python","-u","/pyminer.py","node2","29638","${ADDR2:-}+0.001","x","0.001"]
+    networks: [p2pnet]
+networks:
+  p2pnet: {}

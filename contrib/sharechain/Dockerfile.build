@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+# Build freicoind from a branch of the denisov-k/tradecraft fork (autotools, 28.x line), with unit tests.
+# ccache lives in a BuildKit cache mount, so a rebuild after a small change compiles only what changed.
+FROM ubuntu:24.04 AS build
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential automake autoconf libtool pkg-config git ca-certificates python3 bsdmainutils ccache \
+    libboost-dev libevent-dev libsqlite3-dev libzmq3-dev && rm -rf /var/lib/apt/lists/*
+ARG TC_REPO=https://github.com/denisov-k/tradecraft.git
+ARG TC_REF=sharechain
+ARG TC_COMMIT=unknown
+# TC_COMMIT only busts the cache: a new commit on the branch re-runs the clone below
+RUN echo "building ${TC_REF} @ ${TC_COMMIT}"
+RUN git clone --depth 1 --branch ${TC_REF} ${TC_REPO} /src
+WORKDIR /src
+ENV CCACHE_DIR=/ccache CCACHE_MAXSIZE=3G CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime CCACHE_NOHASHDIR=1 CCACHE_BASEDIR=/src
+RUN --mount=type=cache,target=/ccache \
+    ./autogen.sh && ./configure --without-gui --disable-bench --with-incompatible-bdb --disable-wallet-bdb CC="ccache gcc" CXX="ccache g++" CXXFLAGS="-O2" \
+ && make -j2 && ccache -s | head -6
+ARG TEST_SUITES=sharechain_tests
+RUN if [ -n "$TEST_SUITES" ]; then src/test/test_freicoin --run_test=$TEST_SUITES; fi
+FROM ubuntu:24.04
+RUN apt-get update && apt-get install -y --no-install-recommends libevent-2.1-7t64 libevent-pthreads-2.1-7t64 libsqlite3-0 libzmq5 ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=build /src/src/freicoind /src/src/freicoin-cli /usr/local/bin/
+RUN useradd -m -u 1002 freicoin && mkdir -p /data && chown freicoin:freicoin /data
+USER freicoin
+VOLUME /data
+ENTRYPOINT ["freicoind", "-datadir=/data"]
