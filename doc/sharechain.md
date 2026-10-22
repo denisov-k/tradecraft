@@ -174,8 +174,9 @@ valid fruit iff, with the rejection reason in brackets:
    `prev_root = MMR(chain shares … A).root` [`share-bad-prev-root`];
    `bits = RequiredBits(A)` (§7.3) [`share-bad-bits`]; `share_chain_path = CHAIN_ID`
    [`share-bad-chain-id`].
-3. **Proof of work**: PoW hash (§4.3) ≤ share target, reconstruction not mutated
-   [`share-high-hash`].
+3. **Proof of work**: PoW hash (§4.3) ≤ target(`S.bits`), reconstruction not mutated
+   [`share-high-hash`]. (`S.bits` is fixed by rule 2, so this is the retargeted share
+   target, not the chain's easiest one.)
 4. **Aux binding** (aux shares): the commit root recomputed from the witness coinbase (empty
    scriptSig, sequence 0) through `branch` equals `aux.m_commit_hash_merkle_root`
    [`share-aux-commit-mismatch`]. The parent header hash therefore binds the payouts.
@@ -191,7 +192,8 @@ valid fruit iff, with the rejection reason in brackets:
    [`share-coinbase-no-outputs`], and its outputs before the commitment equal, value and
    script, `PPLNS(A, TOTAL, S.miner)` (§9) where `TOTAL` is the sum of all output values
    [`share-bad-payout-count`, `share-bad-payout`]; any further output before the commitment
-   carries no value [`share-bad-extra-output`].
+   carries no value [`share-bad-extra-output`]. The check is skipped when the window walked
+   back from `A` runs into a trusted base (§6.3): those credits are history the node never had.
 
 A fruit whose anchor is unknown is parked in a bounded orphan pool and retried when its anchor
 arrives (a range sync is requested, §10); one whose `hashPrevBlock` is unknown is parked and
@@ -203,17 +205,39 @@ A fruit `S` with body (`peaks`, `fruits`) is a valid chain share iff:
 
 1. It is a valid fruit (6.1, recorded first) and not already a chain share
    [`chainshare-duplicate`].
-2. **PoW**: PoW hash ≤ chain target = share target / `M` [`chainshare-high-hash`].
+2. **PoW**: PoW hash ≤ target(`S.bits`) / `M` [`chainshare-high-hash`].
 3. **Peaks** (C1): `peaks = A.peaks.Append(hash(A))` and `peaks.root = S.prev_root`
    [`chainshare-bad-peaks`].
 4. **Fruit list** (C2): `fruits` sorted and unique [`chainshare-fruits-unsorted`]; its Merkle
    root is `S.fruits_root` [`chainshare-bad-fruits-root`]; every listed fruit is known
    [`chainshare-fruit-unknown`], is not listed by any of the last `R` chain shares ending at
    `A` [`chainshare-fruit-relisted`], and its anchor is known [`chainshare-fruit-anchor-unknown`]
-   and at height ≥ `S.height − R` [`chainshare-fruit-stale`].
-5. **Tip** (C3): the chain share with the greatest `total_work + work(bits)` is the tip; ties
-   keep the current tip (first seen). After a restart the tip saved in `sharechain.dat` wins
-   among equal-work forks.
+   and at height ≥ `S.height − R` [`chainshare-fruit-stale`]. Within `R` heights above a
+   trusted base (§6.3) unknown fruits and unknown fruit anchors are tolerated: they hang from
+   chain shares the node never had.
+5. **Tip** (C3): the chain share with the greatest *verified* work is the tip: `total_work +
+   work(bits) − base.total_work`, where `base` is the lowest chain share of its chain (§6.3).
+   Ties keep the current tip (first seen). After a restart the tip saved in `sharechain.dat`
+   wins among equal-work forks.
+
+### 6.3 Trusted base
+
+A node with no chain of its own (a fresh node syncing from peers, or a node reloading a pruned
+`sharechain.dat`) cannot validate the first chain share it receives: its anchor has been
+pruned everywhere. It therefore takes that chain share as its **base** (`AcceptBaseChainShare`):
+only the share's own consistency is checked (chain id, `bits` not easier than `SHARE_BITS`, PoW
+against its own bits, aux binding, `peaks.root = prev_root`, fruit list sorted with the right
+root, timestamp not in the future), its `total_work` and `bits` are taken as claims. A base is
+accepted only while the chain is empty and only from a `shares` batch answering our own
+`getshrchain` or from our own file, never from a relayed `share`. Shares at or below the
+base's height with unknown anchors are dropped [`share-below-base`].
+
+Because the base's claim is unverified, forks are compared by the work verified above the
+base (rule 5), as p2pool weighs only the shares it has seen. A peer that serves a fake base
+with a huge `total_work` gains nothing; to win the tip it must out-work the honest chain over
+the depth the node has actually received. The depth a syncing node gets is whatever its peers
+still hold (§10 pruning: the window plus `R` plus 64 chain heights), which is what bounds
+this trust.
 
 A template builder lists (`ListableFruits`) every known fruit whose anchor is on its chain
 within `R` heights and that none of the last `R` chain shares listed; fruits at height 0 are
@@ -225,8 +249,9 @@ is what makes credit independent of chain races (doc/sharechain-uncles.md §4).
 
 ### 7.1 Best chain
 
-Most work (§6.2 rule 5). Reorganizations are expected and cheap: no state is attached to a chain
-share beyond its index entry (header, peaks, fruit list, parent pointer).
+Most verified work (§6.2 rule 5). Reorganizations are expected and cheap: no state is
+attached to a chain share beyond its index entry (header, peaks, fruit list, parent pointer,
+the base's claimed work).
 
 ### 7.2 Fruits instead of uncles
 
@@ -301,12 +326,14 @@ blocks: a found Freicoin block does not reset it.
   64 chain-share hashes, newest first), `shares` (batch of up to 500 `ShareMessage`s, oldest
   first, including forked chain shares and fruits not yet listed). A node asks `getshrchain`
   from every `NODE_SHARECHAIN` peer at `verack` and whenever a relayed share's anchor is
-  unknown. Rate limits per peer as in §8; a rejected share is logged, not penalized, since a
-  peer may simply be behind.
+  unknown. While its chain is empty, the node accepts the first chain share of a batch as its
+  base (§6.3). Rate limits per peer as in §8; a rejected share is logged, not penalized, since
+  a peer may simply be behind.
 - **Persistence**: `sharechain.dat` (version 2: tip hash, then every chain share with body and
   every fruit) written at shutdown, loaded after block headers are available.
 - **Pruning** (`Prune`): keep chain shares from the window floor minus `R` minus 64 heights;
-  drop fruits whose anchor is gone. `getsharechaininfo.baseheight` reports the floor.
+  drop fruits whose anchor is gone. The lowest kept chain share becomes the node's base (§6.3)
+  and is where `getshrchain` answers start. `getsharechaininfo.baseheight` reports it.
 - **RPC**: `getsharechaininfo` → `enabled, network, sharebits, chainfactor, recency, height,
   tip, chainshares, fruits, baseheight`.
 
@@ -325,6 +352,11 @@ blocks: a found Freicoin block does not reset it.
 - **Stale-template farming**: rule §6.1.6 bounds how old a template may be.
 - **Spam**: shares cost real hashes at or above `SHARE_BITS`; per-peer rate limits and a bounded
   orphan pool cap what a peer can make a node store or verify.
+- **Bootstrap**: a fresh node trusts the first chain share its peers serve (§6.3). It is
+  exposed to a peer feeding it a fabricated chain only up to the work above that base, and only
+  until it has peers with the honest chain; comparing by verified work makes the attack cost
+  real hashes over the whole served depth. Connecting a fresh node to known participants first
+  removes the exposure.
 - **Reorg of the Freicoin chain**: shares reference a Freicoin `hashPrevBlock`; after a reorg
   shares on the orphaned branch remain valid shares and keep their credit.
 - **Sybil payees**: splitting hashrate across addresses only adds outputs; `MAX_PAYEES` and
@@ -344,6 +376,9 @@ blocks: a found Freicoin block does not reset it.
    target merge-miners actually face (`m_commit_bits`), which is lower.
 5. Initial `SHARE_BITS` (difficulty 10 000 ≈ 43 TH/s for 10 s shares) and the LWMA
    parameters, to be tuned on real hashrate.
+6. Bootstrap trust (§6.3): whether the first served chain share is an acceptable base, or
+   whether fresh nodes should require the same base from several peers, or a configured
+   checkpoint.
 
 ## 13. Deliberate exclusions
 
@@ -359,7 +394,8 @@ Everything in §4–§10 is implemented in freicoind on top of 28.1 and the `tmp
   `ComputeSharePayouts` (unit vectors from `contrib/sharechain/pplns_fruits.py` in
   `src/test/sharechain_tests.cpp`), `ShareChainstateManager` (fruit and chain-share
   acceptance, listable fruits, template state, LWMA retarget, orphan pool, range sync,
-  pruning, `sharechain.dat` v2 with the saved tip), `getsharechaininfo`;
+  pruning, trusted base and verified-work tip selection, `sharechain.dat` v2 with the saved
+  tip), `getsharechaininfo`;
 - `src/stratum.cpp`: payouts + commitment in the coinbase before the segwit commitment, share
   target to native miners and in `mining.aux.notify`, acceptance on `mining.submit` and
   `mining.aux.submit`, no credit for second-stage submissions, work refresh on tip change,
@@ -370,7 +406,10 @@ Everything in §4–§10 is implemented in freicoind on top of 28.1 and the `tmp
 - `src/init.cpp`, `src/common/args.cpp`: `-sharechain=<name>`, `-defaultshareaddress`, dump at
   shutdown, load before the network starts.
 
-Verified on regtest (`contrib/sharechain/regtest*`, Docker): single node with two miners,
+Unit tests (`src/test/sharechain_tests.cpp`): PPLNS vectors and edge cases, acceptance and
+payouts of fruits and chain shares, every rejection reason of §6, prune of a 90-share chain
+followed by a fresh peer syncing it from the base and a reload of the pruned dump, verified
+work, LWMA direction and clamps. Verified on regtest (`contrib/sharechain/regtest*`, Docker): single node with two miners,
 merge mining through mergemine bitcoind (aux fruits and chain shares, Freicoin blocks found),
 two nodes with relay and restart. `test/functional/feature_sharechain.py` (in
 `test_runner.py`) covers two mining nodes converging on one share chain, coinbase payouts and
