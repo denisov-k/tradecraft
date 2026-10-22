@@ -30,12 +30,12 @@
 #include <sharechain.h> // for SelectShareParams
 #include <serialize.h>
 #include <streams.h>
-#include <timedata.h> // for GetAdjustedTime
 #include <txmempool.h>
 #include <uint256.h>
 #include <util/check.h>
 #include <util/hash_type.h> // for BaseHash
 #include <util/strencodings.h>
+#include <util/time.h> // for NodeClock
 #include <validation.h>
 #include <wallet/miner.h>
 
@@ -1728,7 +1728,8 @@ bool InitStratumServer(node::NodeContext& node)
         const ShareChainstateManager::Options sharechainman_opts{
             .chainparams = Params(),
             .sharechainparams = sharechainparams,
-            .adjusted_time_callback = GetAdjustedTime,
+            // 28.x has no network-adjusted time any more (timedata.h was removed); use the node clock.
+            .adjusted_time_callback = []() { return NodeClock::now(); },
         };
         node.sharechainman = std::make_unique<ShareChainstateManager>(sharechainman_opts);
     }
