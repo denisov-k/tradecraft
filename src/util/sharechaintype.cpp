@@ -25,6 +25,8 @@ std::optional<ShareChainType> ShareChainTypeFromString(std::string_view share_ch
 {
     if (share_chain == "solo") {
         return ShareChainType::SOLO;
+    } else if (share_chain == "regtest") {
+        return ShareChainType::REGTEST;
     } else if (share_chain == "main") {
         return ShareChainType::MAIN;
     }

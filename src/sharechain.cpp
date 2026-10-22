@@ -14,8 +14,6 @@
 
 #include <algorithm> // for std::sort
 #include <set> // for std::set
-#include <script/standard.h> // for GetScriptForDestination
-#include <addresstype.h>
 #include <array> // for std::array
 #include <utility> // for std::swap
 
