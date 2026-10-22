@@ -239,6 +239,8 @@ struct Share {
 
 void swap(Share& lhs, Share& rhs);
 
+struct ShareIndex;
+
 /** Work of a share with the given compact target: 2^256 / (target + 1), the
  *  same formula as GetBlockProof.  Zero for an invalid target. */
 arith_uint256 GetShareWork(uint32_t bits);
