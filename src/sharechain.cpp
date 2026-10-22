@@ -18,6 +18,7 @@
 
 #include <algorithm> // for std::sort
 #include <set> // for std::set
+#include <functional> // for std::function
 #include <chrono> // for std::chrono
 #include <util/fs_helpers.h> // for FileCommit, RenameOver
 #include <logging.h> // for LogPrintf
@@ -1000,10 +1001,17 @@ std::vector<ShareMessage> ShareChainstateManager::GetShareRange(const std::vecto
     }
     std::vector<ShareMessage> out;
     std::set<uint256> sent;
-    for (int h = start; h <= chain.Height() && out.size() < max_entries; ++h) {
-        const std::shared_ptr<ShareIndex>& cs = chain[h];
-        for (const uint256& f : cs->fruits) {
-            if (sent.count(f) || state.chain_shares.count(f)) continue; // chain shares travel with their body
+    // Emit a chain share after everything it depends on: its listed fruits, and for a listed
+    // fruit that is itself a (forked) chain share, that one's dependencies too.
+    std::function<void(const ShareIndex&)> emit_chain_share = [&](const ShareIndex& cs) {
+        if (sent.count(cs.GetHash())) return;
+        for (const uint256& f : cs.fruits) {
+            if (sent.count(f)) continue;
+            auto fork = state.chain_shares.find(f);
+            if (fork != state.chain_shares.end()) {
+                emit_chain_share(*fork->second);
+                continue;
+            }
             auto fit = state.fruits.find(f);
             if (fit == state.fruits.end()) continue;
             ShareMessage m;
@@ -1012,12 +1020,34 @@ std::vector<ShareMessage> ShareChainstateManager::GetShareRange(const std::vecto
             sent.insert(f);
         }
         ShareMessage m;
-        m.share = cs->share;
+        m.share = cs.share;
         m.has_body = true;
-        m.body.peaks = cs->peaks;
-        m.body.fruits = cs->fruits;
+        m.body.peaks = cs.peaks;
+        m.body.fruits = cs.fruits;
         out.push_back(std::move(m));
-        sent.insert(cs->GetHash());
+        sent.insert(cs.GetHash());
+    };
+    for (int h = start; h <= chain.Height() && out.size() < max_entries; ++h) {
+        emit_chain_share(*chain[h]);
+    }
+    // Fruits nobody has listed yet (still listable from the tip) so the peer ends up with the
+    // same state and can list them itself.
+    if (out.size() < max_entries) {
+        for (const uint256& f : ListableFruits(chain.Tip().get())) {
+            if (sent.count(f)) continue;
+            auto fork = state.chain_shares.find(f);
+            if (fork != state.chain_shares.end()) {
+                emit_chain_share(*fork->second);
+                continue;
+            }
+            auto fit = state.fruits.find(f);
+            if (fit == state.fruits.end()) continue;
+            ShareMessage m;
+            m.share = fit->second;
+            out.push_back(std::move(m));
+            sent.insert(f);
+            if (out.size() >= max_entries) break;
+        }
     }
     return out;
 }
