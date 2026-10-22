@@ -128,8 +128,14 @@ class ShareChainTest(FreicoinTestFramework):
     def sc(self, node):
         return node.getsharechaininfo()
 
+    def state(self, node):
+        i = self.sc(node)
+        return (i["height"], i["tip"], i["chainshares"], i["fruits"])
+
     def wait_same_tip(self, a, b, timeout=60):
-        self.wait_until(lambda: self.sc(a)["tip"] != "" and self.sc(a)["tip"] == self.sc(b)["tip"], timeout=timeout)
+        """Both nodes know the same shares and agree on the chain tip (which may still be empty
+        while only fruits exist: one share in chainfactor is a chain share)."""
+        self.wait_until(lambda: self.state(a) == self.state(b), timeout=timeout)
 
     def run_test(self):
         n0, n1, n2 = self.nodes
@@ -156,9 +162,10 @@ class ShareChainTest(FreicoinTestFramework):
             m.close()
 
         a, b = self.sc(n0), self.sc(n1)
-        assert_equal(a["tip"], b["tip"])
+        assert_equal(self.state(n0), self.state(n1))
         assert_greater_than_or_equal(a["fruits"], 2 * rounds)
         assert_greater_than_or_equal(a["chainshares"], 1)
+        assert a["tip"] != ""
         self.log.info("share chain on both nodes: height %d, %d chain shares, %d fruits", a["height"], a["chainshares"], a["fruits"])
 
         self.log.info("every regtest share is also a block: the tip coinbase pays both miners and ends with the share commitment")
