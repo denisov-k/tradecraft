@@ -497,6 +497,12 @@ struct ShareChainstateManager {
     ShareAccept ProcessShareMessage(const ShareMessage& msg, std::vector<uint256>& missing, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! A known share as a message (with body for chain shares).
     std::optional<ShareMessage> GetShareMessage(const uint256& hash) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Locator over the active chain (tip, then exponentially sparser), for getsharechain.
+    std::vector<uint256> GetShareLocator() const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Shares from the first locator entry on our active chain to the tip, in validation
+    //! order (a chain share's non-chain fruits first, then the chain share with body), at most
+    //! `max_entries` messages.
+    std::vector<ShareMessage> GetShareRange(const std::vector<uint256>& locator, size_t max_entries) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     void AddOrphan(const ShareMessage& msg) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     std::vector<ShareMessage> TakeOrphans() EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Persist / restore the whole share chain state (sharechain.dat).

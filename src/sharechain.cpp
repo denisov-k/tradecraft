@@ -970,6 +970,58 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
     return true;
 }
 
+std::vector<uint256> ShareChainstateManager::GetShareLocator() const
+{
+    std::vector<uint256> locator;
+    const ShareChain& chain = ActiveChain();
+    int h = chain.Height();
+    int step = 1;
+    while (h >= 0 && locator.size() < 32) {
+        locator.push_back(chain[h]->GetHash());
+        if (locator.size() >= 10) step *= 2;
+        h -= step;
+    }
+    return locator;
+}
+
+std::vector<ShareMessage> ShareChainstateManager::GetShareRange(const std::vector<uint256>& locator, size_t max_entries) const
+{
+    const ShareChainstate& state = ActiveChainstate();
+    const ShareChain& chain = ActiveChain();
+    int start = 0;
+    for (const uint256& h : locator) {
+        auto it = state.chain_shares.find(h);
+        if (it == state.chain_shares.end()) continue;
+        const int height = static_cast<int>(it->second->share.height);
+        if (height <= chain.Height() && chain[height] && chain[height]->GetHash() == h) {
+            start = height + 1;
+            break;
+        }
+    }
+    std::vector<ShareMessage> out;
+    std::set<uint256> sent;
+    for (int h = start; h <= chain.Height() && out.size() < max_entries; ++h) {
+        const std::shared_ptr<ShareIndex>& cs = chain[h];
+        for (const uint256& f : cs->fruits) {
+            if (sent.count(f) || state.chain_shares.count(f)) continue; // chain shares travel with their body
+            auto fit = state.fruits.find(f);
+            if (fit == state.fruits.end()) continue;
+            ShareMessage m;
+            m.share = fit->second;
+            out.push_back(std::move(m));
+            sent.insert(f);
+        }
+        ShareMessage m;
+        m.share = cs->share;
+        m.has_body = true;
+        m.body.peaks = cs->peaks;
+        m.body.fruits = cs->fruits;
+        out.push_back(std::move(m));
+        sent.insert(cs->GetHash());
+    }
+    return out;
+}
+
 static RPCHelpMan getsharechaininfo() {
     return RPCHelpMan{"getsharechaininfo",
         "\nReturns an object containing various state info regarding the share chain.\n",

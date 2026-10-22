@@ -242,6 +242,14 @@ inline constexpr const char* SHARE{"share"};
  */
 inline constexpr const char* GETSHARES{"getshares"};
 /**
+ * getsharechain: locator of chain-share hashes; answered with a shares batch from the fork point.
+ */
+inline constexpr const char* GETSHARECHAIN{"getsharechain"};
+/**
+ * shares: a batch of share messages in validation order (fruits before the chain share listing them).
+ */
+inline constexpr const char* SHARES{"shares"};
+/**
  * cfilter is a response to a getcfilters request containing a single compact
  * filter.
  */
@@ -324,6 +332,8 @@ inline const std::array ALL_NET_MESSAGE_TYPES{std::to_array<std::string>({
     NetMsgType::SENDTXRCNCL,
     NetMsgType::SHARE,
     NetMsgType::GETSHARES,
+    NetMsgType::GETSHARECHAIN,
+    NetMsgType::SHARES,
 })};
 
 /** nServices flags */

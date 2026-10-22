@@ -4006,6 +4006,15 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             // they may wish to request compact blocks from us
             MakeAndPushMessage(pfrom, NetMsgType::SENDCMPCT, /*high_bandwidth=*/false, /*version=*/CMPCTBLOCKS_VERSION);
         }
+        // Share chain: ask a share-relaying peer for everything after our tip.
+        if (g_sharechainman && (peer->m_their_services & NODE_SHARECHAIN)) {
+            std::vector<uint256> locator;
+            {
+                LOCK(::cs_main);
+                locator = g_sharechainman->GetShareLocator();
+            }
+            MakeAndPushMessage(pfrom, NetMsgType::GETSHARECHAIN, locator);
+        }
 
         if (m_txreconciliation) {
             if (!peer->m_wtxid_relay || !m_txreconciliation->IsPeerRegistered(pfrom.GetId())) {
@@ -4592,7 +4601,17 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
         if (result == ShareAccept::MISSING) {
             LogPrint(BCLog::NET, "share %s from peer=%d needs %d parents; requesting\n", msg.share.GetHash().ToString(), pfrom.GetId(), missing.size());
-            MakeAndPushMessage(pfrom, NetMsgType::GETSHARES, missing);
+            const bool anchor_missing = !msg.share.anchor.IsNull() && missing.front() == msg.share.anchor;
+            if (anchor_missing) {
+                std::vector<uint256> locator;
+                {
+                    LOCK(::cs_main);
+                    locator = g_sharechainman->GetShareLocator();
+                }
+                MakeAndPushMessage(pfrom, NetMsgType::GETSHARECHAIN, locator);
+            } else {
+                MakeAndPushMessage(pfrom, NetMsgType::GETSHARES, missing);
+            }
             return;
         }
         if (result == ShareAccept::INVALID) {
@@ -4614,6 +4633,65 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 }
                 if (r == ShareAccept::ACCEPTED) RelayShare(orphan, -1);
             }
+        }
+        return;
+    }
+
+    if (msg_type == NetMsgType::GETSHARECHAIN) {
+        if (!g_sharechainman) return;
+        std::vector<uint256> locator;
+        vRecv >> locator;
+        if (locator.size() > 64) locator.resize(64);
+        std::vector<ShareMessage> batch;
+        {
+            LOCK(::cs_main);
+            batch = g_sharechainman->GetShareRange(locator, 500);
+        }
+        LogPrint(BCLog::NET, "getsharechain from peer=%d: sending %d shares\n", pfrom.GetId(), batch.size());
+        MakeAndPushMessage(pfrom, NetMsgType::SHARES, batch);
+        return;
+    }
+
+    if (msg_type == NetMsgType::SHARES) {
+        if (!g_sharechainman) return;
+        std::vector<ShareMessage> batch;
+        vRecv >> batch;
+        if (batch.size() > 500) {
+            LogPrint(BCLog::NET, "shares batch too large from peer=%d\n", pfrom.GetId());
+            return;
+        }
+        size_t accepted = 0, dup = 0, invalid = 0, missing_n = 0;
+        {
+            LOCK(::cs_main);
+            for (const ShareMessage& m : batch) {
+                std::vector<uint256> missing;
+                std::string reason;
+                switch (g_sharechainman->ProcessShareMessage(m, missing, reason)) {
+                case ShareAccept::ACCEPTED: ++accepted; break;
+                case ShareAccept::DUPLICATE: ++dup; break;
+                case ShareAccept::MISSING: ++missing_n; g_sharechainman->AddOrphan(m); break;
+                case ShareAccept::INVALID: ++invalid; break;
+                }
+            }
+            // dependencies inside the batch may have been out of order
+            if (missing_n) {
+                for (const ShareMessage& m : g_sharechainman->TakeOrphans()) {
+                    std::vector<uint256> missing;
+                    std::string reason;
+                    const ShareAccept r = g_sharechainman->ProcessShareMessage(m, missing, reason);
+                    if (r == ShareAccept::ACCEPTED) { ++accepted; --missing_n; }
+                    else if (r == ShareAccept::MISSING) g_sharechainman->AddOrphan(m);
+                }
+            }
+        }
+        LogPrint(BCLog::NET, "shares batch from peer=%d: %d accepted, %d duplicate, %d invalid, %d waiting\n", pfrom.GetId(), accepted, dup, invalid, missing_n);
+        if (batch.size() >= 500 && accepted > 0) {
+            std::vector<uint256> locator;
+            {
+                LOCK(::cs_main);
+                locator = g_sharechainman->GetShareLocator();
+            }
+            MakeAndPushMessage(pfrom, NetMsgType::GETSHARECHAIN, locator);
         }
         return;
     }

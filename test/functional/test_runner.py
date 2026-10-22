@@ -317,6 +317,7 @@ BASE_SCRIPTS = [
     'wallet_upgradewallet.py --legacy-wallet',
     'wallet_crosschain.py',
     'mining_basic.py',
+    'feature_sharechain.py',
     'p2p_mutated_blocks.py',
     'wallet_implicitsegwit.py --legacy-wallet',
     'rpc_named_arguments.py',
