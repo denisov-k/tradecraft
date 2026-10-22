@@ -2283,6 +2283,22 @@ void PeerManagerImpl::UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlock
 {
     SetBestBlock(pindexNew->nHeight, std::chrono::seconds{pindexNew->GetBlockTime()});
 
+    // Shares parked because they build on a block we did not have: try them again.
+    if (g_sharechainman) {
+        size_t accepted = 0;
+        {
+            LOCK(::cs_main);
+            for (const ShareMessage& m : g_sharechainman->TakeOrphans()) {
+                std::vector<uint256> missing;
+                std::string reason;
+                const ShareAccept r = g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false);
+                if (r == ShareAccept::ACCEPTED) ++accepted;
+                else if (r == ShareAccept::MISSING) g_sharechainman->AddOrphan(m);
+            }
+        }
+        if (accepted) StratumNotifyShareTipChanged();
+    }
+
     // Don't relay inventory during initial block download.
     if (fInitialDownload) return;
 
@@ -4650,12 +4666,13 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
         if (result == ShareAccept::MISSING) {
             LogPrint(BCLog::NET, "share %s from peer=%d needs %d parents; requesting\n", msg.share.GetHash().ToString(), pfrom.GetId(), missing.size());
-            const bool anchor_missing = !msg.share.anchor.IsNull() && missing.front() == msg.share.anchor;
+            const bool anchor_missing = !missing.empty() && !msg.share.anchor.IsNull() && missing.front() == msg.share.anchor;
             if (anchor_missing) {
                 RequestShareChain(pfrom);
-            } else {
+            } else if (!missing.empty()) {
                 MakeAndPushMessage(pfrom, NetMsgType::GETSHARES, missing);
             }
+            // an empty list means the share waits for a Freicoin block we have not connected yet
             return;
         }
         if (result == ShareAccept::INVALID) {

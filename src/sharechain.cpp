@@ -904,12 +904,15 @@ ShareAccept ShareChainstateManager::ProcessShareMessage(const ShareMessage& msg,
         if (state.chain_shares.count(hash)) {
             return ShareAccept::DUPLICATE;
         }
-        return AcceptChainShare(msg.share, msg.body.peaks, msg.body.fruits, reason, live) ? ShareAccept::ACCEPTED : ShareAccept::INVALID;
+        if (AcceptChainShare(msg.share, msg.body.peaks, msg.body.fruits, reason, live)) return ShareAccept::ACCEPTED;
+        // the Freicoin block it builds on has not reached us yet: wait for it
+        return reason == "share-unknown-prev-block" ? ShareAccept::MISSING : ShareAccept::INVALID;
     }
     if (state.fruits.count(hash)) {
         return ShareAccept::DUPLICATE;
     }
-    return AcceptFruit(msg.share, reason, live) ? ShareAccept::ACCEPTED : ShareAccept::INVALID;
+    if (AcceptFruit(msg.share, reason, live)) return ShareAccept::ACCEPTED;
+    return reason == "share-unknown-prev-block" ? ShareAccept::MISSING : ShareAccept::INVALID;
 }
 
 void ShareChainstateManager::AddOrphan(const ShareMessage& msg)
