@@ -550,6 +550,15 @@ bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason
                 return false;
             }
         }
+        // The PPLNS window is sized by the template's nBits (CheckPayouts): it must be
+        // the Freicoin difficulty for that block, not whatever the miner wrote.
+        if (m_options.required_bits_callback) {
+            const std::optional<uint32_t> required = m_options.required_bits_callback(share.wit.hashPrevBlock, share.GetBlockHeader(nullptr));
+            if (required && *required != share.wit.nBits) {
+                reason = "share-bad-frc-bits";
+                return false;
+            }
+        }
     }
     if (!CheckPayouts(share, anchor, reason)) {
         return false;

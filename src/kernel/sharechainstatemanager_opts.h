@@ -12,6 +12,7 @@
 #include <uint256.h>
 #include <functional>
 
+class CBlockHeader;
 class CChainParams;
 struct ShareChainParams;
 
@@ -30,6 +31,9 @@ struct ShareChainstateManagerOpts {
     std::function<std::optional<int>(const uint256&)> block_height_callback{nullptr};
     //! Height of the active block chain tip, or -1 when the chain is not loaded yet.
     std::function<int()> tip_height_callback{nullptr};
+    //! The nBits a block with this header must carry on top of the given
+    //! previous block, or nullopt if that block is unknown (window-size rule).
+    std::function<std::optional<uint32_t>(const uint256&, const CBlockHeader&)> required_bits_callback{nullptr};
 };
 
 } // namespace kernel

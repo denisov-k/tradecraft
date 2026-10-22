@@ -1888,6 +1888,13 @@ bool InitStratumServer(node::NodeContext& node)
                 LOCK(::cs_main);
                 return node.chainman->ActiveChain().Height();
             },
+            .required_bits_callback = [&node](const uint256& prev, const CBlockHeader& header) -> std::optional<uint32_t> {
+                if (!node.chainman) return std::nullopt;
+                LOCK(::cs_main);
+                const CBlockIndex* index = node.chainman->m_blockman.LookupBlockIndex(prev);
+                if (!index) return std::nullopt;
+                return GetNextWorkRequired(index, &header, Params().GetConsensus());
+            },
         };
         node.sharechainman = std::make_unique<ShareChainstateManager>(sharechainman_opts);
         LOCK(::cs_main);

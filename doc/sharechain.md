@@ -184,7 +184,9 @@ valid fruit iff, with the rejection reason in brackets:
 6. **Template age**: `hashPrevBlock` is a known Freicoin block [`share-unknown-prev-block`]; a
    *live* share (just mined, or relayed by a peer) builds on a block no deeper than
    `MAX_TEMPLATE_AGE` below the verifier's tip [`share-stale-template`]. Shares arriving in a
-   sync batch or from `sharechain.dat` keep only the known-block requirement.
+   sync batch or from `sharechain.dat` keep only the known-block requirement. The witness
+   `nBits` equals the Freicoin difficulty required on top of `hashPrevBlock`
+   [`share-bad-frc-bits`], since it sizes the PPLNS window (§9).
 7. **Payout**: the coinbase reconstructs [`share-bad-coinbase`], has outputs
    [`share-coinbase-no-outputs`], and its outputs before the commitment equal, value and
    script, `PPLNS(A, TOTAL, S.miner)` (§9) where `TOTAL` is the sum of all output values
@@ -328,9 +330,8 @@ blocks: a found Freicoin block does not reset it.
 - **Sybil payees**: splitting hashrate across addresses only adds outputs; `MAX_PAYEES` and
   `DUST` bound the cost.
 - **Window size from the template's `nBits`**: the window is sized by the `nBits` in the
-  witness, which the share's own PoW covers but which is not yet checked against the Freicoin
-  difficulty at `hashPrevBlock`; a miner could shrink the window by claiming an easier Freicoin
-  target. Fix (§12): require `nBits = GetNextWorkRequired(hashPrevBlock)`.
+  witness; rule §6.1.6 requires it to be the Freicoin difficulty at `hashPrevBlock`, so a miner
+  cannot shrink the window by claiming an easier Freicoin target.
 
 ## 12. Open questions
 
@@ -339,7 +340,8 @@ blocks: a found Freicoin block does not reset it.
 2. `M` and `R` on main: `M = 6`, `R = 10` give a 60 s chain-share interval and a 10-minute
    listing window; the simulation in doc/sharechain-uncles.md used `R = 5–10`.
 3. `MAX_TEMPLATE_AGE = 2` and the timestamp slack (`−10 min / +2 h`).
-4. Verify the template's `nBits` against the Freicoin difficulty at `hashPrevBlock` (§11).
+4. Whether the window should be sized by the native target (`nBits`, as now) or by the aux
+   target merge-miners actually face (`m_commit_bits`), which is lower.
 5. Initial `SHARE_BITS` (difficulty 10 000 ≈ 43 TH/s for 10 s shares) and the LWMA
    parameters, to be tuned on real hashrate.
 
@@ -375,5 +377,4 @@ two nodes with relay and restart. `test/functional/feature_sharechain.py` (in
 commitment, a late third node syncing with `getshrchain`, reload from `sharechain.dat`, and
 propagation after the restart.
 
-Not done: §12 items (in particular the `nBits` check), mainnet parameters on real hashrate, the
-§13 exclusions.
+Not done: §12 items, mainnet parameters on real hashrate, the §13 exclusions.
