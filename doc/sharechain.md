@@ -177,6 +177,9 @@ beyond its index entry.
 
 ### 7.2 Uncles
 
+> Proposed replacement: `doc/sharechain-uncles.md` (fruit-style crediting: no penalty, no
+> includer reward, one recency parameter; fairness argument and simulation included).
+
 A share `U` is an **uncle** of share `S` when: `U` is valid; `U` is not an ancestor of `S`;
 `U`'s parent is an ancestor of `S` at height ≥ `S.height − UNCLE_DEPTH`; `U` has not been
 included as an uncle by any ancestor of `S`. `S` lists its uncles by hash in a field added to
