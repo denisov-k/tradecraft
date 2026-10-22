@@ -1,0 +1,48 @@
+# Share chain end-to-end on regtest: freicoind (sharechain build) + python miner on its native stratum.
+name: frc-sharechain
+services:
+  freicoind:
+    image: freicoin/freicoind:sharechain
+    container_name: frc-sc-freicoind
+    command:
+      - -regtest
+      - -server=1
+      - -rpcbind=0.0.0.0
+      - -rpcallowip=172.16.0.0/12
+      - -rpcuser=frc
+      - -rpcpassword=frcpass
+      - -listen=0
+      - -dnsseed=0
+      - -txindex=1
+      - -stratum=1
+      - -stratumbind=0.0.0.0
+      - -stratumport=29638
+      - -stratumallowip=172.16.0.0/12
+      - -miningmindiff=0.001
+      - -sharechain=regtest
+      # share/mining address: the share chain falls back to -defaultminingaddress; SHARE_ARG is set
+      # by run.sh once a wallet address exists (the placeholder is a harmless duplicate flag)
+      - ${SHARE_ARG:--listen=0}
+      - -debug=stratum
+      - -printtoconsole=1
+    networks: [scnet]
+  pyminer:
+    image: python:3.12-slim
+    container_name: frc-sc-pyminer
+    profiles: [mine]
+    depends_on: [freicoind]
+    volumes:
+      - ./pyminer.py:/pyminer.py:ro
+    command: ["python", "-u", "/pyminer.py", "freicoind", "29638", "${FRC_ADDR:-}+0.001", "x", "0.001"]
+    networks: [scnet]
+  pyminer2:
+    image: python:3.12-slim
+    container_name: frc-sc-pyminer2
+    profiles: [mine]
+    depends_on: [freicoind]
+    volumes:
+      - ./pyminer.py:/pyminer.py:ro
+    command: ["python", "-u", "/pyminer.py", "freicoind", "29638", "${FRC_ADDR2:-}+0.001", "x", "0.001"]
+    networks: [scnet]
+networks:
+  scnet: {}
