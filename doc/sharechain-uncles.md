@@ -66,18 +66,23 @@ participant already runs a node by assumption.
 
 Objects (names as in `doc/sharechain.md`):
 
-- **share** `S`: ShareHeader + ShareWitness as specified, with `prev_shares` replaced by one
-  field `anchor` = hash of the chain share it hangs from (the MMR moves to chain shares, §4.1).
-  PoW: Bitcoin-header hash ≤ `target(S.bits)`.
-- **chain share** `C`: a share whose PoW hash also ≤ `target(C.bits) / M`. Carries in addition
-  `prev_shares` (MMR of chain ancestors) and `fruits` = sorted list of share hashes it records.
+- **share** `S`: ShareHeader + ShareWitness as specified, with `prev_shares` replaced by three
+  fields: `anchor` = hash of the chain share it hangs from, `prev_root` = MMR root of the chain
+  ancestors of `anchor` plus `anchor` itself, and `fruits_root` = Merkle root of the sorted list
+  of share hashes the template records (empty list allowed). All three are in the hashed header
+  because with 2-for-1 mining the template is hashed before anyone knows whether it will turn out
+  to be a chain share. PoW: Bitcoin-header hash ≤ `target(S.bits)`.
+- **chain share** `C`: a share whose PoW hash also ≤ `target(C.bits) / M`. It is transmitted with
+  the body behind its roots: the MMR peaks and the `fruits` list. A plain share carries the roots
+  only (its list is never used, so it is never sent).
 
 Rules:
 
 ```
 A1  anchor(S) is a chain share known to the verifier.
 A2  S.outputs == PPLNS(anchor(S))                          -- payouts are fixed by the anchor
-C1  anchor(C) == parent(C); height(C) == height(parent)+1; prev_shares(C) == prev_shares(parent) ⊕ hash(parent)
+C1  anchor(C) == parent(C); height(C) == height(parent)+1; prev_root(C) == root(MMR(parent) ⊕ hash(parent));
+    fruits_root(C) == merkle(C.fruits)
 C2  for every f in C.fruits:
         f is a valid share
         height(C) - height(anchor(f)) <= R                 -- recency
@@ -96,9 +101,11 @@ reward, no branch test.
 
 Mark's skeleton puts `prev_shares` in every share so a share proves its ancestry. With fruits,
 only chain shares need ancestry; a plain share needs one pointer (`anchor`). The hashed share
-header stays fixed-size and shrinks (anchor 32 B replaces the MMR root 32 B); a chain share is a
-share with two extra fields. Keeping the MMR in chain shares preserves what the skeleton wanted
-it for: compact proofs that a share is in history, which §P never needs but a light client might.
+header stays fixed-size: `anchor`, `prev_root` and `fruits_root` (96 B) replace the MMR root
+(32 B). Only the bodies behind the two roots differ between a plain share (never transmitted)
+and a chain share (MMR peaks and the fruit list). Keeping the MMR in chain shares preserves what
+the skeleton wanted it for: compact proofs that a share is in history, which §P never needs but a
+light client might.
 
 ### 4.2 What a verifier checks on receipt
 
@@ -190,8 +197,8 @@ rational behaviour, not a modelled result.
 
 ## 8. Changes to `doc/sharechain.md` if adopted
 
-- §4.1: `prev_shares` → `anchor` in ShareHeader; new `ChainShareExt = prev_shares (MMR) ‖ fruits`
-  appended for chain shares, with the chain-share flag in `version`.
+- §4.1: `prev_shares` → `anchor ‖ prev_root ‖ fruits_root` in ShareHeader (all hashed); chain
+  shares additionally transmit `ChainShareBody = MMR peaks ‖ fruits`, flagged in `version`.
 - §6: validation rules A1–A2 for shares, C1–C3 for chain shares (this note §4).
 - §7.2: replaced by this note; §7.3 unchanged (share target); chain target = share target / `M`.
 - §9: credit over listed fruits; payout vector of a share is `PPLNS(anchor)`.
