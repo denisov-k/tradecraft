@@ -848,6 +848,50 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
          + mining_notify.write()  + "\n";
 }
 
+//! Share chain: record a submission as a fruit (and as a chain share when its
+//! proof-of-work also meets the chain target), relay it, and refresh the work
+//! of every miner if the share chain tip moved.  `pow_hash` is the hash the
+//! share target applies to (Share::GetPoWHash), `kind` labels the log lines.
+static void SubmitShareToChain(const Share& share, const uint256& pow_hash, const StratumWork& current_work, StratumClient& client, const CTxDestination& who, const char* kind) EXCLUSIVE_LOCKS_REQUIRED(cs_stratum)
+{
+    LOCK(::cs_main);
+    ShareChainstateManager& man = *g_context->sharechainman;
+    const arith_uint256 h = UintToArith256(pow_hash);
+    if (h > man.ShareTarget()) {
+        return;
+    }
+    std::string reason;
+    if (man.AcceptFruit(share, reason)) {
+        LogPrintf("NEW SHARE CHAIN FRUIT%s by %s: %s\n", kind, EncodeDestination(who), share.GetHash().ToString());
+        if (h > man.ChainTarget() && g_context->peerman) {
+            ShareMessage m;
+            m.share = share;
+            g_context->peerman->RelayShare(m, -1);
+        }
+    } else {
+        LogPrintf("Share chain:%s fruit rejected (%s) from %s\n", kind, reason, EncodeDestination(who));
+    }
+    if (h > man.ChainTarget()) {
+        return;
+    }
+    const auto& st = *current_work.m_share_state;
+    if (man.AcceptChainShare(share, st.peaks, st.fruits, reason)) {
+        LogPrintf("NEW CHAIN SHARE%s by %s: %s height %d fruits %d\n", kind, EncodeDestination(who), share.GetHash().ToString(), share.height, st.fruits.size());
+        if (g_context->peerman) {
+            ShareMessage m;
+            m.share = share;
+            m.has_body = true;
+            m.body.peaks = st.peaks;
+            m.body.fruits = st.fruits;
+            g_context->peerman->RelayShare(m, -1);
+        }
+        client.m_send_work = true;
+        StratumNotifyShareTipChanged();
+    } else {
+        LogPrintf("Share chain:%s chain share rejected (%s) from %s\n", kind, reason, EncodeDestination(who));
+    }
+}
+
 bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& current_work, const std::vector<unsigned char>& extranonce1, std::vector<unsigned char> extranonce2, std::optional<uint32_t> nVersion, uint32_t nTime, uint32_t nNonce) EXCLUSIVE_LOCKS_REQUIRED(cs_stratum)
 {
     if (!g_context) {
@@ -966,28 +1010,7 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
                 } else if (share.GetBlockHeader(nullptr).GetHash() != hash) {
                     LogPrintf("Share chain: BUG: reconstructed share header hash %s != submitted %s\n", share.GetBlockHeader(nullptr).GetHash().ToString(), hash.ToString());
                 } else {
-                    LOCK(::cs_main);
-                    ShareChainstateManager& man = *g_context->sharechainman;
-                    const arith_uint256 h = UintToArith256(hash);
-                    std::string reason;
-                    if (h <= man.ShareTarget()) {
-                        if (man.AcceptFruit(share, reason)) {
-                            LogPrintf("NEW SHARE CHAIN FRUIT by %s: %s\n", EncodeDestination(client.m_addr), share.GetHash().ToString());
-                            if (h > man.ChainTarget() && g_context->peerman) { ShareMessage m; m.share = share; g_context->peerman->RelayShare(m, -1); }
-                        } else {
-                            LogPrintf("Share chain: fruit rejected (%s) from %s\n", reason, EncodeDestination(client.m_addr));
-                        }
-                        if (h <= man.ChainTarget()) {
-                            if (man.AcceptChainShare(share, current_work.m_share_state->peaks, current_work.m_share_state->fruits, reason)) {
-                                LogPrintf("NEW CHAIN SHARE by %s: %s height %d fruits %d\n", EncodeDestination(client.m_addr), share.GetHash().ToString(), share.height, current_work.m_share_state->fruits.size());
-                                if (g_context->peerman) { ShareMessage m; m.share = share; m.has_body = true; m.body.peaks = current_work.m_share_state->peaks; m.body.fruits = current_work.m_share_state->fruits; g_context->peerman->RelayShare(m, -1); }
-                                client.m_send_work = true;
-                                StratumNotifyShareTipChanged();
-                            } else {
-                                LogPrintf("Share chain: chain share rejected (%s) from %s\n", reason, EncodeDestination(client.m_addr));
-                            }
-                        }
-                    }
+                    SubmitShareToChain(share, hash, current_work, client, client.m_addr, "");
                 }
             }
         }
@@ -1087,28 +1110,7 @@ bool SubmitAuxiliaryBlock(StratumClient& client, const CTxDestination& addr, con
                 if (mutated || pow_hash != aux_hash.first) {
                     LogPrintf("Share chain: BUG: reconstructed aux share hash %s != %s\n", pow_hash.ToString(), aux_hash.first.ToString());
                 } else {
-                    LOCK(::cs_main);
-                    ShareChainstateManager& man = *g_context->sharechainman;
-                    const arith_uint256 h = UintToArith256(pow_hash);
-                    std::string reason;
-                    if (h <= man.ShareTarget()) {
-                        if (man.AcceptFruit(share, reason)) {
-                            LogPrintf("NEW SHARE CHAIN FRUIT (aux) by %s: %s\n", EncodeDestination(addr), share.GetHash().ToString());
-                            if (h > man.ChainTarget() && g_context->peerman) { ShareMessage m; m.share = share; g_context->peerman->RelayShare(m, -1); }
-                        } else {
-                            LogPrintf("Share chain: aux fruit rejected (%s) from %s\n", reason, EncodeDestination(addr));
-                        }
-                        if (h <= man.ChainTarget()) {
-                            if (man.AcceptChainShare(share, current_work.m_share_state->peaks, current_work.m_share_state->fruits, reason)) {
-                                LogPrintf("NEW CHAIN SHARE (aux) by %s: %s height %d fruits %d\n", EncodeDestination(addr), share.GetHash().ToString(), share.height, current_work.m_share_state->fruits.size());
-                                if (g_context->peerman) { ShareMessage m; m.share = share; m.has_body = true; m.body.peaks = current_work.m_share_state->peaks; m.body.fruits = current_work.m_share_state->fruits; g_context->peerman->RelayShare(m, -1); }
-                                client.m_send_work = true;
-                                StratumNotifyShareTipChanged();
-                            } else {
-                                LogPrintf("Share chain: aux chain share rejected (%s) from %s\n", reason, EncodeDestination(addr));
-                            }
-                        }
-                    }
+                    SubmitShareToChain(share, pow_hash, current_work, client, addr, " (aux)");
                 }
             }
         }
