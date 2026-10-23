@@ -398,8 +398,10 @@ Everything in §4–§10 is implemented in freicoind on top of 28.1 and the `tmp
   tip), `getsharechaininfo`;
 - `src/stratum.cpp`: payouts + commitment in the coinbase before the segwit commitment, share
   target to native miners and in `mining.aux.notify`, acceptance on `mining.submit` and
-  `mining.aux.submit`, no credit for second-stage submissions, work refresh on tip change,
-  `-miningmindiff` fixed to match its registered name;
+  `mining.aux.submit`, no credit for second-stage submissions, work refresh on tip change
+  (pushed from the event loop thread: BlockWatcher wrote to the clients' bufferevents from its
+  own thread, which crashed inside libevent once pushes became frequent), `-miningmindiff`
+  fixed to match its registered name;
 - `src/net_processing.{h,cpp}`, `src/protocol.h`: `NODE_SHARECHAIN`, `share`, `getshares`,
   `getshrchain`, `shares`, relay, sync at `verack` and on unknown anchor, per-peer limits,
   orphan retry on Freicoin tip change;
