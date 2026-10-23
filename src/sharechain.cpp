@@ -1166,9 +1166,11 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
         file >> saved_tip;
         file >> count;
         std::vector<ShareMessage> deferred_msgs;
+        std::set<uint256> in_file;
         for (uint64_t i = 0; i < count; ++i) {
             ShareMessage m;
             file >> m;
+            if (m.has_body) in_file.insert(m.share.GetHash());
             std::vector<uint256> missing;
             std::string reason;
             const ShareAccept r = ProcessShareMessage(m, missing, reason, /*live=*/false);
@@ -1194,7 +1196,8 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
                 if (!ActiveChain().chain.empty()) break;
                 auto lowest = still.end();
                 for (auto it = still.begin(); it != still.end(); ++it) {
-                    if (it->has_body && (lowest == still.end() || it->share.height < lowest->share.height)) lowest = it;
+                    if (!it->has_body || in_file.count(it->share.anchor)) continue; // waits for something in the file
+                    if (lowest == still.end() || it->share.height < lowest->share.height) lowest = it;
                 }
                 if (lowest == still.end()) break;
                 std::vector<uint256> missing;

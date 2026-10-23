@@ -4738,12 +4738,19 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         size_t accepted = 0, dup = 0, invalid = 0, missing_n = 0;
         {
             LOCK(::cs_main);
-            // With no chain of our own yet, the first chain share the batch starts from is our base.
+            // With no chain of our own yet, a chain share whose anchor is neither known nor
+            // anywhere in the batch is the peer's pruned base, and becomes ours.  (One whose
+            // anchor is in the batch merely waits for it, e.g. for a Freicoin block we lack.)
             const bool fresh = g_sharechainman->ActiveHeight() < 0;
+            std::set<uint256> in_batch;
+            for (const ShareMessage& m : batch) {
+                if (m.has_body) in_batch.insert(m.share.GetHash());
+            }
+            const auto allow_base = [&](const ShareMessage& m) { return fresh && m.has_body && !in_batch.count(m.share.anchor); };
             for (const ShareMessage& m : batch) {
                 std::vector<uint256> missing;
                 std::string reason;
-                switch (g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false, /*allow_base=*/fresh)) {
+                switch (g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false, allow_base(m))) {
                 case ShareAccept::ACCEPTED: ++accepted; break;
                 case ShareAccept::DUPLICATE: ++dup; break;
                 case ShareAccept::MISSING: ++missing_n; g_sharechainman->AddOrphan(m); break;
@@ -4755,7 +4762,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 for (const ShareMessage& m : g_sharechainman->TakeOrphans()) {
                     std::vector<uint256> missing;
                     std::string reason;
-                    const ShareAccept r = g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false, /*allow_base=*/fresh);
+                    const ShareAccept r = g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false, allow_base(m));
                     if (r == ShareAccept::ACCEPTED) { ++accepted; --missing_n; }
                     else if (r == ShareAccept::MISSING) g_sharechainman->AddOrphan(m);
                 }
