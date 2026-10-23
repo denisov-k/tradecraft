@@ -1774,6 +1774,11 @@ static bool StratumBindAddresses(event_base* base, node::NodeContext& node) EXCL
 
 /** Watches for new blocks and send updated work to miners. */
 static std::atomic<bool> g_shutdown = false;
+
+//! The event loop the stratum sockets live on (the HTTP server's).
+static event_base* g_event_base = nullptr;
+
+static void SendWorkToAllClients(evutil_socket_t, short, void* arg);
 void BlockWatcher()
 {
     std::chrono::steady_clock::time_point checktxtime = std::chrono::steady_clock::now();
@@ -1791,13 +1796,33 @@ void BlockWatcher()
             }
         }
 
-        LOCK(cs_stratum);
-
         if (g_shutdown) {
             break;
         }
         const bool share_tip_changed = g_share_tip_changed.exchange(false);
 
+        // The clients' bufferevents belong to the event loop thread and are not
+        // thread-safe: writing to them from here races with the stratum
+        // callbacks (seen as a segfault inside libevent once share chain tip
+        // changes made the pushes frequent).  Hand the push to that thread.
+        struct timeval immediately{0, 0};
+        if (event_base_once(g_event_base, -1, EV_TIMEOUT, SendWorkToAllClients, reinterpret_cast<void*>(static_cast<intptr_t>(share_tip_changed)), &immediately) != 0) {
+            LogPrintf("Unable to schedule stratum work update\n");
+        }
+    }
+}
+
+//! Runs in the event loop thread (scheduled by BlockWatcher): send new work to
+//! every client whose block tip changed, or to all of them after a share
+//! chain tip change (`arg` != 0).
+static void SendWorkToAllClients(evutil_socket_t, short, void* arg)
+{
+    const bool share_tip_changed = reinterpret_cast<intptr_t>(arg) != 0;
+    LOCK(cs_stratum);
+    if (g_shutdown) {
+        return;
+    }
+    {
         CBlockIndex* tip = nullptr;
         if (g_context && g_context->chainman) {
             LOCK(g_context->chainman->GetMutex());
@@ -1965,6 +1990,7 @@ bool InitStratumServer(node::NodeContext& node)
     LogPrint(BCLog::STRATUM, "Allowing stratum connections from: %s\n", strAllowed);
 
     event_base* base = EventBase();
+    g_event_base = base;
     if (!base) {
         LogPrint(BCLog::STRATUM, "No event_base object, cannot setup stratum server.\n");
         return false;
