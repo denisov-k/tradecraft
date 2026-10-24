@@ -1349,7 +1349,13 @@ UniValue stratum_mining_configure(StratumClient& client, const UniValue& params)
 
         if ("version-rolling" == name) {
             uint32_t mask = ParseHexInt4(config.find_value("version-rolling.mask"), "version-rolling.mask");
-            size_t min_bit_count = config.find_value("version-rolling.min-bit-count").getInt<size_t>();
+            // BIP 310 makes min-bit-count optional, and ESP-Miner (Bitaxe,
+            // NerdQAxe, ...) omits it. Treat a missing value as 0.
+            size_t min_bit_count = 0;
+            const UniValue& min_bit_count_val = config.find_value("version-rolling.min-bit-count");
+            if (min_bit_count_val.isNum()) {
+                min_bit_count = min_bit_count_val.getInt<size_t>();
+            }
             client.m_version_rolling_mask = mask & 0x1fffe000;
             size_t bit_count = std::bitset<32>(client.m_version_rolling_mask).count();
             if (bit_count < min_bit_count) {
