@@ -1168,9 +1168,12 @@ void BoundParams(const std::string& method, const UniValue& params, size_t min, 
 UniValue stratum_mining_subscribe(StratumClient& client, const UniValue& params) EXCLUSIVE_LOCKS_REQUIRED(cs_stratum)
 {
     const std::string method("mining.subscribe");
-    BoundParams(method, params, 0, 2);
+    // The spec has two parameters (user agent, session id), but some miners
+    // (e.g. Braiins OS / BOSminer) also send the pool host and port. Accept and
+    // ignore the extras instead of refusing the connection.
+    BoundParams(method, params, 0, 4);
 
-    if (params.size() >= 1) {
+    if (params.size() >= 1 && params[0].isStr()) {
         client.m_client = params[0].get_str();
         LogPrint(BCLog::STRATUM, "Received subscription from client %s\n", client.m_client);
     }
