@@ -1854,7 +1854,12 @@ static void SendWorkToAllClients(evutil_socket_t, short, void* arg)
             // work notification again, moments later.  Due to race conditions
             // there could be more than one miner that have already received an
             // update, however.
-            if (client.m_last_tip == tip && !share_tip_changed) {
+            // Re-send work to a client that has heard nothing for a minute, even
+            // if nothing changed: miners treat a silent connection as dead
+            // (cgminer after ~90 s, ESP-Miner after 180 s) and reconnect.
+            // (Reported by Vintage Hash from a live setup; same fix as in mergemine.)
+            const bool keepalive = (GetTime() - client.m_last_work_time) >= 60;
+            if (client.m_last_tip == tip && !share_tip_changed && !keepalive) {
                 continue;
             }
             // Get new work
