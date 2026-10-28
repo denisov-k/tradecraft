@@ -62,7 +62,7 @@ protected:
     uint32_t m_recency{10};
     uint32_t m_window_k{4};
     CAmount m_dust{1000};
-    size_t m_max_payees{100};
+    size_t m_max_payees{1000};
     uint256 m_chain_id;
     bool m_retarget{true};
     int64_t m_share_interval{10};
@@ -102,10 +102,13 @@ struct ShareWitness {
     //! shares (FLAG_AUX).  Carries the commit fields, secret, midstate, aux
     //! branch and the parent header, exactly as freicoind received it.
     std::optional<AuxProofOfWork> aux;
-    // A share is committed to at the end of the coinbase transaction, which
-    // allows for midstate compression in some use cases.  This is not one of
-    // those use cases, as the rest of the transaction is required to validate
-    // the coinbase rewards, so the whole coinbase transaction is stored.
+    // The coinbase transaction is not carried.  Its outputs are the PPLNS
+    // payouts, which every verifier computes itself from the share's anchor,
+    // followed by the share commitment; so a share stays the same size no
+    // matter how many miners are paid.  Only what a verifier cannot compute
+    // travels: the coinbase txid (binds the whole transaction and yields the
+    // Merkle root without computing payouts), the input, the transaction
+    // version and sequence, the total paid out, and the lock fields.
 
     //! The share commitment is possibly aggregated with other commitments in
     //! the block using a Merkle hash map structure.  The key is fixed for the
@@ -113,9 +116,17 @@ struct ShareWitness {
     //! bits for each level.
     std::vector<std::pair<unsigned char, uint256>> commit;
 
-    //! The coinbase transaction of the block, serialized up to the point of
-    //! the commitment.
-    std::vector<unsigned char> cb1;
+    //! txid of the coinbase transaction: the Merkle leaf, and what the
+    //! coinbase rebuilt from the verifier's own payouts must hash to.
+    uint256 cb_hash;
+    //! The coinbase's version, input script (height, extranonce, miner tag)
+    //! and input sequence.
+    uint32_t cb_version{2};
+    std::vector<unsigned char> script_sig;
+    uint32_t sequence{0};
+    //! Total value of the coinbase outputs (subsidy plus fees): the amount
+    //! PPLNS splits.
+    int64_t total{0};
     //! The nLockTime and lock_height fields of the coinbase: the only fields
     //! after the commitment (lock_height is serialized for every version-2
     //! transaction, and block templates build version-2 coinbases).
@@ -155,12 +166,15 @@ struct ShareWitness {
             ::Serialize(s, pair.first);  // unsigned char
             ::Serialize(s, pair.second); // uint256
         }
-        // The coinbase transaction, minus the commitment (which is inserted
-        // after cb1 but before nLockTime).
-        ::Serialize(s, VARINT(cb1.size()));
-        for (const auto& byte : cb1) {
+        // What the verifier cannot compute of the coinbase transaction.
+        ::Serialize(s, cb_hash);
+        ::Serialize(s, cb_version);
+        ::Serialize(s, VARINT(script_sig.size()));
+        for (const auto& byte : script_sig) {
             ::Serialize(s, byte);
         }
+        ::Serialize(s, sequence);
+        ::Serialize(s, total);
         ::Serialize(s, nLockTime);
         ::Serialize(s, lock_height);
         // The path to the coinbase transaction.
@@ -196,13 +210,17 @@ struct ShareWitness {
             ::Unserialize(s, pair.first);  // unsigned char
             ::Unserialize(s, pair.second); // uint256
         }
-        // The coinbase transaction, except for the commitment.
+        // The coinbase fields.
+        ::Unserialize(s, cb_hash);
+        ::Unserialize(s, cb_version);
         len = 0;
         ::Unserialize(s, VARINT(len));
-        cb1.resize(len);
-        for (auto& byte : cb1) {
+        script_sig.resize(len);
+        for (auto& byte : script_sig) {
             ::Unserialize(s, byte);
         }
+        ::Unserialize(s, sequence);
+        ::Unserialize(s, total);
         ::Unserialize(s, nLockTime);
         ::Unserialize(s, lock_height);
         // The path to the coinbase transaction.
@@ -560,9 +578,12 @@ private:
     //! null on an empty chain), height, total_work, prev_root.
     bool CheckLinkage(const Share& share, const ShareIndex** anchor_out, std::string& reason) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Merge-mined share: the aux-pow commit root really covers the witness coinbase.
-    bool CheckAuxBinding(const Share& share, std::string& reason) const;
+    //! `cb` is the coinbase CheckPayouts rebuilt.
+    bool CheckAuxBinding(const Share& share, const CMutableTransaction& cb, std::string& reason) const;
     //! Coinbase outputs of the share equal PPLNS(anchor) (A2).
-    bool CheckPayouts(const Share& share, const ShareIndex* anchor, std::string& reason) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! On success `cb` holds the rebuilt coinbase, unless the window runs into a
+    //! trusted base (then the payouts cannot be computed and `cb` stays empty).
+    bool CheckPayouts(const Share& share, const ShareIndex* anchor, std::optional<CMutableTransaction>& cb, std::string& reason) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Whether a chain share at `height` on top of `parent` is within Recency()
     //! of a trusted base, where listed fruits may hang from pruned ancestors.
     bool NearBase(const ShareIndex* parent, uint32_t height) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
@@ -582,8 +603,10 @@ uint256 PrevRootAfter(const ShareIndex* anchor);
 uint256 FruitsRoot(const std::vector<uint256>& fruits);
 /** The commitment output a share template appends last: OP_RETURN <root||id>. */
 CScript ShareCommitmentScript(const uint256& commitment_root);
-/** Rebuild the full coinbase of a share from its witness (cb1 || root || id || nLockTime || lock_height). */
-bool ReconstructShareCoinbase(const Share& share, CMutableTransaction& cb);
+/** Build the coinbase a share's template must have had: the witness fields,
+ *  the given payouts, and the share commitment last.  Its txid must equal
+ *  the witness cb_hash. */
+bool BuildShareCoinbase(const Share& share, const std::vector<std::pair<WitnessUnknown, CAmount>>& payouts, CMutableTransaction& cb);
 /** The share header a template built from `st` for `miner` commits to (native witness, version 0). */
 Share ShareFromTemplateState(const ShareChainstateManager::TemplateState& st, const WitnessUnknown& miner);
 /** Fill a native witness from the mined coinbase and header; false if the coinbase does not end with a share commitment. */

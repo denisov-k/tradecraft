@@ -53,14 +53,14 @@ difficulty adjustment and the PPLNS payout function, with test vectors, as imple
 
 | Name | main | regtest | Meaning |
 |---|---|---|---|
-| `CHAIN_ID` | `"SHARECHAIN-MAIN" ‖ 00… ‖ 02` | `"SHARECHAIN-REGTEST" ‖ 00… ‖ 02` | `share_chain_path`: key of the share commitment in the coinbase Merkle hash map (uint256) |
+| `CHAIN_ID` | `"SHARECHAIN-MAIN" ‖ 00… ‖ 03` | `"SHARECHAIN-REGTEST" ‖ 00… ‖ 03` | `share_chain_path`: key of the share commitment in the coinbase Merkle hash map (uint256) |
 | `COMMIT_ID` | `4b 4a 49 48` | same | 4-byte tag after the commitment root in the coinbase (skeleton) |
 | `SHARE_BITS` | `0x1b068db2` (difficulty 10 000) | `0x207fffff` | initial share target; also the easiest target the chain allows |
 | `M` (`CHAIN_FACTOR`) | 6 | 4 | chain target = share target / `M` |
 | `R` (`RECENCY`) | 10 | 10 | a fruit stays listable for `R` chain heights after its anchor |
 | `SHARE_INTERVAL` | 10 s | n/a | target spacing of shares (retarget on main only) |
 | `WINDOW_K` | 4 | 4 | PPLNS window = `WINDOW_K` × work(Freicoin target of the template) |
-| `MAX_PAYEES` | 100 | 100 | maximum payout outputs in a coinbase |
+| `MAX_PAYEES` | 1000 | 1000 | maximum payout outputs in a coinbase (bounded by the block, not by the share: §4.4) |
 | `DUST` | 1000 kria | 1000 | outputs below this are dropped and redistributed |
 | `MAX_TEMPLATE_AGE` | 2 | 2 | a live share must build on one of the last `MAX_TEMPLATE_AGE` Freicoin blocks |
 | `work(bits)` | `2^256 / (target + 1)` | | work of a share, same formula as block chainwork |
@@ -100,7 +100,11 @@ because the template is hashed before anyone knows whether it will reach the cha
 | `flags` | uint8 | bit 0 (`FLAG_AUX`): merge-mined share, `aux` follows |
 | `aux` | `AuxProofOfWork` | only with `FLAG_AUX`: the Freicoin header's aux-pow exactly as freicoind received it (commit fields, secret, midstate, commit branch, aux branch, parent header) |
 | `commit` | VARINT n, then n × (uint8 skip bits, uint256 skip hash) | Merkle-hash-map branch from the header hash to the commitment root, key `CHAIN_ID` |
-| `cb1` | VARINT len + bytes | the Freicoin coinbase serialized up to the commitment root |
+| `cb_hash` | uint256 | txid of the coinbase: the Merkle leaf, and what the coinbase rebuilt by the verifier must hash to |
+| `cb_version` | uint32 | the coinbase's transaction version (2) |
+| `script_sig` | VARINT len + bytes | the coinbase input script: height, extranonce, miner tag |
+| `sequence` | uint32 | the coinbase input's sequence |
+| `total` | int64 | total value of the coinbase outputs (subsidy plus fees): what PPLNS splits |
 | `nLockTime` | uint32 | the coinbase's lock time |
 | `lock_height` | uint32 | the coinbase's lock height (version-2 transactions serialize it after `nLockTime`; templates build version-2 coinbases) |
 | `branch` | VARINT n + n × uint256 | Merkle path from the coinbase (leaf 0) to the Freicoin block's Merkle root |
@@ -109,14 +113,26 @@ because the template is hashed before anyone knows whether it will reach the cha
 Native shares (mined on freicoind's own stratum) have `flags = 0`. Aux shares differ only by
 the flag and the `AuxProofOfWork`; the Freicoin header fields are the same fields.
 
-### 4.3 Reconstruction (`Share::GetBlockHeader`, `ReconstructShareCoinbase`)
+The coinbase itself is **not** carried: its outputs are the PPLNS payouts every verifier
+computes from the share's anchor (§9) followed by the share commitment, so a share has the
+same size whether the window holds two miners or a thousand. The verifier rebuilds the
+coinbase from the fields above and its own payouts and checks the txid against `cb_hash`
+(§6.1 rule 7); `cb_hash` itself is bound by the proof of work through the Merkle root.
 
-1. `h0` = header hash (§4.1).
-2. `root` = `ComputeMerkleMapRootFromBranch(h0, commit, share_chain_path)`.
-3. coinbase = `cb1 ‖ root ‖ COMMIT_ID ‖ nLockTime ‖ lock_height`; `cbhash` = its txid.
-4. `merkle` = `ComputeMerkleRootFromBranch(cbhash, branch, 0)`.
-5. Freicoin header = (`nVersion, hashPrevBlock, merkle, nTime, nBits, nNonce`), with `aux` as
+### 4.3 Reconstruction (`Share::GetBlockHeader`, `BuildShareCoinbase`)
+
+Header, from the witness alone:
+
+1. `merkle` = `ComputeMerkleRootFromBranch(cb_hash, branch, 0)`.
+2. Freicoin header = (`nVersion, hashPrevBlock, merkle, nTime, nBits, nNonce`), with `aux` as
    its aux-pow when `FLAG_AUX`.
+
+Coinbase, by the verifier (§6.1 rule 7):
+
+1. `h0` = header hash (§4.1); `root` = `ComputeMerkleMapRootFromBranch(h0, commit, share_chain_path)`.
+2. outputs = `PPLNS(A, total, miner)` (§9) in canonical order, then `OP_RETURN <root ‖ COMMIT_ID>`.
+3. coinbase = (`cb_version`, one input `(null, script_sig, sequence)`, outputs, `nLockTime`,
+   `lock_height`); its txid must equal `cb_hash`.
 
 **PoW hash** (`Share::GetPoWHash`) = the hash of that Freicoin header for a native share; for an
 aux share the *parent (Bitcoin) header hash* reached through the aux-pow
@@ -130,9 +146,10 @@ rejected every submission after the first in a job as a duplicate before this wa
 
 ### 4.4 Size
 
-Header 161 B; witness ≈ 100 B + `cb1` (≈ 80 B + 31 B per payout) + 32 B per Merkle-branch
-level; aux-pow ≈ 440 B. A native share with 20 payees ≈ 1.0 KB, an aux share ≈ 1.5 KB; with
-`MAX_PAYEES` ≈ 4.5 KB.
+Header 161 B; witness ≈ 180 B (coinbase fields ≈ 60 B plus the ≈ 40 B input script) + 32 B
+per Merkle-branch level; aux-pow ≈ 440 B. A native share ≈ 0.4 KB, an aux share ≈ 0.9 KB,
+independent of the number of payees. The block carries the outputs: 31 B each, 31 KB at
+`MAX_PAYEES`.
 
 ### 4.5 Chain share body
 
@@ -153,9 +170,9 @@ nLockTime, lock_height
 ```
 
 The commitment output is the **last** output, so the 36 bytes before `nLockTime` are the
-commitment, as in the block-final format. `cb1` is the serialization up to (not including) the
-root. The root is a Merkle hash map keyed by `CHAIN_ID`, so a template may carry other
-commitments in the same slot. The payouts and the commitment are inserted *before* the segwit
+commitment, as in the block-final format. The coinbase holds nothing but the payouts and the
+commitment (a verifier rebuilds exactly this, §4.3). The root is a Merkle hash map keyed by
+`CHAIN_ID`, so a template may carry other commitments in the same slot. The payouts and the commitment are inserted *before* the segwit
 commitment is computed, so the resulting block is valid for every node.
 
 Because the aux-pow commits to the whole Freicoin template through the commit Merkle root
@@ -191,12 +208,11 @@ valid fruit iff, with the rejection reason in brackets:
    sync batch or from `sharechain.dat` keep only the known-block requirement. The witness
    `nBits` equals the Freicoin difficulty required on top of `hashPrevBlock`
    [`share-bad-frc-bits`], since it sizes the PPLNS window (§9).
-7. **Payout**: the coinbase reconstructs [`share-bad-coinbase`], has outputs
-   [`share-coinbase-no-outputs`], and its outputs before the commitment equal, value and
-   script, `PPLNS(A, TOTAL, S.miner)` (§9) where `TOTAL` is the sum of all output values
-   [`share-bad-payout-count`, `share-bad-payout`]; any further output before the commitment
-   carries no value [`share-bad-extra-output`]. The check is skipped when the window walked
-   back from `A` runs into a trusted base (§6.3): those credits are history the node never had.
+7. **Payout**: `total > 0` and the commitment branch is well formed [`share-bad-coinbase`]; the
+   coinbase rebuilt from the witness fields with outputs `PPLNS(A, total, S.miner)` (§9) plus
+   the commitment (§4.3) has txid `cb_hash` [`share-bad-payout`]. The check is skipped when
+   the window walked back from `A` runs into a trusted base (§6.3): those credits are history
+   the node never had (and rule 4 is then skipped too, as it needs the coinbase).
 
 A fruit whose anchor is unknown is parked in a bounded orphan pool and retried when its anchor
 arrives (a range sync is requested, §10); one whose `hashPrevBlock` is unknown is parked and
@@ -275,8 +291,8 @@ Chain shares arrive every `M × SHARE_INTERVAL` ≈ 60 s on main.
 
 ## 8. Bandwidth
 
-At 10 s per share: 20 payees ≈ 13 MB/day, 50 payees ≈ 20 MB/day, 100 payees ≈ 39 MB/day for a
-node that receives every share once. A `shares` batch carries at most 500 shares; a locator at
+At 10 s per share: ≈ 8 MB/day of aux shares for a node that receives every share once,
+whatever the number of payees. A `shares` batch carries at most 500 shares; a locator at
 most 64 hashes. Per peer: 120 shares/min, 6 locators/min, and at most 4 unsolicited batches
 in flight (§10).
 
@@ -303,8 +319,8 @@ verifier and pruning agree.
 3. **Dust**: every `out_m < DUST` with `m ≠ B` is removed from `credit`; recompute step 2 once.
 4. **Cap**: if more than `MAX_PAYEES` remain, keep the `MAX_PAYEES` largest credits and
    recompute step 2 once.
-5. **Order**: outputs sorted by (witness version, program) ascending. The verifier compares
-   this vector with the decoded `cb1` outputs exactly.
+5. **Order**: outputs sorted by (witness version, program) ascending. The verifier builds the
+   coinbase from this vector and compares its txid with `cb_hash`.
 
 With an empty chain the builder receives `TOTAL`. The window slides with shares, not with
 blocks: a found Freicoin block does not reset it.
@@ -393,7 +409,8 @@ blocks: a found Freicoin block does not reset it.
    the cap deterministically (top `N` always, the rest in turn by block height; expectation
    kept, variance up), or carry unpaid credit forward, which is state every node must compute
    alike and therefore a validation rule; or shares that commit to the payout vector instead
-   of carrying it.
+   of carrying it. **Settled 2026-10-28 (with Vintage Hash): shares commit to the payout
+   vector (`cb_hash`, §4.2), `MAX_PAYEES` raised to 1000, bounded by the block.**
 
 ## 13. Deliberate exclusions
 

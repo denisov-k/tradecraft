@@ -42,7 +42,7 @@ struct MainShareChainParams : public ShareChainParams {
     MainShareChainParams() {
         is_valid = true;
         m_share_chain_type = ShareChainType::MAIN;
-        m_chain_id = uint256S("5348415245434841494e2d4d41494e0000000000000000000000000000000002"); // 'SHARECHAIN-MAIN' || 2 (2: aux share identity = parent header hash)
+        m_chain_id = uint256S("5348415245434841494e2d4d41494e0000000000000000000000000000000003"); // 'SHARECHAIN-MAIN' || 3 (2: aux identity = parent hash; 3: committed payouts)
         m_share_bits = 0x1b068db2;   // difficulty 10000: ~43 TH for 10 s shares; also the easiest target allowed
         m_retarget = true;
         m_share_interval = 10;
@@ -57,7 +57,7 @@ struct RegtestShareChainParams : public ShareChainParams {
         m_chain_factor = 4;
         m_recency = 10;
         m_retarget = false;
-        m_chain_id = uint256S("5348415245434841494e2d5245475445535400000000000000000000000002");
+        m_chain_id = uint256S("5348415245434841494e2d5245475445535400000000000000000000000003");
     }
 };
 
@@ -89,7 +89,11 @@ void swap(ShareWitness& lhs, ShareWitness& rhs) {
     swap(lhs.flags, rhs.flags);
     swap(lhs.aux, rhs.aux);
     swap(lhs.commit, rhs.commit);
-    swap(lhs.cb1, rhs.cb1);
+    swap(lhs.cb_hash, rhs.cb_hash);
+    swap(lhs.cb_version, rhs.cb_version);
+    swap(lhs.script_sig, rhs.script_sig);
+    swap(lhs.sequence, rhs.sequence);
+    swap(lhs.total, rhs.total);
     swap(lhs.nLockTime, rhs.nLockTime);
     swap(lhs.lock_height, rhs.lock_height);
     swap(lhs.branch, rhs.branch);
@@ -133,41 +137,16 @@ CBlockHeader Share::GetBlockHeader(bool *mutated) const {
         *mutated = false;
     }
 
-    // Compute the hash of the share header.
-    uint256 hash = GetHeaderHash();
-
-    // Compute the commitment root hash.
-    // The share chain commitment might be stored alongside other
-    // commitments in the form of a Merkle hash map.  We therefore use
-    // the branch proof to work our way up to the root value of the
-    // Merkle hash map.
+    // The commitment branch must at least be well formed (the root it yields is
+    // checked when the coinbase is rebuilt against cb_hash).
     bool invalid = false;
-    hash = ComputeMerkleMapRootFromBranch(hash, wit.commit, wit.share_chain_path, &invalid);
+    (void)ComputeMerkleMapRootFromBranch(GetHeaderHash(), wit.commit, wit.share_chain_path, &invalid);
     if (invalid && mutated) {
         *mutated = true;
     }
 
-    // Calculate hash of coinbase transaction.
-    CHash256 h;
-    // Write the first part of the coinbase transaction.
-    h.Write(MakeUCharSpan(wit.cb1));
-    // Write the commitment root hash.
-    h.Write(MakeUCharSpan(hash));
-    // Write the commitment identifier.
-    static const std::array<unsigned char, 4> id
-        = { 0x4b, 0x4a, 0x49, 0x48 };
-    h.Write(MakeUCharSpan(id));
-    // Write the rest of the coinbase transaction.
-    {
-        DataStream ds{};
-        ds << wit.nLockTime;
-        ds << wit.lock_height;
-        h.Write(MakeUCharSpan(ds));
-    }
-    h.Finalize(hash);
-
-    // Calculate hashMerkleRoot for the block header.
-    hash = ComputeMerkleRootFromBranch(hash, wit.branch, 0);
+    // hashMerkleRoot from the coinbase txid the witness carries.
+    uint256 hash = ComputeMerkleRootFromBranch(wit.cb_hash, wit.branch, 0);
 
     // Write the block header fields.
     CBlockHeader blkhdr;
@@ -349,27 +328,23 @@ CScript ShareCommitmentScript(const uint256& commitment_root)
     return CScript() << OP_RETURN << data;
 }
 
-bool ReconstructShareCoinbase(const Share& share, CMutableTransaction& cb)
+bool BuildShareCoinbase(const Share& share, const std::vector<std::pair<WitnessUnknown, CAmount>>& payouts, CMutableTransaction& cb)
 {
-    // The witness stores the coinbase up to the commitment root; the rest is
-    // root || id || nLockTime || lock_height, exactly as GetBlockHeader hashes it.
     bool invalid = false;
     const uint256 root = ComputeMerkleMapRootFromBranch(share.GetHeaderHash(), share.wit.commit, share.wit.share_chain_path, &invalid);
     if (invalid) {
         return false;
     }
-    DataStream ds{};
-    ds.write(MakeByteSpan(share.wit.cb1));
-    ds << root;
-    ds.write(MakeByteSpan(SHARE_COMMIT_ID));
-    ds << share.wit.nLockTime;
-    ds << share.wit.lock_height;
-    try {
-        ds >> TX_NO_WITNESS(cb);
-    } catch (const std::exception&) {
-        return false;
+    cb = CMutableTransaction();
+    cb.version = share.wit.cb_version;
+    cb.vin.emplace_back(COutPoint(), CScript(share.wit.script_sig.begin(), share.wit.script_sig.end()), share.wit.sequence);
+    for (const auto& payout : payouts) {
+        cb.vout.emplace_back(payout.second, GetScriptForDestination(payout.first));
     }
-    return ds.empty();
+    cb.vout.emplace_back(0, ShareCommitmentScript(root));
+    cb.nLockTime = share.wit.nLockTime;
+    cb.lock_height = share.wit.lock_height;
+    return true;
 }
 
 arith_uint256 ShareChainstateManager::ShareTarget() const
@@ -501,21 +476,13 @@ bool WindowReachesBase(const ShareIndex* anchor, const arith_uint256& window, co
 }
 } // namespace
 
-bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* anchor, std::string& reason) const
+bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* anchor, std::optional<CMutableTransaction>& cb_out, std::string& reason) const
 {
-    CMutableTransaction cb;
-    if (!ReconstructShareCoinbase(share, cb)) {
+    cb_out.reset();
+    const CAmount total = share.wit.total;
+    if (total <= 0) {
         reason = "share-bad-coinbase";
         return false;
-    }
-    if (cb.vout.empty()) {
-        reason = "share-coinbase-no-outputs";
-        return false;
-    }
-    // The last output is the commitment; everything before it is the payout vector.
-    CAmount total = 0;
-    for (const CTxOut& out : cb.vout) {
-        total += out.GetReferenceValue();
     }
     // The window is sized by the target the block's miners face (aux once merge
     // mining is active), taken from the block chain so that template, check and
@@ -531,37 +498,29 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
     }
     ShareCredits credits = ComputeShareCredits(anchor, window, lookup);
     const auto payouts = ComputeSharePayouts(std::move(credits), total, share.miner, Params().Dust(), Params().MaxPayees());
-    if (cb.vout.size() < payouts.size() + 1) {
-        reason = "share-bad-payout-count";
+    // The coinbase is exactly these payouts plus the commitment: rebuild it and
+    // compare with the txid the proof of work covers.
+    CMutableTransaction cb;
+    if (!BuildShareCoinbase(share, payouts, cb)) {
+        reason = "share-bad-coinbase";
         return false;
     }
-    for (size_t i = 0; i < payouts.size(); ++i) {
-        const CScript expected = GetScriptForDestination(payouts[i].first);
-        if (cb.vout[i].GetReferenceValue() != payouts[i].second || cb.vout[i].scriptPubKey != expected) {
-            reason = "share-bad-payout";
-            return false;
-        }
+    if (cb.GetHash() != share.wit.cb_hash) {
+        LogPrint(BCLog::NET, "Share chain: payout mismatch for share %s: expected %d payouts of %d kria at anchor %s\n", share.GetHash().ToString(), payouts.size(), total, share.anchor.ToString());
+        reason = "share-bad-payout";
+        return false;
     }
-    // Anything between the payouts and the commitment (none today) must carry no value.
-    for (size_t i = payouts.size(); i < cb.vout.size(); ++i) {
-        if (cb.vout[i].GetReferenceValue() != 0) {
-            reason = "share-bad-extra-output";
-            return false;
-        }
-    }
-    // The commitment output itself is implied: ReconstructShareCoinbase appended the root
-    // derived from this header, and AcceptFruit checks the resulting block hash against the PoW.
+    cb_out = std::move(cb);
     return true;
 }
 
-bool ShareChainstateManager::CheckAuxBinding(const Share& share, std::string& reason) const
+bool ShareChainstateManager::CheckAuxBinding(const Share& share, const CMutableTransaction& cb, std::string& reason) const
 {
     // The parent header hash covers the Freicoin template through the aux-pow
     // commit fields; the commit Merkle root is computed from the coinbase with
     // an empty scriptSig (CustomizeCommitHash).  Recompute it from the witness
     // coinbase so the payouts and the share commitment are what was mined.
-    CMutableTransaction cb;
-    if (!ReconstructShareCoinbase(share, cb) || cb.vin.empty()) {
+    if (cb.vin.empty()) {
         reason = "share-bad-coinbase";
         return false;
     }
@@ -592,9 +551,6 @@ bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason
     const uint256 pow_hash = share.GetPoWHash(m_options.chainparams.GetConsensus(), &mutated);
     if (mutated || UintToArith256(pow_hash) > ShareTargetFor(share.bits)) {
         reason = "share-high-hash";
-        return false;
-    }
-    if (share.IsAux() && !CheckAuxBinding(share, reason)) {
         return false;
     }
     {
@@ -633,7 +589,13 @@ bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason
             }
         }
     }
-    if (!CheckPayouts(share, anchor, reason)) {
+    std::optional<CMutableTransaction> cb;
+    if (!CheckPayouts(share, anchor, cb, reason)) {
+        return false;
+    }
+    // The parent header must commit to that very coinbase (not checkable below a
+    // trusted base, where the coinbase cannot be rebuilt).
+    if (share.IsAux() && cb && !CheckAuxBinding(share, *cb, reason)) {
         return false;
     }
     state.fruits.emplace(hash, share);
@@ -834,9 +796,6 @@ bool ShareChainstateManager::AcceptBaseChainShare(const Share& share, const MmrA
         reason = "chainshare-high-hash";
         return false;
     }
-    if (share.IsAux() && !CheckAuxBinding(share, reason)) {
-        return false;
-    }
     if (peaks.GetHash() != share.prev_root) {
         reason = "chainshare-bad-peaks";
         return false;
@@ -934,16 +893,18 @@ Share ShareFromTemplateState(const ShareChainstateManager::TemplateState& st, co
 
 bool FillNativeShareWitness(Share& share, const CMutableTransaction& cb, const std::vector<uint256>& cb_branch, const CBlockHeader& header, const uint256& chain_id)
 {
-    DataStream ds{};
-    ds << TX_NO_WITNESS(cb);
-    const Span<const unsigned char> span = MakeUCharSpan(ds);
-    const std::vector<unsigned char> bytes(span.begin(), span.end());
-    // tail = root(32) || id(4) || nLockTime(4) || lock_height(4)
-    if (bytes.size() < 44 || cb.vout.empty()) {
+    if (cb.vin.empty() || cb.vout.empty()) {
         return false;
     }
     share.wit.commit.clear(); // single-entry Merkle map: the branch is empty
-    share.wit.cb1.assign(bytes.begin(), bytes.end() - 44);
+    share.wit.cb_hash = cb.GetHash();
+    share.wit.cb_version = cb.version;
+    share.wit.script_sig.assign(cb.vin[0].scriptSig.begin(), cb.vin[0].scriptSig.end());
+    share.wit.sequence = cb.vin[0].nSequence;
+    share.wit.total = 0;
+    for (const CTxOut& out : cb.vout) {
+        share.wit.total += out.GetReferenceValue();
+    }
     share.wit.nLockTime = cb.nLockTime;
     share.wit.lock_height = cb.lock_height;
     share.wit.branch = cb_branch;
@@ -1118,7 +1079,7 @@ std::vector<ShareMessage> ShareChainstateManager::TakeOrphans()
 }
 
 namespace {
-constexpr uint64_t SHARECHAIN_DUMP_VERSION = 2;
+constexpr uint64_t SHARECHAIN_DUMP_VERSION = 3;
 } // namespace
 
 bool ShareChainstateManager::DumpToFile(const fs::path& path) const
