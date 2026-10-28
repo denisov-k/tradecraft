@@ -401,7 +401,9 @@ Everything in §4–§10 is implemented in freicoind on top of 28.1 and the `tmp
   `mining.aux.submit`, no credit for second-stage submissions, work refresh on tip change
   (pushed from the event loop thread: BlockWatcher wrote to the clients' bufferevents from its
   own thread, which crashed inside libevent once pushes became frequent), `-miningmindiff`
-  fixed to match its registered name;
+  fixed to match its registered name; miner compatibility fixes from Vintage Hash's live
+  setup (optional `min-bit-count` in `mining.configure` for ESP-Miner, up to four
+  `mining.subscribe` parameters for Braiins OS, work re-sent after 60 s idle);
 - `src/net_processing.{h,cpp}`, `src/protocol.h`: `NODE_SHARECHAIN`, `share`, `getshares`,
   `getshrchain`, `shares`, relay, sync at `verack` and on unknown anchor, per-peer limits,
   orphan retry on Freicoin tip change;
