@@ -1075,7 +1075,7 @@ ShareAccept ShareChainstateManager::ProcessShareMessage(const ShareMessage& msg,
 
 void ShareChainstateManager::AddOrphan(const ShareMessage& msg)
 {
-    if (m_orphans.size() >= 500) {
+    if (m_orphans.size() >= 5000) {
         m_orphans.erase(m_orphans.begin());
     }
     m_orphans[msg.share.GetHash()] = msg;
@@ -1130,6 +1130,12 @@ bool ShareChainstateManager::DumpToFile(const fs::path& path) const
         ShareMessage m;
         m.share = item.second;
         entries.push_back(std::move(m));
+        seen.insert(item.first);
+    }
+    // Shares still waiting for a dependency (a block, an anchor): keep them too.
+    for (const auto& item : m_orphans) {
+        if (seen.count(item.first)) continue;
+        entries.push_back(item.second);
     }
     const fs::path tmp = path + ".new";
     AutoFile file{fsbridge::fopen(tmp, "wb")};
@@ -1190,7 +1196,10 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
             const ShareAccept r = ProcessShareMessage(m, missing, reason, /*live=*/false);
             if (r == ShareAccept::ACCEPTED || r == ShareAccept::DUPLICATE) ++accepted;
             else if (r == ShareAccept::MISSING) { deferred_msgs.push_back(m); ++deferred; }
-            else ++rejected;
+            else {
+                ++rejected;
+                if (rejected <= 5) LogPrintf("Share chain: entry %d (%s, height %d) rejected at load: %s\n", i, m.has_body ? "chain share" : "fruit", m.share.height, reason);
+            }
         }
         // Entries whose dependencies came later in the file: retry until a pass
         // makes no progress (dependencies can chain several levels deep).
@@ -1213,7 +1222,17 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
                     if (!it->has_body || in_file.count(it->share.anchor)) continue; // waits for something in the file
                     if (lowest == still.end() || it->share.height < lowest->share.height) lowest = it;
                 }
-                if (lowest == still.end()) break;
+                if (lowest == still.end()) {
+                    size_t shown = 0;
+                    for (const ShareMessage& m : still) {
+                        if (shown++ >= 5) break;
+                        std::vector<uint256> missing;
+                        std::string reason;
+                        ProcessShareMessage(m, missing, reason, /*live=*/false);
+                        LogPrintf("Share chain: %s %s (height %d, anchor %s) unresolved at load: %s, %d missing%s\n", m.has_body ? "chain share" : "fruit", m.share.GetHash().ToString(), m.share.height, m.share.anchor.ToString().substr(0, 16), reason, missing.size(), missing.empty() ? "" : (" first " + missing.front().ToString().substr(0, 16)));
+                    }
+                    break;
+                }
                 std::vector<uint256> missing;
                 std::string reason;
                 if (ProcessShareMessage(*lowest, missing, reason, /*live=*/false, /*allow_base=*/true) != ShareAccept::ACCEPTED) {
@@ -1225,6 +1244,12 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
                 still.erase(lowest);
             }
             deferred_msgs = std::move(still);
+        }
+        // Whatever still waits (typically shares built on blocks this node has not
+        // connected yet, after a restart that lost unflushed chain state) goes to the
+        // orphan pool: it is retried as blocks connect and dumped again at shutdown.
+        for (const ShareMessage& m : deferred_msgs) {
+            AddOrphan(m);
         }
     } catch (const std::exception& e) {
         LogPrintf("Share chain: failed to load %s: %s\n", fs::PathToString(path), e.what());
