@@ -385,6 +385,15 @@ blocks: a found Freicoin block does not reset it.
 6. Bootstrap trust (§6.3): whether the first served chain share is an acceptable base, or
    whether fresh nodes should require the same base from several peers, or a configured
    checkpoint.
+7. `MAX_PAYEES` at scale (raised by Vintage Hash): with more miners in the window than the cap
+   allows, the smallest never reach a coinbase and their fruits expire, the problem the chain is
+   meant to fix. `DUST` does not bite at any realistic size (1000 kria against a ~95 FRC reward
+   is a 10⁻⁷ share of work). The cap is bound by share size, not block size: every share
+   carries the full coinbase, 1 000 payees ≈ 31 KB per share ≈ 270 MB/day. Options: rotate
+   the cap deterministically (top `N` always, the rest in turn by block height; expectation
+   kept, variance up), or carry unpaid credit forward, which is state every node must compute
+   alike and therefore a validation rule; or shares that commit to the payout vector instead
+   of carrying it.
 
 ## 13. Deliberate exclusions
 
