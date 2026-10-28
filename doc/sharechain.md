@@ -53,7 +53,7 @@ difficulty adjustment and the PPLNS payout function, with test vectors, as imple
 
 | Name | main | regtest | Meaning |
 |---|---|---|---|
-| `CHAIN_ID` | `"SHARECHAIN-MAIN" ‖ 00… ‖ 01` | `"SHARECHAIN-REGTEST" ‖ 00… ‖ 01` | `share_chain_path`: key of the share commitment in the coinbase Merkle hash map (uint256) |
+| `CHAIN_ID` | `"SHARECHAIN-MAIN" ‖ 00… ‖ 02` | `"SHARECHAIN-REGTEST" ‖ 00… ‖ 02` | `share_chain_path`: key of the share commitment in the coinbase Merkle hash map (uint256) |
 | `COMMIT_ID` | `4b 4a 49 48` | same | 4-byte tag after the commitment root in the coinbase (skeleton) |
 | `SHARE_BITS` | `0x1b068db2` (difficulty 10 000) | `0x207fffff` | initial share target; also the easiest target the chain allows |
 | `M` (`CHAIN_FACTOR`) | 6 | 4 | chain target = share target / `M` |
@@ -230,8 +230,9 @@ pruned everywhere. It therefore takes that chain share as its **base** (`AcceptB
 only the share's own consistency is checked (chain id, `bits` not easier than `SHARE_BITS`, PoW
 against its own bits, aux binding, `peaks.root = prev_root`, fruit list sorted with the right
 root, timestamp not in the future), its `total_work` and `bits` are taken as claims. A base is
-accepted only while the chain is empty and only from a `shares` batch answering our own
-`getshrchain` or from our own file, never from a relayed `share`. Shares at or below the
+accepted only while the chain is empty and only from the first `shares` batch answering our own
+`getshrchain` (the one that starts at the peer's base) or from our own file, never from a
+relayed `share`. Shares at or below the
 base's height with unknown anchors are dropped [`share-below-base`].
 
 Because the base's claim is unverified, forks are compared by the work verified above the

@@ -42,7 +42,7 @@ struct MainShareChainParams : public ShareChainParams {
     MainShareChainParams() {
         is_valid = true;
         m_share_chain_type = ShareChainType::MAIN;
-        m_chain_id = uint256S("5348415245434841494e2d4d41494e0000000000000000000000000000000001"); // 'SHARECHAIN-MAIN' || 1
+        m_chain_id = uint256S("5348415245434841494e2d4d41494e0000000000000000000000000000000002"); // 'SHARECHAIN-MAIN' || 2 (2: aux share identity = parent header hash)
         m_share_bits = 0x1b068db2;   // difficulty 10000: ~43 TH for 10 s shares; also the easiest target allowed
         m_retarget = true;
         m_share_interval = 10;
@@ -57,7 +57,7 @@ struct RegtestShareChainParams : public ShareChainParams {
         m_chain_factor = 4;
         m_recency = 10;
         m_retarget = false;
-        m_chain_id = uint256S("5348415245434841494e2d5245475445535400000000000000000000000001");
+        m_chain_id = uint256S("5348415245434841494e2d5245475445535400000000000000000000000002");
     }
 };
 

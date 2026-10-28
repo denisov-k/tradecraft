@@ -828,6 +828,8 @@ private:
         int shares{0};
         int locators{0};
         int batches_allowed{0};
+        //! The next batch answers a getshrchain we sent: it starts at the peer's base.
+        bool first_batch{false};
     };
     Mutex m_share_rate_mutex;
     std::map<NodeId, ShareRate> m_share_rate GUARDED_BY(m_share_rate_mutex);
@@ -2439,6 +2441,7 @@ void PeerManagerImpl::RequestShareChain(CNode& pfrom)
     {
         LOCK(m_share_rate_mutex);
         m_share_rate[pfrom.GetId()].batches_allowed = std::min(4, m_share_rate[pfrom.GetId()].batches_allowed + 1);
+        m_share_rate[pfrom.GetId()].first_batch = true;
     }
     MakeAndPushMessage(pfrom, NetMsgType::GETSHARECHAIN, locator);
 }
@@ -4720,6 +4723,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::SHARES) {
         if (!g_sharechainman) return;
+        bool first_batch = false;
         {
             LOCK(m_share_rate_mutex);
             ShareRate& r = m_share_rate[pfrom.GetId()];
@@ -4728,6 +4732,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 return;
             }
             --r.batches_allowed;
+            first_batch = r.first_batch;
+            r.first_batch = false;
         }
         std::vector<ShareMessage> batch;
         vRecv >> batch;
@@ -4741,7 +4747,9 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             // With no chain of our own yet, a chain share whose anchor is neither known nor
             // anywhere in the batch is the peer's pruned base, and becomes ours.  (One whose
             // anchor is in the batch merely waits for it, e.g. for a Freicoin block we lack.)
-            const bool fresh = g_sharechainman->ActiveHeight() < 0;
+            // ... and only from the batch that answers our request, which starts at the
+            // peer's base; a later batch continues a chain whose start we failed to accept.
+            const bool fresh = first_batch && g_sharechainman->ActiveHeight() < 0;
             std::set<uint256> in_batch;
             for (const ShareMessage& m : batch) {
                 if (m.has_body) in_batch.insert(m.share.GetHash());
