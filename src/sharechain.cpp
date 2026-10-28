@@ -1079,6 +1079,13 @@ ShareAccept ShareChainstateManager::ProcessShareMessage(const ShareMessage& msg,
 
 void ShareChainstateManager::AddOrphan(const ShareMessage& msg)
 {
+    // A share that still waits a day after its template was built belongs to a
+    // chain nobody continues (seen live: an abandoned chain's shares rode along in
+    // the pool from dump to dump); let it go.
+    const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(m_options.adjusted_time_callback().time_since_epoch()).count();
+    if (static_cast<int64_t>(msg.share.wit.nTime) + 24 * 60 * 60 < now) {
+        return;
+    }
     if (m_orphans.size() >= 5000) {
         m_orphans.erase(m_orphans.begin());
     }
