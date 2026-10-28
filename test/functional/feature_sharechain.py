@@ -179,12 +179,25 @@ class ShareChainTest(FreicoinTestFramework):
         self.log.info("mine shares alternately on node0 and node1; each must reach the other")
         miners = [StratumMiner(stratum_port(i), addr[i], self.log) for i in (0, 1)]
         rounds = 6
+        mined = 0
         for r in range(rounds):
             for i in (0, 1):
                 result, error = miners[i].mine_one()
                 assert_equal(error, None)
-                self.wait_until(lambda: self.sc(self.nodes[i])["fruits"] >= 2 * r + i + 1, timeout=30)
+                mined += 1
+                self.wait_until(lambda: self.sc(self.nodes[i])["fruits"] >= mined, timeout=30)
                 self.wait_same_tip(n0, n1)
+        # One share in chainfactor (4) is a chain share, so 12 shares leave a ~3% chance of
+        # none at all: keep mining (alternately) until the chain has started.
+        extra = 0
+        while self.sc(n0)["chainshares"] < 1 and extra < 40:
+            i = extra % 2
+            result, error = miners[i].mine_one()
+            assert_equal(error, None)
+            mined += 1
+            extra += 1
+            self.wait_until(lambda: self.sc(self.nodes[i])["fruits"] >= mined, timeout=30)
+            self.wait_same_tip(n0, n1)
         for m in miners:
             m.close()
 
