@@ -27,6 +27,7 @@
 
 #include <boost/test/unit_test.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <functional>
 #include <optional>
