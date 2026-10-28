@@ -337,8 +337,9 @@ blocks: a found Freicoin block does not reset it.
 - **Pruning** (`Prune`): keep chain shares from the window floor minus `R` minus 64 heights;
   drop fruits whose anchor is gone. The lowest kept chain share becomes the node's base (§6.3)
   and is where `getshrchain` answers start. `getsharechaininfo.baseheight` reports it.
-- **RPC**: `getsharechaininfo` → `enabled, network, sharebits, chainfactor, recency, height,
-  tip, chainshares, fruits, baseheight`.
+- **RPC**: `getsharechaininfo` → `enabled, network, sharebits` (initial target), `chainfactor,
+  recency, height, tip, chainshares, fruits, baseheight, nextbits, nextdifficulty` (the
+  retargeted share target the next share must meet).
 
 ## 11. Security considerations
 

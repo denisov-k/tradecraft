@@ -50,7 +50,8 @@ addnode=<another share chain node>   # at least one peer that runs the share cha
 ## What to expect
 
 - `freicoin-cli getsharechaininfo` shows the chain: `height`, `tip`, `chainshares`,
-  `fruits`, `sharebits`, `baseheight`.
+  `fruits`, `baseheight`, and the share target: `sharebits` is the fixed starting target,
+  `nextbits` / `nextdifficulty` the retargeted one the next share must meet.
 - debug.log: `NEW SHARE CHAIN FRUIT (aux) by …` for every share, `NEW CHAIN SHARE (aux) …`
   for the one in six that extends the chain, `share … accepted from peer=` for relayed ones.
 - The coinbase of a block you find pays every participant with shares in the window; your

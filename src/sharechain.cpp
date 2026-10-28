@@ -1331,7 +1331,9 @@ static RPCHelpMan getsharechaininfo() {
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::BOOL, "enabled", "whether the share chain service is enabled"},
             {RPCResult::Type::STR, "network", /*optional=*/true, "which share chain the mining service is using"},
-            {RPCResult::Type::STR_HEX, "sharebits", /*optional=*/true, "compact share target (ShareBits)"},
+            {RPCResult::Type::STR_HEX, "sharebits", /*optional=*/true, "the chain's initial (and easiest) compact share target"},
+            {RPCResult::Type::STR_HEX, "nextbits", /*optional=*/true, "compact share target the next share must meet (retargeted)"},
+            {RPCResult::Type::NUM, "nextdifficulty", /*optional=*/true, "the same as a difficulty"},
             {RPCResult::Type::NUM, "chainfactor", /*optional=*/true, "a chain share must meet share target / chainfactor"},
             {RPCResult::Type::NUM, "recency", /*optional=*/true, "chain heights a fruit stays listable after its anchor"},
             {RPCResult::Type::NUM, "height", /*optional=*/true, "height of the active share chain tip (-1 when empty)"},
@@ -1366,6 +1368,13 @@ static RPCHelpMan getsharechaininfo() {
         obj.pushKV("chainshares", (int64_t)man.ActiveChainstate().chain_shares.size());
         obj.pushKV("fruits", (int64_t)man.ActiveChainstate().fruits.size());
         obj.pushKV("baseheight", (int64_t)man.BaseHeight());
+        const uint32_t next_bits = man.RequiredShareBits(tip.get());
+        obj.pushKV("nextbits", strprintf("%08x", next_bits));
+        arith_uint256 next_target;
+        next_target.SetCompact(next_bits);
+        arith_uint256 one_target;
+        one_target.SetCompact(0x1d00ffff); // difficulty 1
+        obj.pushKV("nextdifficulty", next_target == 0 ? 0.0 : one_target.getdouble() / next_target.getdouble());
     }
     return obj;
 },
