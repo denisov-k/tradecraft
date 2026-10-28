@@ -201,9 +201,10 @@ struct ShareChainRegtestSetup : public BasicTestingSetup {
     Mined Mine(const WitnessUnknown& miner, Kind kind, int prev_height = 100, uint32_t ntime = 0, uint32_t nbits = 0x207fffff,
                const std::function<void(CMutableTransaction&)>& tweak = nullptr,
                const std::optional<std::vector<uint256>>& fruits = std::nullopt,
-               const std::function<void(Share&)>& header_tweak = nullptr) EXCLUSIVE_LOCKS_REQUIRED(::cs_main)
+               const std::function<void(Share&)>& header_tweak = nullptr,
+               const std::optional<ShareChainstateManager::TemplateState>& template_state = std::nullopt) EXCLUSIVE_LOCKS_REQUIRED(::cs_main)
     {
-        ShareChainstateManager::TemplateState st = m_man->GetTemplateState(miner, 50 * COIN, nbits);
+        ShareChainstateManager::TemplateState st = template_state ? *template_state : m_man->GetTemplateState(miner, 50 * COIN, nbits);
         if (fruits) {
             st.fruits = *fruits;
             st.fruits_root = FruitsRoot(st.fruits);
@@ -316,6 +317,41 @@ BOOST_FIXTURE_TEST_CASE(sharechain_accept_and_pay, ShareChainRegtestSetup)
     BOOST_CHECK_MESSAGE(Chain(c2, reason), reason);
     BOOST_CHECK_EQUAL(m_man->ActiveHeight(), 2);
     BOOST_CHECK(m_man->ActiveTip()->GetHash() == c2.share.GetHash());
+}
+
+BOOST_FIXTURE_TEST_CASE(sharechain_empty_chain_fruits_after_genesis, ShareChainRegtestSetup)
+{
+    // Miners keep working on the empty-chain template for a while after the first
+    // chain share: those fruits (null anchor) are valid while the chain is younger
+    // than R, and the next chain share lists them.  A reload must accept them too.
+    LOCK(::cs_main);
+    std::string reason;
+    const auto empty_template = m_man->GetTemplateState(MINER_B, 50 * COIN, 0x207fffff);
+    const Mined c0 = Mine(MINER_A, Kind::CHAIN);
+    BOOST_REQUIRE_MESSAGE(Chain(c0, reason), reason);
+    const Mined late = Mine(MINER_B, Kind::FRUIT, 100, 0, 0x207fffff, nullptr, std::nullopt, nullptr, empty_template);
+    BOOST_CHECK(late.share.anchor.IsNull());
+    BOOST_CHECK_MESSAGE(Fruit(late, reason), reason);
+    const Mined c1 = Mine(MINER_A, Kind::CHAIN);
+    BOOST_CHECK(std::find(c1.fruits.begin(), c1.fruits.end(), late.share.GetHash()) != c1.fruits.end());
+    BOOST_REQUIRE_MESSAGE(Chain(c1, reason), reason);
+    // Reload in file order: genesis, then the late fruit, then c1.
+    const fs::path path = m_path_root / "sharechain-young.dat";
+    BOOST_REQUIRE(m_man->DumpToFile(path));
+    ShareChainstateManager reloaded(MakeOptions());
+    reloaded.Initialize();
+    BOOST_REQUIRE(reloaded.LoadFromFile(path));
+    BOOST_CHECK_EQUAL(reloaded.ActiveHeight(), 1);
+    BOOST_CHECK_EQUAL(reloaded.ActiveChainstate().fruits.size(), m_man->ActiveChainstate().fruits.size());
+    // Once the chain is R deep, a null-anchored fruit is stale.
+    for (uint32_t i = 2; i < ShareParams().Recency() + 1; ++i) {
+        const Mined c = Mine(MINER_A, Kind::CHAIN, 100, static_cast<uint32_t>(m_now + 10 * i));
+        BOOST_REQUIRE_MESSAGE(Chain(c, reason), reason);
+    }
+    BOOST_CHECK_GE(m_man->ActiveHeight(), static_cast<int>(ShareParams().Recency()));
+    const Mined stale = Mine(MINER_B, Kind::FRUIT, 100, static_cast<uint32_t>(m_now + 200), 0x207fffff, nullptr, std::nullopt, nullptr, empty_template);
+    BOOST_CHECK(!Fruit(stale, reason));
+    BOOST_CHECK_EQUAL(reason, "share-anchor-null");
 }
 
 BOOST_FIXTURE_TEST_CASE(sharechain_rejects_invalid_shares, ShareChainRegtestSetup)

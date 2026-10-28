@@ -170,8 +170,9 @@ A share `S` hanging from anchor `A` (a known chain share, or nothing if the chai
 valid fruit iff, with the rejection reason in brackets:
 
 1. **Not seen** before [`share-duplicate`].
-2. **Linkage**: `A` known [`share-anchor-unknown`], or `anchor` null only while no chain share
-   exists [`share-anchor-null`]; `height = A.height + 1` (0) [`share-bad-height`];
+2. **Linkage**: `A` known [`share-anchor-unknown`], or `anchor` null only while the chain is
+   younger than `R` (fruits of the empty-chain template, listable by the first `R` chain shares)
+   [`share-anchor-null`]; `height = A.height + 1` (0) [`share-bad-height`];
    `total_work = A.total_work + work(A.bits)` (0) [`share-bad-total-work`];
    `prev_root = MMR(chain shares … A).root` [`share-bad-prev-root`];
    `bits = RequiredBits(A)` (§7.3) [`share-bad-bits`]; `share_chain_path = CHAIN_ID`

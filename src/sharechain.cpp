@@ -428,7 +428,11 @@ bool ShareChainstateManager::CheckLinkage(const Share& share, const ShareIndex**
             return false;
         }
         anchor = it->second.get();
-    } else if (!state.chain_shares.empty()) {
+    } else if (ActiveHeight() >= static_cast<int>(Params().Recency())) {
+        // Fruits of the empty-chain template keep arriving after the genesis chain
+        // share (the miners are still on that job) and the next chain shares list
+        // them; they are legitimate, and listable, while the chain is younger than R.
+        // (Seen live: a reload rejected them and nothing above resolved.)
         reason = "share-anchor-null";
         return false;
     }
