@@ -528,18 +528,21 @@ BOOST_AUTO_TEST_CASE(sharechain_lwma_retarget)
     const uint32_t hard = 0x1b034000; // harder than ShareBits (0x1b068db2)
     LOCK(::cs_main);
 
+    // Chain shares are expected every ChainFactor * ShareInterval = 60 s on main.
+    const int64_t T = ShareParams().ShareInterval() * ShareParams().ChainFactor();
+    BOOST_CHECK_EQUAL(T, 60);
     // On schedule: unchanged.
-    BOOST_CHECK_EQUAL(man.RequiredShareBits(build(hard, 10).get()), hard);
+    BOOST_CHECK_EQUAL(man.RequiredShareBits(build(hard, T).get()), hard);
     // Too slow: easier, but by at most 25 %.
-    const uint32_t slow = man.RequiredShareBits(build(hard, 20).get());
+    const uint32_t slow = man.RequiredShareBits(build(hard, 2 * T).get());
     BOOST_CHECK(target(slow) > target(hard));
     BOOST_CHECK(target(slow) <= target(hard) / 4 * 5);
     // Too fast: harder, by at most 25 %.
-    const uint32_t fast = man.RequiredShareBits(build(hard, 5).get());
+    const uint32_t fast = man.RequiredShareBits(build(hard, T / 2).get());
     BOOST_CHECK(target(fast) < target(hard));
     BOOST_CHECK(target(fast) >= target(hard) / 4 * 3);
     // Never easier than the chain's easiest target.
-    BOOST_CHECK_EQUAL(man.RequiredShareBits(build(ShareParams().ShareBits(), 60).get()), ShareParams().ShareBits());
+    BOOST_CHECK_EQUAL(man.RequiredShareBits(build(ShareParams().ShareBits(), 10 * T).get()), ShareParams().ShareBits());
     // Fewer than two chain shares: the initial target.
     BOOST_CHECK_EQUAL(man.RequiredShareBits(nullptr), ShareParams().ShareBits());
     SelectShareParams(ShareChainType::REGTEST);

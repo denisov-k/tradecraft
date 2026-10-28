@@ -118,13 +118,15 @@ the flag and the `AuxProofOfWork`; the Freicoin header fields are the same field
 5. Freicoin header = (`nVersion, hashPrevBlock, merkle, nTime, nBits, nNonce`), with `aux` as
    its aux-pow when `FLAG_AUX`.
 
-**Share hash** = hash of that Freicoin header (`Share::GetHash`). This is what `anchor` and the
-fruit lists refer to.
+**PoW hash** (`Share::GetPoWHash`) = the hash of that Freicoin header for a native share; for an
+aux share the *parent (Bitcoin) header hash* reached through the aux-pow
+(`GetAuxiliaryHash().first`), the same hash the Freicoin consensus compares with the aux target.
+Share and chain targets apply to the PoW hash.
 
-**PoW hash** (`Share::GetPoWHash`) = the share hash for a native share; for an aux share the
-*parent (Bitcoin) header hash* reached through the aux-pow (`GetAuxiliaryHash().first`), the
-same hash the Freicoin consensus compares with the aux target. Share and chain targets apply
-to the PoW hash.
+**Share hash** (`Share::GetHash`) = the PoW hash. This is what `anchor` and the fruit lists refer
+to, and what makes a share unique: the Freicoin header of a merge-mining job is the same for
+every parent hash the miner finds, so the parent hash has to be the identity (the first live run
+rejected every submission after the first in a job as a duplicate before this was fixed).
 
 ### 4.4 Size
 
@@ -264,8 +266,8 @@ doc/sharechain-uncles.md.
 
 Regtest: fixed at `SHARE_BITS`. Main: the target for a share hanging from anchor `A` is the
 linearly weighted moving average (LWMA) over the last 60 chain shares ending at `A` (newest
-weighs most) of solve time clamped to `[1, 6 × SHARE_INTERVAL]`, applied to the average target
-of those shares, then clamped to `[0.75, 1.25] × A.target` and never easier than `SHARE_BITS`.
+weighs most) of their solve time, against the expected chain-share spacing `T = M ×
+SHARE_INTERVAL` (60 s), clamped to `[1, 6 T]`, applied to the average target of those shares, then clamped to `[0.75, 1.25] × A.target` and never easier than `SHARE_BITS`.
 A chain with fewer than two chain shares uses `SHARE_BITS`. Fruits do not enter the average.
 Chain shares arrive every `M × SHARE_INTERVAL` ≈ 60 s on main.
 

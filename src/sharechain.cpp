@@ -4,6 +4,8 @@
 
 #include <sharechain.h>
 
+#include <chainparams.h> // for Params()
+
 #include <consensus/merkle.h> // for ComputeMerkleMapRootFromBranch, ComputeMerkleRootFromBranch
 #include <hash.h> // for CHash256, HashWriter
 #include <primitives/block.h> // for CBlockHeader
@@ -193,6 +195,17 @@ uint256 Share::GetPoWHash(const Consensus::Params& params, bool* mutated) const
     const uint256 hash = blkhdr.GetAuxiliaryHash(params, &aux_mutated).first;
     if (mutated) *mutated = local_mutated || aux_mutated;
     return hash;
+}
+
+uint256 Share::GetHash() const
+{
+    if (IsAux()) {
+        // The Freicoin header of one job is the same for every parent hash the
+        // miner finds; the parent header hash is what makes a share unique
+        // (seen live: every submission after the first in a job was a duplicate).
+        return GetPoWHash(::Params().GetConsensus(), nullptr);
+    }
+    return GetBlockHeader(nullptr).GetHash();
 }
 
 void SetAuxShareWitness(Share& share, const AuxProofOfWork& aux_pow)
@@ -960,7 +973,8 @@ uint32_t ShareChainstateManager::RequiredShareBits(const ShareIndex* anchor) con
     if (v.size() < 2) {
         return p.ShareBits();
     }
-    const int64_t T = p.ShareInterval();
+    // The average runs over chain shares, which come one per ChainFactor shares.
+    const int64_t T = p.ShareInterval() * static_cast<int64_t>(std::max<uint32_t>(1, p.ChainFactor()));
     int64_t sum_wt = 0, sum_w = 0;
     arith_uint256 sum_target = 0;
     size_t k = 0;

@@ -294,8 +294,11 @@ struct Share {
     //! The block header for this share.
     CBlockHeader GetBlockHeader(bool* mutated) const;
 
-    //! The hash of the share header.
-    uint256 GetHash() const { return GetBlockHeader(nullptr).GetHash(); };
+    //! The identity of the share: the hash its target applies to.  For a
+    //! native share the Freicoin header hash; for a merge-mined share the
+    //! parent (Bitcoin) header hash, because the Freicoin header does not
+    //! change between the submissions of one job while the parent does.
+    uint256 GetHash() const;
 };
 
 void swap(Share& lhs, Share& rhs);
