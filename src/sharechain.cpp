@@ -400,6 +400,20 @@ arith_uint256 ShareChainstateManager::ChainTargetFor(uint32_t bits) const
     return ShareTargetFor(bits) / std::max<uint32_t>(1, Params().ChainFactor());
 }
 
+uint32_t ShareChainstateManager::WindowBitsFor(const uint256& prev, const CBlockHeader& header, uint32_t fallback) const
+{
+    if (m_options.window_bits_callback) {
+        const std::optional<uint32_t> bits = m_options.window_bits_callback(prev, header);
+        if (bits) return *bits;
+    }
+    return fallback;
+}
+
+uint32_t ShareChainstateManager::WindowBits(const Share& share) const
+{
+    return WindowBitsFor(share.wit.hashPrevBlock, share.GetBlockHeader(nullptr), share.wit.nBits);
+}
+
 void ShareChainstateManager::Initialize()
 {
     if (!m_active_chainstate) {
@@ -503,11 +517,11 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
     for (const CTxOut& out : cb.vout) {
         total += out.GetReferenceValue();
     }
-    // The window is sized by the Freicoin target the template was built for;
-    // the share header has no such field, so the coinbase's own bits are not
-    // available here: use the share chain's notion (window in shares) via the
-    // Freicoin header's nBits carried in the witness.
-    const arith_uint256 window = GetShareWork(share.wit.nBits) * Params().WindowK();
+    // The window is sized by the target the block's miners face (aux once merge
+    // mining is active), taken from the block chain so that template, check and
+    // prune agree.  (Seen live: the template used the aux target and this check the
+    // native nBits; with two payees every share failed share-bad-payout.)
+    const arith_uint256 window = GetShareWork(WindowBits(share)) * Params().WindowK();
     const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
     if (WindowReachesBase(anchor, window, lookup)) {
         // Below our trusted base: the share was built from credits we never saw, so
@@ -872,7 +886,7 @@ void ShareChainstateManager::Prune()
     const std::shared_ptr<ShareIndex> tip = ActiveTip();
     if (!tip) return;
     // Window floor: walk back the work the PPLNS window needs (sized like CheckPayouts does).
-    const arith_uint256 window = GetShareWork(tip->share.wit.nBits) * Params().WindowK();
+    const arith_uint256 window = GetShareWork(WindowBits(tip->share)) * Params().WindowK();
     arith_uint256 acc = 0;
     int floor_height = static_cast<int>(tip->share.height);
     for (const ShareIndex* cur = tip.get(); cur; cur = cur->prev_share.get()) {

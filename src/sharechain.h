@@ -514,6 +514,10 @@ struct ShareChainstateManager {
     //! easiest the chain allows.
     arith_uint256 ShareTargetFor(uint32_t bits) const;
     arith_uint256 ChainTargetFor(uint32_t bits) const;
+    //! Compact target that sizes the PPLNS window for a template or share built on
+    //! `prev` (window_bits_callback), or `fallback` when the chain cannot tell.
+    uint32_t WindowBitsFor(const uint256& prev, const CBlockHeader& header, uint32_t fallback) const;
+    uint32_t WindowBits(const Share& share) const;
 
     //! Share target a share hanging from `anchor` must meet: ShareBits(), or
     //! the LWMA retarget over the anchor's chain when Params().Retarget().

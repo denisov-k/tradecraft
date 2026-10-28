@@ -184,6 +184,7 @@ struct ShareChainRegtestSetup : public BasicTestingSetup {
             },
             .tip_height_callback = [this]() { return m_tip_height; },
             .required_bits_callback = [this](const uint256&, const CBlockHeader&) -> std::optional<uint32_t> { return m_required_bits; },
+            .window_bits_callback = [this](const uint256&, const CBlockHeader&) -> std::optional<uint32_t> { return m_required_bits; },
         };
     }
 

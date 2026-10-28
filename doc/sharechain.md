@@ -286,8 +286,10 @@ Reference model with vectors: `contrib/sharechain/pplns_fruits.py` →
 `src/test/data/sharechain_pplns.json`, checked by `src/test/sharechain_tests.cpp`.
 
 Inputs: the anchor `A`, `TOTAL` (kria, the coinbase's total), the builder's address `B`, the
-window work `W = WINDOW_K × work(nBits)` where `nBits` is the Freicoin target of the template
-(witness `nBits`).
+window work `W = WINDOW_K × work(T)` where `T` is the target the block's miners face on top of
+`hashPrevBlock`: the aux target (`GetNextWorkRequiredAux`) once merge mining is active, the
+native one before. It is taken from the block chain, never from the share, so template,
+verifier and pruning agree.
 
 1. **Credits** (`ComputeShareCredits`): walk the chain shares backwards from `A`; for each, add
    `work(f.bits)` to `f.miner` for every fruit `f` it lists; stop after the chain share whose
@@ -377,8 +379,7 @@ blocks: a found Freicoin block does not reset it.
 2. `M` and `R` on main: `M = 6`, `R = 10` give a 60 s chain-share interval and a 10-minute
    listing window; the simulation in doc/sharechain-uncles.md used `R = 5–10`.
 3. `MAX_TEMPLATE_AGE = 2` and the timestamp slack (`−10 min / +2 h`).
-4. Whether the window should be sized by the native target (`nBits`, as now) or by the aux
-   target merge-miners actually face (`m_commit_bits`), which is lower.
+4. (Settled by the first live run: the window is sized by the aux target, see §9.)
 5. Initial `SHARE_BITS` (difficulty 10 000 ≈ 43 TH/s for 10 s shares) and the LWMA
    parameters, to be tuned on real hashrate.
 6. Bootstrap trust (§6.3): whether the first served chain share is an acceptable base, or

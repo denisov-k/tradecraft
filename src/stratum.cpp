@@ -616,7 +616,8 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
         if (g_context->sharechainman && !new_work->block.vtx.empty() && !new_work->block.vtx[0]->vout.empty()) {
             LOCK(::cs_main);
             const CAmount total = new_work->block.vtx[0]->vout[0].GetReferenceValue();
-            const uint32_t frc_bits = new_work->block.m_aux_pow.IsNull() ? new_work->block.nBits : new_work->block.m_aux_pow.m_commit_bits;
+            // The same target the share checks size the window with (window_bits_callback).
+            const uint32_t frc_bits = g_context->sharechainman->WindowBitsFor(new_work->block.hashPrevBlock, new_work->block, new_work->block.m_aux_pow.IsNull() ? new_work->block.nBits : new_work->block.m_aux_pow.m_commit_bits);
             work_templates[job_id].m_share_state = g_context->sharechainman->GetTemplateState(witness_dest, total, frc_bits);
             LogPrint(BCLog::STRATUM, "Share chain template state: height %d anchor %s fruits %d\n", work_templates[job_id].m_share_state->height, work_templates[job_id].m_share_state->anchor.ToString(), work_templates[job_id].m_share_state->fruits.size());
         }
@@ -1934,6 +1935,16 @@ bool InitStratumServer(node::NodeContext& node)
                 LOCK(::cs_main);
                 const CBlockIndex* index = node.chainman->m_blockman.LookupBlockIndex(prev);
                 if (!index) return std::nullopt;
+                return GetNextWorkRequired(index, &header, Params().GetConsensus());
+            },
+            .window_bits_callback = [&node](const uint256& prev, const CBlockHeader& header) -> std::optional<uint32_t> {
+                if (!node.chainman) return std::nullopt;
+                LOCK(::cs_main);
+                const CBlockIndex* index = node.chainman->m_blockman.LookupBlockIndex(prev);
+                if (!index) return std::nullopt;
+                if (DeploymentActiveAfter(index, *node.chainman, Consensus::DEPLOYMENT_AUXPOW)) {
+                    return GetNextWorkRequiredAux(index, header, Params().GetConsensus());
+                }
                 return GetNextWorkRequired(index, &header, Params().GetConsensus());
             },
         };

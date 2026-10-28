@@ -34,6 +34,12 @@ struct ShareChainstateManagerOpts {
     //! The nBits a block with this header must carry on top of the given
     //! previous block, or nullopt if that block is unknown (window-size rule).
     std::function<std::optional<uint32_t>(const uint256&, const CBlockHeader&)> required_bits_callback{nullptr};
+    //! The compact target a Freicoin block on top of the given previous block has
+    //! to meet for the miners that actually mine it (the aux target once merge
+    //! mining is active, the native one before), or nullopt if that block is
+    //! unknown.  It sizes the PPLNS window, so template, check and prune must
+    //! all use it.
+    std::function<std::optional<uint32_t>(const uint256&, const CBlockHeader&)> window_bits_callback{nullptr};
 };
 
 } // namespace kernel
