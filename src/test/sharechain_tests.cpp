@@ -426,7 +426,7 @@ BOOST_FIXTURE_TEST_CASE(sharechain_rejects_invalid_shares, ShareChainRegtestSetu
 BOOST_FIXTURE_TEST_CASE(sharechain_prune_sync_and_reload, ShareChainRegtestSetup)
 {
     std::string reason;
-    const int kChainShares = 90;
+    const int kChainShares = 140; // beyond the 48-chain-share window plus the prune margin
     {
         LOCK(::cs_main);
         for (int i = 0; i < kChainShares; ++i) {

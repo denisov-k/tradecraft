@@ -59,7 +59,7 @@ difficulty adjustment and the PPLNS payout function, with test vectors, as imple
 | `M` (`CHAIN_FACTOR`) | 6 | 4 | chain target = share target / `M` |
 | `R` (`RECENCY`) | 10 | 10 | a fruit stays listable for `R` chain heights after its anchor |
 | `SHARE_INTERVAL` | 10 s | n/a | target spacing of shares (retarget on main only) |
-| `WINDOW_K` | 4 | 4 | PPLNS window = `WINDOW_K` × work(Freicoin target of the template) |
+| `WINDOW_K` | 4 | 2²⁰ | PPLNS window = `WINDOW_K` × work(Freicoin target of the template); on regtest a block is two hashes, so the window is `WINDOW_SHARES` there |
 | `WINDOW_SHARES` | 4320 | 48 | the window spans at most this many chain shares (3 days at 60 s on main) |
 | `MAX_LOCK` | 60 | 60 | a hash-locked transfer lapses at most this many chain shares after its inclusion (doc/sharechain-transfers.md) |
 | `MAX_PAYEES` | 1000 | 1000 | maximum payout outputs in a coinbase (bounded by the block, not by the share: §4.4) |

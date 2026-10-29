@@ -73,6 +73,11 @@ struct RegtestShareChainParams : public ShareChainParams {
         m_retarget = false;
         m_chain_id = uint256S("5348415245434841494e2d5245475445535400000000000000000000000005");
         m_window_shares = 48;        // small enough for a unit test to cross it
+        // A regtest block is two hashes, so WINDOW_K blocks of work would be a
+        // window of four fruits: credits slid out before the next chain share
+        // (seen in the functional test).  The work rule is moot here; the
+        // window is WINDOW_SHARES chain shares.
+        m_window_k = 1u << 20;
     }
 };
 
