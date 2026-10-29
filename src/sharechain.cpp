@@ -4,10 +4,12 @@
 
 #include <sharechain.h>
 
+#include <addresstype.h> // for ExtractDestination, GetScriptForDestination
 #include <chainparams.h> // for Params()
 
 #include <consensus/merkle.h> // for ComputeMerkleMapRootFromBranch, ComputeMerkleRootFromBranch
 #include <hash.h> // for CHash256, HashWriter
+#include <key_io.h> // for EncodeDestination
 #include <primitives/block.h> // for CBlockHeader
 #include <rpc/server.h> // for CRPCTable
 #include <rpc/server_util.h> // for EnsureAnyNodeContext
@@ -205,6 +207,13 @@ arith_uint256 GetShareWork(uint32_t bits)
     }
     // 2**256 / (target+1) == ~target / (target+1) + 1, see GetBlockProof.
     return (~target / (target + 1)) + 1;
+}
+
+std::string ShareAddressString(const WitnessUnknown& miner)
+{
+    CTxDestination dest;
+    if (!ExtractDestination(GetScriptForDestination(miner), dest)) return {};
+    return EncodeDestination(dest);
 }
 
 ShareCredits ComputeShareCredits(const ShareIndex* anchor, const arith_uint256& window_work, size_t window_shares, const FruitLookup& lookup)

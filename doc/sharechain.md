@@ -367,7 +367,10 @@ blocks: a found Freicoin block does not reset it.
   and is where `getshrchain` answers start. `getsharechaininfo.baseheight` reports it.
 - **RPC**: `getsharechaininfo` → `enabled, network, sharebits` (initial target), `chainfactor,
   recency, height, tip, chainshares, fruits, baseheight, nextbits, nextdifficulty` (the
-  retargeted share target the next share must meet).
+  retargeted share target the next share must meet); `getsharecredits [amount]` (Vintage
+  Hash) → the window as the template sees it: size and fill (`windowbits, windowk,
+  windowshares, windowwork, filledwork, filled, tipheight, lowheight, chainshares,
+  fruits`) and per address `fruits, work, share, payout` for a block found now.
 
 ## 11. Security considerations
 
@@ -439,7 +442,7 @@ Everything in §4–§10 is implemented in freicoind on top of 28.1 and the `tmp
   `src/test/sharechain_tests.cpp`), `ShareChainstateManager` (fruit and chain-share
   acceptance, listable fruits, template state, LWMA retarget, orphan pool, range sync,
   pruning, trusted base and verified-work tip selection, `sharechain.dat` v2 with the saved
-  tip), `getsharechaininfo`;
+  tip), `getsharechaininfo`; `getsharecredits` (Vintage Hash) in `src/stratum.cpp`;
 - `src/stratum.cpp`: payouts + commitment in the coinbase before the segwit commitment, share
   target to native miners and in `mining.aux.notify`, acceptance on `mining.submit` and
   `mining.aux.submit`, no credit for second-stage submissions, work refresh on tip change

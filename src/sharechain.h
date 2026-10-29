@@ -331,6 +331,12 @@ struct ShareIndex;
  *  same formula as GetBlockProof.  Zero for an invalid target. */
 arith_uint256 GetShareWork(uint32_t bits);
 
+/** Address string of a share's miner.  EncodeDestination() refuses a
+ *  WitnessUnknown that holds a version-0 program of 20 or 32 bytes (those are
+ *  WitnessV0KeyHash / WitnessV0ScriptHash to it), which is exactly what shares
+ *  carry: go through the script.  (Found by Vintage Hash.) */
+std::string ShareAddressString(const WitnessUnknown& miner);
+
 /** What ComputeShareCredits needs to know about a listed fruit. */
 struct FruitInfo {
     WitnessUnknown miner{0u, std::vector<unsigned char>{}};
