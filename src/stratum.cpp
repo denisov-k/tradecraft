@@ -865,21 +865,21 @@ static void SubmitShareToChain(const Share& share, const uint256& pow_hash, cons
     }
     std::string reason;
     if (man.AcceptFruit(share, reason)) {
-        LogPrintf("NEW SHARE CHAIN FRUIT%s by %s: %s\n", kind, ShareAddressString(who), share.GetHash().ToString());
+        LogPrintf("NEW SHARE CHAIN FRUIT%s by %s: %s\n", kind, EncodeDestination(who), share.GetHash().ToString());
         if (h > chain_target && g_context->peerman) {
             ShareMessage m;
             m.share = share;
             g_context->peerman->RelayShare(m, -1);
         }
     } else {
-        LogPrintf("Share chain:%s fruit rejected (%s) from %s\n", kind, reason, ShareAddressString(who));
+        LogPrintf("Share chain:%s fruit rejected (%s) from %s\n", kind, reason, EncodeDestination(who));
     }
     if (h > chain_target) {
         return;
     }
     const auto& st = *current_work.m_share_state;
     if (man.AcceptChainShare(share, st.peaks, st.fruits, reason)) {
-        LogPrintf("NEW CHAIN SHARE%s by %s: %s height %d fruits %d\n", kind, ShareAddressString(who), share.GetHash().ToString(), share.height, st.fruits.size());
+        LogPrintf("NEW CHAIN SHARE%s by %s: %s height %d fruits %d\n", kind, EncodeDestination(who), share.GetHash().ToString(), share.height, st.fruits.size());
         if (g_context->peerman) {
             ShareMessage m;
             m.share = share;
@@ -891,7 +891,7 @@ static void SubmitShareToChain(const Share& share, const uint256& pow_hash, cons
         client.m_send_work = true;
         StratumNotifyShareTipChanged();
     } else {
-        LogPrintf("Share chain:%s chain share rejected (%s) from %s\n", kind, reason, ShareAddressString(who));
+        LogPrintf("Share chain:%s chain share rejected (%s) from %s\n", kind, reason, EncodeDestination(who));
     }
 }
 
