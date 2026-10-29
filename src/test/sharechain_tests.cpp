@@ -596,7 +596,7 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
     CKey key;
     key.MakeNewKey(true);
     const CPubKey pubkey = key.GetPubKey();
-    const CKeyID keyid = pubkey.GetID();
+    const WitnessV0ShortHash keyid(0, pubkey);
     const WitnessUnknown MINER_K(0u, std::vector<unsigned char>(keyid.begin(), keyid.end()));
     const uint256 chain_id = ShareParams().ChainId();
     const auto transfer = [&](const WitnessUnknown& to, uint32_t upto, const uint256& hashlock, uint32_t expiry) {

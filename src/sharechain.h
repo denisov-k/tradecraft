@@ -349,7 +349,7 @@ struct ShareTx {
     uint32_t upto_height{0};
     uint32_t expiry{0};
     uint256 hashlock;
-    std::vector<unsigned char> pubkey;    //!< 33 bytes; its hash160 is `from`
+    std::vector<unsigned char> pubkey;    //!< 33 bytes; WitnessV0ShortHash(0, pubkey) is `from`
     std::vector<unsigned char> signature; //!< DER ECDSA over GetSigHash()
     //! claim
     uint256 transfer_id;

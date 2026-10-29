@@ -66,7 +66,7 @@ to           witness program (version ≤ 16, 2–40 bytes)
 upto_height  uint32    fruits listed at or below this chain height
 expiry       uint32    chain height after which the transfer lapses (hash-locked only, else 0)
 hashlock     uint256   SHA256 of the claim's preimage; null = unconditional
-pubkey       33 bytes  compressed; its hash160 is `from`
+pubkey       33 bytes  compressed; `WitnessV0ShortHash(0, pubkey)` (Freicoin's P2WPK program) is `from`
 signature    DER ECDSA by `pubkey` over SHA256d("SHARECHAIN-TRANSFER" ‖ CHAIN_ID ‖ the fields above)
 ```
 

@@ -13,9 +13,8 @@ import socket
 import struct
 import time
 
-from test_framework.address import program_to_witness
+from test_framework.address import key_to_p2wpk
 from test_framework.key import ECKey
-from test_framework.script import hash160
 from test_framework.test_framework import FreicoinTestFramework
 from test_framework.wallet_util import bytes_to_wif
 from test_framework.util import (
@@ -251,7 +250,7 @@ class ShareChainTest(FreicoinTestFramework):
         key = ECKey()
         key.generate(compressed=True)
         pub = key.get_pubkey().get_bytes()
-        seller = program_to_witness(0, hash160(pub))
+        seller = key_to_p2wpk(pub)
         wif = bytes_to_wif(key.get_bytes())
         m = StratumMiner(stratum_port(0), seller, self.log)
         for _ in range(3):

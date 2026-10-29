@@ -276,7 +276,8 @@ bool CheckShareTxForm(const ShareTx& tx, const uint256& chain_id, std::string& r
     if (tx.hashlock.IsNull() != (tx.expiry == 0)) { reason = "tx-bad-lock"; return false; }
     const CPubKey pubkey(tx.pubkey);
     if (tx.pubkey.size() != CPubKey::COMPRESSED_SIZE || !pubkey.IsFullyValid()) { reason = "tx-bad-pubkey"; return false; }
-    const CKeyID id = pubkey.GetID();
+    // Freicoin's key address: the short hash of the P2WPK script, not hash160(pubkey).
+    const WitnessV0ShortHash id(0, pubkey);
     if (!std::equal(id.begin(), id.end(), tx.from.GetWitnessProgram().begin())) { reason = "tx-key-mismatch"; return false; }
     if (!pubkey.Verify(tx.GetSigHash(chain_id), tx.signature)) { reason = "tx-bad-signature"; return false; }
     return true;
@@ -1719,7 +1720,7 @@ static RPCHelpMan transfershares() {
     const std::optional<WitnessUnknown> to = IsValidDestination(dest) ? WitnessUnknownFromDestination(dest) : std::nullopt;
     if (!to) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid destination (a bech32 address is required)");
     const CPubKey pubkey = key.GetPubKey();
-    const CKeyID id = pubkey.GetID();
+    const WitnessV0ShortHash id(0, pubkey);
     ShareTx tx;
     tx.type = ShareTx::TRANSFER;
     tx.from = WitnessUnknown(0u, std::vector<unsigned char>(id.begin(), id.end()));
@@ -1794,6 +1795,7 @@ static RPCHelpMan listsharetxs() {
                 {RPCResult::Type::NUM, "expiry", ""},
                 {RPCResult::Type::NUM, "height", "chain share that carried it"},
                 {RPCResult::Type::NUM, "fruits", "fruits it locks"},
+                {RPCResult::Type::NUM, "work", "their work (what the buyer is paying for)"},
             }}}},
         }},
         RPCExamples{HelpExampleCli("listsharetxs", "") + HelpExampleRpc("listsharetxs", "")},
@@ -1813,8 +1815,15 @@ static RPCHelpMan listsharetxs() {
             UniValue o = ShareTxToJSON(item.second.tx);
             o.pushKV("height", (int64_t)item.second.height);
             int64_t locked = 0;
-            for (const auto& f : own.fruits) if (f.second.lock == item.first) ++locked;
+            arith_uint256 work = 0;
+            for (const auto& f : own.fruits) {
+                if (f.second.lock != item.first) continue;
+                ++locked;
+                const std::optional<FruitInfo> info = man.LookupFruit(f.first);
+                if (info) work += GetShareWork(info->bits);
+            }
             o.pushKV("fruits", locked);
+            o.pushKV("work", work.getdouble());
             pending.push_back(o);
         }
     }
