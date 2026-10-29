@@ -62,6 +62,11 @@ def main():
     http_json(f"{args.maker}/offer", offer)
     print("offer sent; waiting for the payment")
 
+    def owned():
+        return sum(c["fruits"] for c in rpc("getsharecredits")["credits"] if c["address"] == args.address)
+
+    before = owned()
+    seen_pending = False
     deadline = time.time() + args.timeout
     while time.time() < deadline:
         if invoice:
@@ -69,12 +74,17 @@ def main():
                 print(f"paid: {sats} sats")
                 return
         else:
+            # trust mode: the transfer is carried (pending), then claimed (gone, fruits moved)
+            # or lapsed (gone, fruits still ours)
             pending = {p["txid"] for p in rpc("listsharetxs")["pending"]}
-            carried = any(c["address"] == quote["address"] for c in rpc("getsharecredits")["credits"])
-            if txid not in pending and carried:
-                print("claimed (trust mode)")
-                return
-        time.sleep(10)
+            if txid in pending:
+                seen_pending = True
+            elif seen_pending:
+                if owned() < before:
+                    print("claimed (trust mode)")
+                    return
+                sys.exit("the lock lapsed unclaimed")
+        time.sleep(5)
     sys.exit("not paid in time; the lock lapses by itself")
 
 
