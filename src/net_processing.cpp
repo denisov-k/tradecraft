@@ -534,6 +534,7 @@ public:
     void SendPings() override EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex);
     void RelayTransaction(const uint256& txid, const uint256& wtxid) override EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex);
     void RelayShare(const ShareMessage& msg, NodeId from) override EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex);
+    void RelayShareTx(const ShareTx& tx, NodeId from) override EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex);
     void SetBestBlock(int height, std::chrono::seconds time) override
     {
         m_best_height = height;
@@ -2444,6 +2445,22 @@ void PeerManagerImpl::RequestShareChain(CNode& pfrom)
         m_share_rate[pfrom.GetId()].first_batch = true;
     }
     MakeAndPushMessage(pfrom, NetMsgType::GETSHARECHAIN, locator);
+}
+
+void PeerManagerImpl::RelayShareTx(const ShareTx& tx, NodeId from)
+{
+    LOCK(m_peer_mutex);
+    for (auto& it : m_peer_map) {
+        if (it.first == from) continue;
+        const Peer& peer = *it.second;
+        if (!(peer.m_their_services & NODE_SHARECHAIN)) continue;
+        m_connman.ForNode(it.first, [&](CNode* pnode) {
+            if (pnode->fSuccessfullyConnected && !pnode->fDisconnect) {
+                MakeAndPushMessage(*pnode, NetMsgType::SHARETX, tx);
+            }
+            return true;
+        });
+    }
 }
 
 void PeerManagerImpl::RelayShare(const ShareMessage& msg, NodeId from)
@@ -4780,6 +4797,29 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         if (accepted > 0) StratumNotifyShareTipChanged();
         if (batch.size() >= 500 && accepted > 0) {
             RequestShareChain(pfrom);
+        }
+        return;
+    }
+
+    if (msg_type == NetMsgType::SHARETX) {
+        if (!g_sharechainman) return;
+        if (!ShareBudget(pfrom.GetId(), 's')) {
+            LogPrint(BCLog::NET, "share tx rate limit exceeded by peer=%d; ignoring\n", pfrom.GetId());
+            return;
+        }
+        ShareTx tx;
+        vRecv >> tx;
+        bool accepted;
+        std::string reason;
+        {
+            LOCK(::cs_main);
+            accepted = g_sharechainman->AddShareTx(tx, reason);
+        }
+        if (accepted) {
+            LogPrint(BCLog::NET, "share tx %s accepted from peer=%d\n", tx.GetHash().ToString(), pfrom.GetId());
+            RelayShareTx(tx, pfrom.GetId());
+        } else if (reason != "sharetx-duplicate") {
+            LogPrint(BCLog::NET, "share tx %s from peer=%d rejected: %s\n", tx.GetHash().ToString(), pfrom.GetId(), reason);
         }
         return;
     }

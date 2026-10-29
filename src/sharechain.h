@@ -21,6 +21,7 @@
 
 #include <functional> // for std::function
 #include <map> // for std::map
+#include <set> // for std::set
 #include <memory> // for std::shared_ptr
 #include <optional> // for std::optional
 #include <utility> // for std::pair
@@ -54,6 +55,8 @@ struct ShareChainParams {
     bool Retarget() const { return m_retarget; }
     //! A fresh share may build on a Freicoin block at most this many blocks behind the tip.
     int MaxTemplateAge() const { return m_max_template_age; }
+    //! A hash-locked transfer lapses at most this many chain shares after its inclusion.
+    uint32_t MaxLock() const { return m_max_lock; }
     //! Target spacing of shares, seconds.
     int64_t ShareInterval() const { return m_share_interval; }
 
@@ -71,6 +74,7 @@ protected:
     bool m_retarget{true};
     int64_t m_share_interval{10};
     int m_max_template_age{2};
+    uint32_t m_max_lock{60};
 };
 
 /**
@@ -275,6 +279,11 @@ struct Share {
     //! committed in every header because the template is hashed before
     //! anyone knows that (2-for-1 mining).
     uint256 fruits_root;
+    //! Merkle root of the share chain transactions (transfers and claims of
+    //! share credits, doc/sharechain-transfers.md) this template carries, or
+    //! null.  Like the fruit list they only take effect if the share becomes a
+    //! chain share.
+    uint256 txs_root;
     //! The address of the miner who submitted this share.  Typically this
     //! wouldn't actually be an unknown witness type, but rather one of the
     //! existing (and understood) witness types in <script/standard.h>.
@@ -298,6 +307,7 @@ struct Share {
         READWRITE(obj.anchor);
         READWRITE(obj.prev_root);
         READWRITE(obj.fruits_root);
+        READWRITE(obj.txs_root);
         // WitnessUnknown has no public fields on 28.x: serialize through copies and rebuild on read.
         uint64_t miner_version = obj.miner.GetWitnessVersion();
         std::vector<unsigned char> miner_program = obj.miner.GetWitnessProgram();
@@ -324,6 +334,86 @@ struct Share {
 };
 
 void swap(Share& lhs, Share& rhs);
+
+/** A share chain transaction: a transfer of share credits, or the claim that
+ *  completes a hash-locked one (doc/sharechain-transfers.md section 3). */
+struct ShareTx {
+    static constexpr uint8_t TRANSFER = 1;
+    static constexpr uint8_t CLAIM = 2;
+    uint8_t type{TRANSFER};
+    //! transfer: every fruit owned by `from` and listed at a chain height <=
+    //! upto_height goes to `to`; with a hashlock the fruits are locked for
+    //! `to` until a claim reveals the preimage, or until `expiry` passes.
+    WitnessUnknown from{0u, std::vector<unsigned char>{}};
+    WitnessUnknown to{0u, std::vector<unsigned char>{}};
+    uint32_t upto_height{0};
+    uint32_t expiry{0};
+    uint256 hashlock;
+    std::vector<unsigned char> pubkey;    //!< 33 bytes; its hash160 is `from`
+    std::vector<unsigned char> signature; //!< DER ECDSA over GetSigHash()
+    //! claim
+    uint256 transfer_id;
+    uint256 preimage;
+
+    SERIALIZE_METHODS(ShareTx, obj) {
+        READWRITE(obj.type);
+        if (obj.type == TRANSFER) {
+            uint64_t from_version = obj.from.GetWitnessVersion();
+            std::vector<unsigned char> from_program = obj.from.GetWitnessProgram();
+            uint64_t to_version = obj.to.GetWitnessVersion();
+            std::vector<unsigned char> to_program = obj.to.GetWitnessProgram();
+            READWRITE(COMPACTSIZE(from_version), from_program, COMPACTSIZE(to_version), to_program);
+            SER_READ(obj, obj.from = WitnessUnknown(static_cast<unsigned int>(from_version), from_program));
+            SER_READ(obj, obj.to = WitnessUnknown(static_cast<unsigned int>(to_version), to_program));
+            READWRITE(obj.upto_height, obj.expiry, obj.hashlock, obj.pubkey, obj.signature);
+        } else {
+            READWRITE(obj.transfer_id, obj.preimage);
+        }
+    }
+    bool IsLocked() const { return type == TRANSFER && !hashlock.IsNull(); }
+    //! What the owner signs: the transfer without its signature, bound to the chain.
+    uint256 GetSigHash(const uint256& chain_id) const;
+    //! Transaction id: hash of the whole serialization.
+    uint256 GetHash() const;
+};
+
+/** Merkle root of a transaction list (null for an empty list). */
+uint256 TxsRoot(const std::vector<ShareTx>& txs);
+/** Stateless validity of a transaction: field sizes, the key hashing to `from`,
+ *  the signature over the chain-bound sighash.  The chain-dependent rules are
+ *  ShareOwnership::Apply's. */
+bool CheckShareTxForm(const ShareTx& tx, const uint256& chain_id, std::string& reason);
+/** SHA256 of a claim's preimage, what a hashlock holds. */
+uint256 ShareHashLock(const uint256& preimage);
+
+/** Who the fruits of a window belong to: the state built from the window
+ *  floor to the anchor by listing fruits and applying the chain shares'
+ *  transactions in order (doc/sharechain-transfers.md section 3). */
+struct ShareOwnership {
+    struct FruitState {
+        WitnessUnknown owner{0u, std::vector<unsigned char>{}};
+        uint32_t listed_at{0};
+        uint256 lock; //!< the pending transfer that locks it, or null
+    };
+    std::map<uint256, FruitState> fruits;
+    struct Pending {
+        ShareTx tx;
+        uint32_t height{0}; //!< chain share that carried it
+    };
+    std::map<uint256, Pending> pending; //!< hash-locked transfers waiting for a claim
+    std::set<uint256> seen;             //!< transaction ids applied in this window
+
+    //! Record a fruit listed at `height` by its miner.
+    void List(const uint256& fruit, const WitnessUnknown& miner, uint32_t height);
+    //! Release the locks of transfers that lapsed before `height`.
+    void Expire(uint32_t height);
+    //! Apply a transaction carried by the chain share at `height`.  With
+    //! `strict` every chain-dependent rule is checked and a violation fails
+    //! with `reason`; without, it is applied as far as it goes (near a trusted
+    //! base, where fruits may be unknown, and when recomputing a chain that
+    //! was validated when accepted).
+    bool Apply(const ShareTx& tx, uint32_t height, uint32_t max_lock, bool strict, std::string& reason);
+};
 
 struct ShareIndex;
 
@@ -353,6 +443,19 @@ using FruitLookup = std::function<std::optional<FruitInfo>(const uint256&)>;
 using ShareCredits = std::map<WitnessUnknown, arith_uint256>;
 ShareCredits ComputeShareCredits(const ShareIndex* anchor, const arith_uint256& window_work, size_t window_shares, const FruitLookup& lookup);
 
+/** The window in full: credits by owner (ComputeShareCredits is this map), the
+ *  ownership state after the anchor, and figures for RPCs. */
+struct WindowCredits {
+    ShareCredits credits;
+    std::map<WitnessUnknown, int64_t> fruits_by_owner;
+    arith_uint256 work;
+    size_t chain_shares{0};
+    int64_t fruits{0};
+    int low_height{-1};
+    ShareOwnership ownership;
+};
+WindowCredits ComputeWindowCredits(const ShareIndex* anchor, const arith_uint256& window_work, size_t window_shares, const FruitLookup& lookup);
+
 /** Turn credits into coinbase payouts (doc/sharechain.md section 9):
  *  credits are scaled so their sum fits in 190 bits; out_m = floor(total *
  *  credit_m / sum); the flooring remainder goes to `builder`; outputs below
@@ -372,6 +475,7 @@ struct ShareIndex {
     //! sorted fruit hashes behind share.fruits_root.
     MmrAccumulator peaks;
     std::vector<uint256> fruits;
+    std::vector<ShareTx> txs;
     //! total_work claimed by the lowest chain share this one descends from
     //! (the chain's base).  Work above it has been verified by this node;
     //! the base's own claim has not, so forks are compared by the difference.
@@ -388,7 +492,8 @@ arith_uint256 GetVerifiedChainWork(const ShareIndex& index);
 struct ChainShareBody {
     MmrAccumulator peaks;
     std::vector<uint256> fruits;
-    SERIALIZE_METHODS(ChainShareBody, obj) { READWRITE(obj.peaks, obj.fruits); }
+    std::vector<ShareTx> txs;
+    SERIALIZE_METHODS(ChainShareBody, obj) { READWRITE(obj.peaks, obj.fruits, obj.txs); }
 };
 
 /** A share on the wire and on disk: header + witness, plus the body for chain shares. */
@@ -514,6 +619,9 @@ struct ShareChainstateManager {
         uint32_t bits{0};
         std::vector<uint256> fruits;
         uint256 fruits_root;
+        //! Transactions from the pool that are valid on top of the anchor.
+        std::vector<ShareTx> txs;
+        uint256 txs_root;
         //! MMR of the chain shares up to and including the anchor: the body a
         //! chain share built from this state transmits.
         MmrAccumulator peaks;
@@ -531,13 +639,20 @@ struct ShareChainstateManager {
 
     //! Validate and record a share that also met the chain target, with the
     //! body behind its roots (C1, C2); updates the active chain if it has more work (C3).
-    bool AcceptChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason, bool live = true) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    bool AcceptChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, const std::vector<ShareTx>& txs, std::string& reason, bool live = true) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Start an empty chain from a chain share whose anchor we do not have:
     //! the trusted base of a node that joins a running chain (or reloads a
     //! pruned sharechain.dat).  Only the share's own consistency and proof of
     //! work are checked; its total_work is taken as a claim (see
     //! GetVerifiedChainWork).
-    bool AcceptBaseChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    bool AcceptBaseChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, const std::vector<ShareTx>& txs, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! The PPLNS window of a template or share built on `anchor`, sized by `frc_bits`.
+    WindowCredits WindowAt(const ShareIndex* anchor, uint32_t frc_bits) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Validate a transaction against the tip and keep it for the next templates
+    //! (doc/sharechain-transfers.md section 3.4).  False with a reason if it is
+    //! malformed, invalid on the tip, or already known ("sharetx-duplicate").
+    bool AddShareTx(const ShareTx& tx, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    std::vector<ShareTx> PoolTxs() const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Targets a share with the given compact bits has to meet (its own
     //! bits are fixed by CheckLinkage); ShareTarget()/ChainTarget() are the
     //! easiest the chain allows.
@@ -602,6 +717,10 @@ private:
     void SetActiveTip(const std::shared_ptr<ShareIndex>& tip) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Shares waiting for an anchor or fruits we have not seen yet.
     std::map<uint256, ShareMessage> m_orphans;
+    //! Transactions waiting for a chain share to carry them.
+    std::map<uint256, ShareTx> m_txpool;
+    //! Drop pool transactions the current tip no longer accepts.
+    void PruneTxPool() EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
 };
 
 //! The active share chain manager, for net_processing (set by InitStratumServer).

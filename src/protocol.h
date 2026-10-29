@@ -250,6 +250,10 @@ inline constexpr const char* GETSHARECHAIN{"getshrchain"}; // wire names are at 
  */
 inline constexpr const char* SHARES{"shares"};
 /**
+ * sharetx: a share chain transaction (transfer or claim of share credits), relayed like a share.
+ */
+inline constexpr const char* SHARETX{"sharetx"};
+/**
  * cfilter is a response to a getcfilters request containing a single compact
  * filter.
  */
@@ -334,6 +338,7 @@ inline const std::array ALL_NET_MESSAGE_TYPES{std::to_array<std::string>({
     NetMsgType::GETSHARES,
     NetMsgType::GETSHARECHAIN,
     NetMsgType::SHARES,
+    NetMsgType::SHARETX,
 })};
 
 /** nServices flags */

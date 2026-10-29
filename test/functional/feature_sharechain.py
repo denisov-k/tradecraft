@@ -13,7 +13,11 @@ import socket
 import struct
 import time
 
+from test_framework.address import program_to_witness
+from test_framework.key import ECKey
+from test_framework.script import hash160
 from test_framework.test_framework import FreicoinTestFramework
+from test_framework.wallet_util import bytes_to_wif
 from test_framework.util import (
     assert_equal,
     assert_greater_than_or_equal,
@@ -242,6 +246,45 @@ class ShareChainTest(FreicoinTestFramework):
         assert_equal(error, None)
         self.wait_until(lambda: self.sc(n0)["fruits"] > before["fruits"], timeout=30)
         self.wait_same_tip(n0, n1)
+
+        self.log.info("a transfer moves a miner's credits to another address from the next chain share on")
+        key = ECKey()
+        key.generate(compressed=True)
+        pub = key.get_pubkey().get_bytes()
+        seller = program_to_witness(0, hash160(pub))
+        wif = bytes_to_wif(key.get_bytes())
+        m = StratumMiner(stratum_port(0), seller, self.log)
+        for _ in range(3):
+            result, error = m.mine_one()
+            assert_equal(error, None)
+        m.close()
+        owners = lambda node: {c["address"]: c["fruits"] for c in node.getsharecredits()["credits"]}
+        # credited once a chain share lists them: mine on node1 until then
+        m = StratumMiner(stratum_port(1), addr[1], self.log)
+        while owners(n0).get(seller, 0) < 3:
+            result, error = m.mine_one()
+            assert_equal(error, None)
+            self.wait_same_tip(n0, n1)
+        sold = owners(n0)[seller]
+        txid = n0.transfershares(wif, addr[2])
+        assert_equal(n0.listsharetxs()["pool"][0]["txid"], txid)
+        self.wait_until(lambda: len(n1.listsharetxs()["pool"]) == 1, timeout=30)
+        # the next chain share (mined on node1, which holds the tx) applies it
+        while seller in owners(n0):
+            result, error = m.mine_one()
+            assert_equal(error, None)
+            self.wait_same_tip(n0, n1)
+        assert_equal(n0.listsharetxs()["pool"], [])
+        assert_greater_than_or_equal(owners(n0)[addr[2]], sold)
+        assert_equal(owners(n0), owners(n1))
+        # and the next block pays the buyer, not the seller
+        result, error = m.mine_one()
+        assert_equal(error, None)
+        m.close()
+        self.sync_blocks([n0, n1])
+        tip = n1.getblock(n1.getbestblockhash(), 2)
+        payees = {o["scriptPubKey"].get("address") for o in tip["tx"][0]["vout"] if o["scriptPubKey"].get("address")}
+        assert addr[2] in payees and seller not in payees, payees
 
 
 if __name__ == "__main__":

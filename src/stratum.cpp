@@ -878,14 +878,15 @@ static void SubmitShareToChain(const Share& share, const uint256& pow_hash, cons
         return;
     }
     const auto& st = *current_work.m_share_state;
-    if (man.AcceptChainShare(share, st.peaks, st.fruits, reason)) {
-        LogPrintf("NEW CHAIN SHARE%s by %s: %s height %d fruits %d\n", kind, EncodeDestination(who), share.GetHash().ToString(), share.height, st.fruits.size());
+    if (man.AcceptChainShare(share, st.peaks, st.fruits, st.txs, reason)) {
+        LogPrintf("NEW CHAIN SHARE%s by %s: %s height %d fruits %d txs %d\n", kind, EncodeDestination(who), share.GetHash().ToString(), share.height, st.fruits.size(), st.txs.size());
         if (g_context->peerman) {
             ShareMessage m;
             m.share = share;
             m.has_body = true;
             m.body.peaks = st.peaks;
             m.body.fruits = st.fruits;
+            m.body.txs = st.txs;
             g_context->peerman->RelayShare(m, -1);
         }
         client.m_send_work = true;
@@ -2217,14 +2218,15 @@ static RPCHelpMan getsharecredits() {
                 {RPCResult::Type::NUM, "tipheight", "share chain height the window starts from (-1 if empty)"},
                 {RPCResult::Type::NUM, "lowheight", "lowest chain share in the window (-1 if empty)"},
                 {RPCResult::Type::NUM, "chainshares", "chain shares in the window"},
+                {RPCResult::Type::NUM, "pending", "hash-locked transfers waiting for a claim"},
                 {RPCResult::Type::NUM, "fruits", "fruits in the window"},
                 {RPCResult::Type::STR_AMOUNT, "amount", "the value split"},
                 {RPCResult::Type::ARR, "credits", "one entry per address, in canonical payout order",
                 {
                     {RPCResult::Type::OBJ, "", "",
                     {
-                        {RPCResult::Type::STR, "address", "the miner's address"},
-                        {RPCResult::Type::NUM, "fruits", "fruits of this address in the window"},
+                        {RPCResult::Type::STR, "address", "the owner's address (the miner's unless transferred)"},
+                        {RPCResult::Type::NUM, "fruits", "fruits this address owns in the window"},
                         {RPCResult::Type::NUM, "work", "their work"},
                         {RPCResult::Type::NUM, "share", "work / filledwork"},
                         {RPCResult::Type::STR_AMOUNT, "payout", "what a block found now would pay this address"},
@@ -2254,27 +2256,15 @@ static RPCHelpMan getsharecredits() {
     const arith_uint256 window = GetShareWork(frc_bits) * man.Params().WindowK();
     const CAmount total = request.params[0].isNull() ? GetBlockSubsidy(tip->nHeight + 1, Params().GetConsensus()) : AmountFromValue(request.params[0]);
 
-    // Same walk as ComputeShareCredits (work or WindowShares, whichever ends it
-    // first), also counting fruits per address.
-    std::map<WitnessUnknown, arith_uint256> credits;
-    std::map<WitnessUnknown, int64_t> nfruits;
-    arith_uint256 acc = 0;
-    int64_t fruits_in_window = 0;
-    int64_t low_height = -1;
-    size_t walked = 0;
+    // The window as the template sees it: credits by owner (transfers applied).
     const std::shared_ptr<ShareIndex> sc_tip = man.ActiveTip();
-    for (const ShareIndex* cur = sc_tip.get(); cur && acc < window && walked < man.Params().WindowShares(); cur = cur->prev_share.get(), ++walked) {
-        low_height = cur->share.height;
-        for (const uint256& f : cur->fruits) {
-            const std::optional<FruitInfo> info = man.LookupFruit(f);
-            if (!info) continue;
-            const arith_uint256 w = GetShareWork(info->bits);
-            credits[info->miner] += w;
-            nfruits[info->miner] += 1;
-            acc += w;
-            ++fruits_in_window;
-        }
-    }
+    const WindowCredits wc = man.WindowAt(sc_tip.get(), frc_bits);
+    const std::map<WitnessUnknown, arith_uint256>& credits = wc.credits;
+    const std::map<WitnessUnknown, int64_t>& nfruits = wc.fruits_by_owner;
+    const arith_uint256 acc = wc.work;
+    const int64_t fruits_in_window = wc.fruits;
+    const int64_t low_height = wc.low_height;
+    const size_t walked = wc.chain_shares;
     const auto payouts = ComputeSharePayouts(credits, total, g_default_share_address, man.Params().Dust(), man.Params().MaxPayees());
     std::map<WitnessUnknown, CAmount> pay;
     for (const auto& p : payouts) pay[p.first] += p.second;
@@ -2290,13 +2280,14 @@ static RPCHelpMan getsharecredits() {
     obj.pushKV("tipheight", sc_tip ? (int64_t)sc_tip->share.height : -1);
     obj.pushKV("lowheight", low_height);
     obj.pushKV("chainshares", (int64_t)walked);
+    obj.pushKV("pending", (int64_t)wc.ownership.pending.size());
     obj.pushKV("fruits", fruits_in_window);
     obj.pushKV("amount", ValueFromAmount(total));
     UniValue arr(UniValue::VARR);
     for (const auto& c : credits) {
         UniValue e(UniValue::VOBJ);
         e.pushKV("address", ShareAddressString(c.first));
-        e.pushKV("fruits", nfruits[c.first]);
+        e.pushKV("fruits", nfruits.count(c.first) ? nfruits.at(c.first) : 0);
         e.pushKV("work", c.second.getdouble());
         e.pushKV("share", acc == 0 ? 0.0 : c.second.getdouble() / acc.getdouble());
         e.pushKV("payout", ValueFromAmount(pay.count(c.first) ? pay[c.first] : 0));

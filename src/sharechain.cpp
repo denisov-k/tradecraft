@@ -9,7 +9,11 @@
 
 #include <consensus/merkle.h> // for ComputeMerkleMapRootFromBranch, ComputeMerkleRootFromBranch
 #include <hash.h> // for CHash256, HashWriter
-#include <key_io.h> // for EncodeDestination
+#include <key_io.h> // for EncodeDestination, DecodeSecret, DecodeDestination
+#include <key.h> // for CKey
+#include <pubkey.h> // for CPubKey
+#include <crypto/sha256.h> // for CSHA256
+#include <net_processing.h> // for PeerManager::RelayShareTx
 #include <primitives/block.h> // for CBlockHeader
 #include <rpc/server.h> // for CRPCTable
 #include <rpc/server_util.h> // for EnsureAnyNodeContext
@@ -28,6 +32,13 @@
 #include <logging.h> // for LogPrintf
 #include <array> // for std::array
 #include <utility> // for std::swap
+#include <rpc/util.h> // for ParseHashV
+
+namespace {
+//! Transactions a chain share may carry, and the pool behind the templates.
+constexpr size_t MAX_TXS_PER_CHAIN_SHARE = 100;
+constexpr size_t MAX_TXPOOL = 1000;
+} // namespace
 
 void SetupShareChainParamsOptions(ArgsManager& argsman) {
     argsman.AddArg("-sharechain=<name>", "Use the share chain <name> (default: main). Allowed values: solo, main or regtest", ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
@@ -44,7 +55,7 @@ struct MainShareChainParams : public ShareChainParams {
     MainShareChainParams() {
         is_valid = true;
         m_share_chain_type = ShareChainType::MAIN;
-        m_chain_id = uint256S("5348415245434841494e2d4d41494e0000000000000000000000000000000004"); // 'SHARECHAIN-MAIN' || 4 (2: aux identity = parent hash; 3: committed payouts; 4: window capped at WindowShares)
+        m_chain_id = uint256S("5348415245434841494e2d4d41494e0000000000000000000000000000000005"); // 'SHARECHAIN-MAIN' || 5 (2: aux identity = parent hash; 3: committed payouts; 4: window capped at WindowShares; 5: transferable credits)
         m_window_shares = 4320;      // 3 days of chain shares at 60 s
         m_share_bits = 0x1b068db2;   // difficulty 10000: ~43 TH for 10 s shares; also the easiest target allowed
         m_retarget = true;
@@ -60,7 +71,7 @@ struct RegtestShareChainParams : public ShareChainParams {
         m_chain_factor = 4;
         m_recency = 10;
         m_retarget = false;
-        m_chain_id = uint256S("5348415245434841494e2d5245475445535400000000000000000000000004");
+        m_chain_id = uint256S("5348415245434841494e2d5245475445535400000000000000000000000005");
         m_window_shares = 48;        // small enough for a unit test to cross it
     }
 };
@@ -131,6 +142,7 @@ uint256 Share::GetHeaderHash() const {
     ss << anchor;
     ss << prev_root;
     ss << fruits_root;
+    ss << txs_root;
     ss << COMPACTSIZE(miner.GetWitnessVersion()); // will always be single byte
     ss << miner.GetWitnessProgram();
     return ss.GetHash();
@@ -216,23 +228,166 @@ std::string ShareAddressString(const WitnessUnknown& miner)
     return EncodeDestination(dest);
 }
 
-ShareCredits ComputeShareCredits(const ShareIndex* anchor, const arith_uint256& window_work, size_t window_shares, const FruitLookup& lookup)
+uint256 ShareTx::GetSigHash(const uint256& chain_id) const
 {
-    ShareCredits credits;
-    arith_uint256 acc = 0;
-    size_t walked = 0;
-    for (const ShareIndex* cur = anchor; cur && acc < window_work && walked < window_shares; cur = cur->prev_share.get(), ++walked) {
-        for (const uint256& fruit : cur->fruits) {
-            std::optional<FruitInfo> info = lookup(fruit);
-            if (!info) {
-                continue;
-            }
-            const arith_uint256 work = GetShareWork(info->bits);
-            credits[info->miner] += work;
-            acc += work;
+    HashWriter ss{};
+    ss << std::string("SHARECHAIN-TRANSFER") << chain_id << type;
+    ss << COMPACTSIZE(from.GetWitnessVersion()) << from.GetWitnessProgram();
+    ss << COMPACTSIZE(to.GetWitnessVersion()) << to.GetWitnessProgram();
+    ss << upto_height << expiry << hashlock << pubkey;
+    return ss.GetHash();
+}
+
+uint256 ShareTx::GetHash() const
+{
+    HashWriter ss{};
+    ss << *this;
+    return ss.GetHash();
+}
+
+uint256 TxsRoot(const std::vector<ShareTx>& txs)
+{
+    if (txs.empty()) return uint256();
+    std::vector<uint256> ids;
+    ids.reserve(txs.size());
+    for (const ShareTx& tx : txs) ids.push_back(tx.GetHash());
+    return ComputeMerkleRoot(ids, nullptr);
+}
+
+uint256 ShareHashLock(const uint256& preimage)
+{
+    uint256 out;
+    CSHA256().Write(preimage.begin(), 32).Finalize(out.begin());
+    return out;
+}
+
+bool CheckShareTxForm(const ShareTx& tx, const uint256& chain_id, std::string& reason)
+{
+    if (tx.type == ShareTx::CLAIM) {
+        if (tx.transfer_id.IsNull()) { reason = "tx-bad-claim"; return false; }
+        return true;
+    }
+    if (tx.type != ShareTx::TRANSFER) { reason = "tx-bad-type"; return false; }
+    // from: a version-0 key hash (the only thing a key can sign for); to: any witness program
+    if (tx.from.GetWitnessVersion() != 0 || tx.from.GetWitnessProgram().size() != 20) { reason = "tx-bad-from"; return false; }
+    const std::vector<unsigned char>& to_program = tx.to.GetWitnessProgram();
+    if (tx.to.GetWitnessVersion() > 16 || to_program.size() < 2 || to_program.size() > 40) { reason = "tx-bad-to"; return false; }
+    if (tx.from == tx.to) { reason = "tx-self-transfer"; return false; }
+    if (tx.hashlock.IsNull() != (tx.expiry == 0)) { reason = "tx-bad-lock"; return false; }
+    const CPubKey pubkey(tx.pubkey);
+    if (tx.pubkey.size() != CPubKey::COMPRESSED_SIZE || !pubkey.IsFullyValid()) { reason = "tx-bad-pubkey"; return false; }
+    const CKeyID id = pubkey.GetID();
+    if (!std::equal(id.begin(), id.end(), tx.from.GetWitnessProgram().begin())) { reason = "tx-key-mismatch"; return false; }
+    if (!pubkey.Verify(tx.GetSigHash(chain_id), tx.signature)) { reason = "tx-bad-signature"; return false; }
+    return true;
+}
+
+void ShareOwnership::List(const uint256& fruit, const WitnessUnknown& miner, uint32_t height)
+{
+    FruitState& st = fruits[fruit];
+    st.owner = miner;
+    st.listed_at = height;
+    st.lock.SetNull();
+}
+
+void ShareOwnership::Expire(uint32_t height)
+{
+    for (auto it = pending.begin(); it != pending.end();) {
+        if (it->second.tx.expiry >= height) { ++it; continue; }
+        for (auto& item : fruits) {
+            if (item.second.lock == it->first) item.second.lock.SetNull();
+        }
+        it = pending.erase(it);
+    }
+}
+
+bool ShareOwnership::Apply(const ShareTx& tx, uint32_t height, uint32_t max_lock, bool strict, std::string& reason)
+{
+    const uint256 txid = tx.GetHash();
+    if (seen.count(txid)) {
+        if (strict) { reason = "tx-replay"; return false; }
+        return true;
+    }
+    seen.insert(txid);
+    if (tx.type == ShareTx::TRANSFER) {
+        if (strict && tx.upto_height > height) { reason = "tx-future-height"; return false; }
+        if (strict && tx.IsLocked() && (tx.expiry <= height || tx.expiry > height + max_lock)) { reason = "tx-bad-expiry"; return false; }
+        size_t moved = 0;
+        for (auto& item : fruits) {
+            FruitState& st = item.second;
+            if (!(st.owner == tx.from) || st.listed_at > tx.upto_height || !st.lock.IsNull()) continue;
+            if (tx.IsLocked()) st.lock = txid; else st.owner = tx.to;
+            ++moved;
+        }
+        if (strict && moved == 0) { reason = "tx-moves-nothing"; return false; }
+        if (tx.IsLocked() && moved > 0) pending[txid] = Pending{tx, height};
+        return true;
+    }
+    // claim
+    auto it = pending.find(tx.transfer_id);
+    if (it == pending.end()) {
+        if (strict) { reason = "tx-unknown-transfer"; return false; }
+        return true;
+    }
+    if (ShareHashLock(tx.preimage) != it->second.tx.hashlock) {
+        if (strict) { reason = "tx-bad-preimage"; return false; }
+        return true;
+    }
+    for (auto& item : fruits) {
+        if (item.second.lock == tx.transfer_id) {
+            item.second.owner = it->second.tx.to;
+            item.second.lock.SetNull();
         }
     }
-    return credits;
+    pending.erase(it);
+    return true;
+}
+
+WindowCredits ComputeWindowCredits(const ShareIndex* anchor, const arith_uint256& window_work, size_t window_shares, const FruitLookup& lookup)
+{
+    WindowCredits out;
+    // Back to the floor: the chain shares whose listed fruits fill the window.
+    std::vector<const ShareIndex*> chain;
+    arith_uint256 acc = 0;
+    for (const ShareIndex* cur = anchor; cur && acc < window_work && chain.size() < window_shares; cur = cur->prev_share.get()) {
+        chain.push_back(cur);
+        for (const uint256& fruit : cur->fruits) {
+            const std::optional<FruitInfo> info = lookup(fruit);
+            if (info) acc += GetShareWork(info->bits);
+        }
+    }
+    std::reverse(chain.begin(), chain.end());
+    // Forward: list the fruits, apply the transactions.  Every transaction that
+    // touches a fruit of this window lies in this window (it must come at or
+    // after the fruit's listing), so the state is complete.
+    std::map<uint256, arith_uint256> work;
+    std::string reason;
+    for (const ShareIndex* cs : chain) {
+        const uint32_t h = cs->share.height;
+        for (const uint256& fruit : cs->fruits) {
+            const std::optional<FruitInfo> info = lookup(fruit);
+            if (!info) continue;
+            out.ownership.List(fruit, info->miner, h);
+            work[fruit] = GetShareWork(info->bits);
+        }
+        out.ownership.Expire(h);
+        for (const ShareTx& tx : cs->txs) out.ownership.Apply(tx, h, 0, /*strict=*/false, reason);
+    }
+    for (const auto& item : out.ownership.fruits) {
+        const arith_uint256& w = work[item.first];
+        out.credits[item.second.owner] += w;
+        out.fruits_by_owner[item.second.owner] += 1;
+        out.work += w;
+        ++out.fruits;
+    }
+    out.chain_shares = chain.size();
+    out.low_height = chain.empty() ? -1 : static_cast<int>(chain.front()->share.height);
+    return out;
+}
+
+ShareCredits ComputeShareCredits(const ShareIndex* anchor, const arith_uint256& window_work, size_t window_shares, const FruitLookup& lookup)
+{
+    return ComputeWindowCredits(anchor, window_work, window_shares, lookup).credits;
 }
 
 namespace {
@@ -667,14 +822,69 @@ ShareChainstateManager::TemplateState ShareChainstateManager::GetTemplateState(c
         st.peaks = tip->peaks;
         st.peaks.Append(tip->GetHash());
     }
-    const arith_uint256 window = GetShareWork(frc_bits) * Params().WindowK();
-    const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
-    st.credits = ComputeShareCredits(tip.get(), window, Params().WindowShares(), lookup);
+    WindowCredits window = WindowAt(tip.get(), frc_bits);
+    st.credits = std::move(window.credits);
     st.payouts = ComputeSharePayouts(st.credits, total, miner, Params().Dust(), Params().MaxPayees());
+    // Pool transactions valid on top of the tip, in pool order.
+    ShareOwnership own = std::move(window.ownership);
+    own.Expire(st.height);
+    for (const auto& item : m_txpool) {
+        std::string reason;
+        if (own.Apply(item.second, st.height, Params().MaxLock(), /*strict=*/true, reason)) st.txs.push_back(item.second);
+        if (st.txs.size() >= MAX_TXS_PER_CHAIN_SHARE) break;
+    }
+    st.txs_root = TxsRoot(st.txs);
     return st;
 }
 
-bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason, bool live)
+WindowCredits ShareChainstateManager::WindowAt(const ShareIndex* anchor, uint32_t frc_bits) const
+{
+    const arith_uint256 window = GetShareWork(frc_bits) * Params().WindowK();
+    const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
+    return ComputeWindowCredits(anchor, window, Params().WindowShares(), lookup);
+}
+
+bool ShareChainstateManager::AddShareTx(const ShareTx& tx, std::string& reason)
+{
+    const uint256 txid = tx.GetHash();
+    if (m_txpool.count(txid)) { reason = "sharetx-duplicate"; return false; }
+    if (!CheckShareTxForm(tx, Params().ChainId(), reason)) return false;
+    const std::shared_ptr<ShareIndex> tip = ActiveTip();
+    if (!tip) { reason = "tx-moves-nothing"; return false; }
+    const uint32_t height = tip->share.height + 1;
+    ShareOwnership own = WindowAt(tip.get(), WindowBits(tip->share)).ownership;
+    own.Expire(height);
+    // Behind whatever the pool already holds, as a template would apply it.
+    std::string ignored;
+    for (const auto& item : m_txpool) own.Apply(item.second, height, Params().MaxLock(), /*strict=*/false, ignored);
+    if (!own.Apply(tx, height, Params().MaxLock(), /*strict=*/true, reason)) return false;
+    if (m_txpool.size() >= MAX_TXPOOL) { reason = "sharetx-pool-full"; return false; }
+    m_txpool.emplace(txid, tx);
+    return true;
+}
+
+std::vector<ShareTx> ShareChainstateManager::PoolTxs() const
+{
+    std::vector<ShareTx> out;
+    for (const auto& item : m_txpool) out.push_back(item.second);
+    return out;
+}
+
+void ShareChainstateManager::PruneTxPool()
+{
+    const std::shared_ptr<ShareIndex> tip = ActiveTip();
+    if (!tip) { m_txpool.clear(); return; }
+    const uint32_t height = tip->share.height + 1;
+    ShareOwnership own = WindowAt(tip.get(), WindowBits(tip->share)).ownership;
+    own.Expire(height);
+    for (auto it = m_txpool.begin(); it != m_txpool.end();) {
+        std::string reason;
+        if (own.Apply(it->second, height, Params().MaxLock(), /*strict=*/true, reason)) ++it;
+        else it = m_txpool.erase(it);
+    }
+}
+
+bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, const std::vector<ShareTx>& txs, std::string& reason, bool live)
 {
     ShareChainstate& state = ActiveChainstate();
     const uint256 hash = share.GetHash();
@@ -752,10 +962,46 @@ bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccum
             }
         }
     }
+    // C4: the transactions (doc/sharechain-transfers.md section 3.3).  Their
+    // chain-dependent rules need the window's fruits: skipped where the window
+    // runs into a trusted base, as the payout check is.
+    if (txs.size() > MAX_TXS_PER_CHAIN_SHARE) {
+        reason = "chainshare-too-many-txs";
+        return false;
+    }
+    if (TxsRoot(txs) != share.txs_root) {
+        reason = "chainshare-bad-txs-root";
+        return false;
+    }
+    if (!txs.empty()) {
+        for (const ShareTx& tx : txs) {
+            if (!CheckShareTxForm(tx, Params().ChainId(), reason)) {
+                reason = "chainshare-" + reason;
+                return false;
+            }
+        }
+        const arith_uint256 window = GetShareWork(WindowBits(share)) * Params().WindowK();
+        const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
+        const bool strict = !near_base && !WindowReachesBase(parent, window, Params().WindowShares(), lookup);
+        ShareOwnership own = ComputeWindowCredits(parent, window, Params().WindowShares(), lookup).ownership;
+        // as ComputeWindowCredits will see it: this share's fruits listed first
+        for (const uint256& f : fruits) {
+            const std::optional<FruitInfo> info = lookup(f);
+            if (info) own.List(f, info->miner, share.height);
+        }
+        own.Expire(share.height);
+        for (const ShareTx& tx : txs) {
+            if (!own.Apply(tx, share.height, Params().MaxLock(), strict, reason)) {
+                reason = "chainshare-" + reason;
+                return false;
+            }
+        }
+    }
     auto index = std::make_shared<ShareIndex>();
     index->share = share;
     index->peaks = peaks;
     index->fruits = fruits;
+    index->txs = txs;
     index->base_total_work = parent ? parent->base_total_work : share.total_work;
     if (parent) {
         index->prev_share = state.chain_shares.at(share.anchor);
@@ -766,6 +1012,7 @@ bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccum
     if (!tip || GetVerifiedChainWork(*index) > GetVerifiedChainWork(*tip)) {
         SetActiveTip(index);
         Prune();
+        PruneTxPool();
     }
     return true;
 }
@@ -783,7 +1030,7 @@ bool ShareChainstateManager::NearBase(const ShareIndex* parent, uint32_t height)
     return base && !base->share.anchor.IsNull() && height <= base->share.height + Params().Recency();
 }
 
-bool ShareChainstateManager::AcceptBaseChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, std::string& reason)
+bool ShareChainstateManager::AcceptBaseChainShare(const Share& share, const MmrAccumulator& peaks, const std::vector<uint256>& fruits, const std::vector<ShareTx>& txs, std::string& reason)
 {
     ShareChainstate& state = ActiveChainstate();
     if (!ActiveChain().chain.empty()) {
@@ -821,6 +1068,10 @@ bool ShareChainstateManager::AcceptBaseChainShare(const Share& share, const MmrA
         reason = "chainshare-bad-fruits-root";
         return false;
     }
+    if (TxsRoot(txs) != share.txs_root) {
+        reason = "chainshare-bad-txs-root";
+        return false;
+    }
     {
         const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(m_options.adjusted_time_callback().time_since_epoch()).count();
         if (static_cast<int64_t>(share.wit.nTime) > now + 2 * 60 * 60) {
@@ -834,6 +1085,7 @@ bool ShareChainstateManager::AcceptBaseChainShare(const Share& share, const MmrA
     index->share = share;
     index->peaks = peaks;
     index->fruits = fruits;
+    index->txs = txs;
     index->base_total_work = share.total_work;
     state.chain_shares.emplace(hash, index);
     SetActiveTip(index);
@@ -901,6 +1153,7 @@ Share ShareFromTemplateState(const ShareChainstateManager::TemplateState& st, co
     share.anchor = st.anchor;
     share.prev_root = st.prev_root;
     share.fruits_root = st.fruits_root;
+    share.txs_root = st.txs_root;
     share.miner = miner;
     return share;
 }
@@ -1008,6 +1261,7 @@ std::optional<ShareMessage> ShareChainstateManager::GetShareMessage(const uint25
         msg.has_body = true;
         msg.body.peaks = cs->second->peaks;
         msg.body.fruits = cs->second->fruits;
+        msg.body.txs = cs->second->txs;
         return msg;
     }
     auto f = state.fruits.find(hash);
@@ -1030,7 +1284,7 @@ ShareAccept ShareChainstateManager::ProcessShareMessage(const ShareMessage& msg,
             if (state.chain_shares.count(hash)) {
                 return ShareAccept::DUPLICATE;
             }
-            return AcceptBaseChainShare(msg.share, msg.body.peaks, msg.body.fruits, reason) ? ShareAccept::ACCEPTED : ShareAccept::INVALID;
+            return AcceptBaseChainShare(msg.share, msg.body.peaks, msg.body.fruits, msg.body.txs, reason) ? ShareAccept::ACCEPTED : ShareAccept::INVALID;
         }
         // Below a trusted base nothing can be verified and nothing is needed.
         const std::shared_ptr<ShareIndex> base = ActiveChain().Genesis();
@@ -1055,7 +1309,7 @@ ShareAccept ShareChainstateManager::ProcessShareMessage(const ShareMessage& msg,
         if (state.chain_shares.count(hash)) {
             return ShareAccept::DUPLICATE;
         }
-        if (AcceptChainShare(msg.share, msg.body.peaks, msg.body.fruits, reason, live)) return ShareAccept::ACCEPTED;
+        if (AcceptChainShare(msg.share, msg.body.peaks, msg.body.fruits, msg.body.txs, reason, live)) return ShareAccept::ACCEPTED;
         // the Freicoin block it builds on has not reached us yet: wait for it
         return reason == "share-unknown-prev-block" ? ShareAccept::MISSING : ShareAccept::INVALID;
     }
@@ -1093,7 +1347,7 @@ std::vector<ShareMessage> ShareChainstateManager::TakeOrphans()
 }
 
 namespace {
-constexpr uint64_t SHARECHAIN_DUMP_VERSION = 3;
+constexpr uint64_t SHARECHAIN_DUMP_VERSION = 4; // 4: chain shares carry transactions
 } // namespace
 
 bool ShareChainstateManager::DumpToFile(const fs::path& path) const
@@ -1122,6 +1376,7 @@ bool ShareChainstateManager::DumpToFile(const fs::path& path) const
         m.has_body = true;
         m.body.peaks = cs->peaks;
         m.body.fruits = cs->fruits;
+        m.body.txs = cs->txs;
         entries.push_back(std::move(m));
         seen.insert(cs->GetHash());
     }
@@ -1321,6 +1576,7 @@ std::vector<ShareMessage> ShareChainstateManager::GetShareRange(const std::vecto
         m.has_body = true;
         m.body.peaks = cs.peaks;
         m.body.fruits = cs.fruits;
+        m.body.txs = cs.txs;
         out.push_back(std::move(m));
         sent.insert(cs.GetHash());
     };
@@ -1406,9 +1662,176 @@ static RPCHelpMan getsharechaininfo() {
     };
 }
 
+namespace {
+UniValue ShareTxToJSON(const ShareTx& tx)
+{
+    UniValue o(UniValue::VOBJ);
+    o.pushKV("txid", tx.GetHash().GetHex());
+    if (tx.type == ShareTx::TRANSFER) {
+        o.pushKV("type", "transfer");
+        o.pushKV("from", ShareAddressString(tx.from));
+        o.pushKV("to", ShareAddressString(tx.to));
+        o.pushKV("uptoheight", (int64_t)tx.upto_height);
+        if (tx.IsLocked()) {
+            o.pushKV("hashlock", tx.hashlock.GetHex());
+            o.pushKV("expiry", (int64_t)tx.expiry);
+        }
+    } else {
+        o.pushKV("type", "claim");
+        o.pushKV("transfer", tx.transfer_id.GetHex());
+    }
+    return o;
+}
+
+void SubmitShareTx(const node::NodeContext& node, const ShareTx& tx) EXCLUSIVE_LOCKS_REQUIRED(::cs_main)
+{
+    std::string reason;
+    if (!node.sharechainman->AddShareTx(tx, reason)) {
+        throw JSONRPCError(RPC_VERIFY_REJECTED, "share transaction rejected: " + reason);
+    }
+    if (node.peerman) node.peerman->RelayShareTx(tx, -1);
+}
+} // namespace
+
+static RPCHelpMan transfershares() {
+    return RPCHelpMan{"transfershares",
+        "\nTransfer the share credits of an address to another address: every fruit the\n"
+        "address owns in the PPLNS window, listed at or below uptoheight, is paid to the\n"
+        "new owner from the next chain share on (doc/sharechain-transfers.md).  With a\n"
+        "hashlock the fruits are locked for the buyer until claimshares reveals the\n"
+        "preimage, or the lock lapses after expiry chain shares.\n",
+        {
+            {"privkey", RPCArg::Type::STR, RPCArg::Optional::NO, "private key (WIF) of the owning address (a bech32 key-hash address)"},
+            {"to", RPCArg::Type::STR, RPCArg::Optional::NO, "the new owner, a bech32 address"},
+            {"uptoheight", RPCArg::Type::NUM, RPCArg::DefaultHint{"the share chain tip"}, "fruits listed at or below this chain height"},
+            {"hashlock", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "SHA256 of the preimage the buyer must reveal (hex); omit for an unconditional transfer"},
+            {"expiry", RPCArg::Type::NUM, RPCArg::DefaultHint{"the chain's maximum lock"}, "with a hashlock: chain shares after the next one until the lock lapses"},
+        },
+        RPCResult{RPCResult::Type::STR_HEX, "txid", "the share transaction id"},
+        RPCExamples{HelpExampleCli("transfershares", "\"cV...\" \"fcrt1q...\"") + HelpExampleRpc("transfershares", "\"cV...\", \"fcrt1q...\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const node::NodeContext& node = EnsureAnyNodeContext(request.context);
+    if (!node.sharechainman) throw JSONRPCError(RPC_MISC_ERROR, "share chain is not enabled");
+    const CKey key = DecodeSecret(request.params[0].get_str());
+    if (!key.IsValid() || !key.IsCompressed()) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid private key (compressed WIF expected)");
+    const CTxDestination dest = DecodeDestination(request.params[1].get_str());
+    const std::optional<WitnessUnknown> to = IsValidDestination(dest) ? WitnessUnknownFromDestination(dest) : std::nullopt;
+    if (!to) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid destination (a bech32 address is required)");
+    const CPubKey pubkey = key.GetPubKey();
+    const CKeyID id = pubkey.GetID();
+    ShareTx tx;
+    tx.type = ShareTx::TRANSFER;
+    tx.from = WitnessUnknown(0u, std::vector<unsigned char>(id.begin(), id.end()));
+    tx.to = *to;
+    tx.pubkey.assign(pubkey.begin(), pubkey.end());
+    LOCK(::cs_main);
+    ShareChainstateManager& man = *node.sharechainman;
+    const std::shared_ptr<ShareIndex> tip = man.ActiveTip();
+    if (!tip) throw JSONRPCError(RPC_MISC_ERROR, "the share chain is empty");
+    tx.upto_height = request.params[2].isNull() ? tip->share.height : static_cast<uint32_t>(request.params[2].getInt<int>());
+    if (!request.params[3].isNull()) {
+        tx.hashlock = ParseHashV(request.params[3], "hashlock");
+        const uint32_t after = request.params[4].isNull() ? man.Params().MaxLock() : static_cast<uint32_t>(request.params[4].getInt<int>());
+        if (after == 0 || after > man.Params().MaxLock()) throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("expiry must be 1..%d chain shares", man.Params().MaxLock()));
+        tx.expiry = tip->share.height + 1 + after;
+    }
+    if (!key.Sign(tx.GetSigHash(man.Params().ChainId()), tx.signature)) throw JSONRPCError(RPC_MISC_ERROR, "signing failed");
+    SubmitShareTx(node, tx);
+    return tx.GetHash().GetHex();
+},
+    };
+}
+
+static RPCHelpMan claimshares() {
+    return RPCHelpMan{"claimshares",
+        "\nComplete a hash-locked share transfer by revealing its preimage: the locked fruits\n"
+        "become the buyer's from the next chain share on.\n",
+        {
+            {"txid", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "the transfer's share transaction id"},
+            {"preimage", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "32 bytes whose SHA256 is the transfer's hashlock (hex)"},
+        },
+        RPCResult{RPCResult::Type::STR_HEX, "txid", "the claim's share transaction id"},
+        RPCExamples{HelpExampleCli("claimshares", "\"txid\" \"preimage\"") + HelpExampleRpc("claimshares", "\"txid\", \"preimage\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const node::NodeContext& node = EnsureAnyNodeContext(request.context);
+    if (!node.sharechainman) throw JSONRPCError(RPC_MISC_ERROR, "share chain is not enabled");
+    ShareTx tx;
+    tx.type = ShareTx::CLAIM;
+    tx.transfer_id = ParseHashV(request.params[0], "txid");
+    tx.preimage = ParseHashV(request.params[1], "preimage");
+    LOCK(::cs_main);
+    SubmitShareTx(node, tx);
+    return tx.GetHash().GetHex();
+},
+    };
+}
+
+static RPCHelpMan listsharetxs() {
+    return RPCHelpMan{"listsharetxs",
+        "\nShare transactions waiting for a chain share, and the hash-locked transfers still\n"
+        "pending on the tip.\n",
+        {},
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::ARR, "pool", "transactions the next chain share may carry", {{RPCResult::Type::OBJ, "", "", {
+                {RPCResult::Type::STR_HEX, "txid", ""},
+                {RPCResult::Type::STR, "type", "transfer or claim"},
+                {RPCResult::Type::STR, "from", /*optional=*/true, ""},
+                {RPCResult::Type::STR, "to", /*optional=*/true, ""},
+                {RPCResult::Type::NUM, "uptoheight", /*optional=*/true, ""},
+                {RPCResult::Type::STR_HEX, "hashlock", /*optional=*/true, ""},
+                {RPCResult::Type::NUM, "expiry", /*optional=*/true, ""},
+                {RPCResult::Type::STR_HEX, "transfer", /*optional=*/true, "the transfer a claim completes"},
+            }}}},
+            {RPCResult::Type::ARR, "pending", "hash-locked transfers in the window, waiting for a claim", {{RPCResult::Type::OBJ, "", "", {
+                {RPCResult::Type::STR_HEX, "txid", ""},
+                {RPCResult::Type::STR, "type", ""},
+                {RPCResult::Type::STR, "from", ""},
+                {RPCResult::Type::STR, "to", ""},
+                {RPCResult::Type::NUM, "uptoheight", ""},
+                {RPCResult::Type::STR_HEX, "hashlock", ""},
+                {RPCResult::Type::NUM, "expiry", ""},
+                {RPCResult::Type::NUM, "height", "chain share that carried it"},
+                {RPCResult::Type::NUM, "fruits", "fruits it locks"},
+            }}}},
+        }},
+        RPCExamples{HelpExampleCli("listsharetxs", "") + HelpExampleRpc("listsharetxs", "")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const node::NodeContext& node = EnsureAnyNodeContext(request.context);
+    if (!node.sharechainman) throw JSONRPCError(RPC_MISC_ERROR, "share chain is not enabled");
+    LOCK(::cs_main);
+    const ShareChainstateManager& man = *node.sharechainman;
+    UniValue pool(UniValue::VARR);
+    for (const ShareTx& tx : man.PoolTxs()) pool.push_back(ShareTxToJSON(tx));
+    UniValue pending(UniValue::VARR);
+    const std::shared_ptr<ShareIndex> tip = man.ActiveTip();
+    if (tip) {
+        const ShareOwnership own = man.WindowAt(tip.get(), man.WindowBits(tip->share)).ownership;
+        for (const auto& item : own.pending) {
+            UniValue o = ShareTxToJSON(item.second.tx);
+            o.pushKV("height", (int64_t)item.second.height);
+            int64_t locked = 0;
+            for (const auto& f : own.fruits) if (f.second.lock == item.first) ++locked;
+            o.pushKV("fruits", locked);
+            pending.push_back(o);
+        }
+    }
+    UniValue obj(UniValue::VOBJ);
+    obj.pushKV("pool", pool);
+    obj.pushKV("pending", pending);
+    return obj;
+},
+    };
+}
+
 void RegisterShareChainRPCCommands(CRPCTable& t) {
     static const CRPCCommand commands[]{
         {"mining", &getsharechaininfo},
+        {"mining", &transfershares},
+        {"mining", &claimshares},
+        {"mining", &listsharetxs},
     };
     for (const auto& c : commands) {
         t.appendCommand(c.name, &c);
