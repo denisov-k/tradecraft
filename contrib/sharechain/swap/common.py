@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import subprocess
+import urllib.error
 import urllib.request
 
 # One unit of work is the work of a difficulty-1 share (2^32 hashes); getsharecredits and
@@ -27,10 +28,17 @@ class Rpc:
         self.n += 1
         body = json.dumps({"jsonrpc": "1.0", "id": self.n, "method": method, "params": list(params)}).encode()
         req = urllib.request.Request(self.url, body, {"Content-Type": "application/json", "Authorization": "Basic " + self.auth})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            reply = json.load(r)
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                reply = json.load(r)
+        except urllib.error.HTTPError as e:
+            # freicoind answers an RPC error with HTTP 500 and the error in the body
+            try:
+                reply = json.load(e)
+            except Exception:
+                raise RuntimeError(f"{method}: HTTP {e.code}")
         if reply.get("error"):
-            raise RuntimeError(f"{method}: {reply['error']}")
+            raise RuntimeError(f"{method}: {reply['error'].get('message', reply['error'])}")
         return reply["result"]
 
 

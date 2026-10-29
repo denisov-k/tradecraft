@@ -341,12 +341,15 @@ struct ShareTx {
     static constexpr uint8_t TRANSFER = 1;
     static constexpr uint8_t CLAIM = 2;
     uint8_t type{TRANSFER};
-    //! transfer: every fruit owned by `from` and listed at a chain height <=
-    //! upto_height goes to `to`; with a hashlock the fruits are locked for
-    //! `to` until a claim reveals the preimage, or until `expiry` passes.
+    //! transfer: `amount` of the credit `from` holds in the buckets listed at
+    //! heights min_height..max_height (newest first; a null amount is all of it)
+    //! goes to `to`; with a hashlock it is held for `to` until a claim
+    //! reveals the preimage, or returns to `from` when `expiry` passes.
     WitnessUnknown from{0u, std::vector<unsigned char>{}};
     WitnessUnknown to{0u, std::vector<unsigned char>{}};
-    uint32_t upto_height{0};
+    uint256 amount;
+    uint32_t min_height{0};
+    uint32_t max_height{0};
     uint32_t expiry{0};
     uint256 hashlock;
     std::vector<unsigned char> pubkey;    //!< 33 bytes; WitnessV0ShortHash(0, pubkey) is `from`
@@ -365,7 +368,7 @@ struct ShareTx {
             READWRITE(COMPACTSIZE(from_version), from_program, COMPACTSIZE(to_version), to_program);
             SER_READ(obj, obj.from = WitnessUnknown(static_cast<unsigned int>(from_version), from_program));
             SER_READ(obj, obj.to = WitnessUnknown(static_cast<unsigned int>(to_version), to_program));
-            READWRITE(obj.upto_height, obj.expiry, obj.hashlock, obj.pubkey, obj.signature);
+            READWRITE(obj.amount, obj.min_height, obj.max_height, obj.expiry, obj.hashlock, obj.pubkey, obj.signature);
         } else {
             READWRITE(obj.transfer_id, obj.preimage);
         }
@@ -381,38 +384,46 @@ struct ShareTx {
 uint256 TxsRoot(const std::vector<ShareTx>& txs);
 /** Stateless validity of a transaction: field sizes, the key hashing to `from`,
  *  the signature over the chain-bound sighash.  The chain-dependent rules are
- *  ShareOwnership::Apply's. */
+ *  ShareLedger::Apply's. */
 bool CheckShareTxForm(const ShareTx& tx, const uint256& chain_id, std::string& reason);
 /** SHA256 of a claim's preimage, what a hashlock holds. */
 uint256 ShareHashLock(const uint256& preimage);
 
-/** Who the fruits of a window belong to: the state built from the window
- *  floor to the anchor by listing fruits and applying the chain shares'
- *  transactions in order (doc/sharechain-transfers.md section 3). */
-struct ShareOwnership {
-    struct FruitState {
-        WitnessUnknown owner{0u, std::vector<unsigned char>{}};
-        uint32_t listed_at{0};
-        uint256 lock; //!< the pending transfer that locks it, or null
+/** The credit ledger of a window: work per address and listing height (a
+ *  bucket per height, so credit keeps its age and leaves with the window),
+ *  the hash-locked transfers in flight, and the transaction ids seen.  Built
+ *  from the window floor to the anchor by minting the listed fruits and
+ *  applying the chain shares' transactions in order
+ *  (doc/sharechain-transfers.md section 3). */
+struct ShareLedger {
+    struct Bucket {
+        arith_uint256 work;
+        int64_t fruits{0};
     };
-    std::map<uint256, FruitState> fruits;
-    struct Pending {
+    using Buckets = std::map<uint32_t, Bucket>; //!< by listing height
+    std::map<WitnessUnknown, Buckets> balance;
+    struct Lock {
         ShareTx tx;
         uint32_t height{0}; //!< chain share that carried it
+        Buckets held;       //!< taken from `from`; paid to `from` until claimed
     };
-    std::map<uint256, Pending> pending; //!< hash-locked transfers waiting for a claim
-    std::set<uint256> seen;             //!< transaction ids applied in this window
+    std::map<uint256, Lock> locks;
+    std::set<uint256> seen; //!< transaction ids applied in this window
 
-    //! Record a fruit listed at `height` by its miner.
-    void List(const uint256& fruit, const WitnessUnknown& miner, uint32_t height);
-    //! Release the locks of transfers that lapsed before `height`.
+    //! Credit a listed fruit to its miner's bucket for `height`.
+    void Mint(const WitnessUnknown& miner, uint32_t height, const arith_uint256& work);
+    //! Return what the transfers that lapsed before `height` held.
     void Expire(uint32_t height);
     //! Apply a transaction carried by the chain share at `height`.  With
-    //! `strict` every chain-dependent rule is checked and a violation fails
-    //! with `reason`; without, it is applied as far as it goes (near a trusted
-    //! base, where fruits may be unknown, and when recomputing a chain that
-    //! was validated when accepted).
+    //! `strict` every chain-dependent rule is checked, a violation fails with
+    //! `reason` and the ledger is left untouched; without, it is applied as far
+    //! as it goes (near a trusted base, where fruits may be unknown, and when
+    //! recomputing a chain that was validated when accepted).
     bool Apply(const ShareTx& tx, uint32_t height, uint32_t max_lock, bool strict, std::string& reason);
+    //! Work and fruits credited to each address: its buckets plus what its
+    //! locks still hold.
+    void Credits(std::map<WitnessUnknown, arith_uint256>& credits, std::map<WitnessUnknown, int64_t>& fruits) const;
+    static void Merge(Buckets& into, const Buckets& from);
 };
 
 struct ShareIndex;
@@ -443,8 +454,8 @@ using FruitLookup = std::function<std::optional<FruitInfo>(const uint256&)>;
 using ShareCredits = std::map<WitnessUnknown, arith_uint256>;
 ShareCredits ComputeShareCredits(const ShareIndex* anchor, const arith_uint256& window_work, size_t window_shares, const FruitLookup& lookup);
 
-/** The window in full: credits by owner (ComputeShareCredits is this map), the
- *  ownership state after the anchor, and figures for RPCs. */
+/** The window in full: credits by address (ComputeShareCredits is this map), the
+ *  ledger after the anchor, and figures for RPCs. */
 struct WindowCredits {
     ShareCredits credits;
     std::map<WitnessUnknown, int64_t> fruits_by_owner;
@@ -452,7 +463,7 @@ struct WindowCredits {
     size_t chain_shares{0};
     int64_t fruits{0};
     int low_height{-1};
-    ShareOwnership ownership;
+    ShareLedger ledger;
 };
 WindowCredits ComputeWindowCredits(const ShareIndex* anchor, const arith_uint256& window_work, size_t window_shares, const FruitLookup& lookup);
 

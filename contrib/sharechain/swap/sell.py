@@ -51,7 +51,7 @@ def main():
     if not args.no_lightning:
         ln = Lncli(args.lncli.split())
         invoice = ln.add_invoice(sats, preimage.hex(), f"share credits to {quote['address'][:12]}", args.timeout)
-    txid = rpc("transfershares", args.wif, quote["address"], quote["uptoheight"], hashlock, quote["expiry"])
+    txid = rpc("transfershares", args.wif, quote["address"], 0, quote["uptoheight"], 0, hashlock, quote["expiry"])
     print(f"transfer {txid} published, locked for {quote['address']}")
 
     offer = {"txid": txid}

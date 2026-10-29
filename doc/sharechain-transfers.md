@@ -1,7 +1,7 @@
 # Freicoin ShareChain, step 2: transferable share credits
 
 ```
-Status:  Implemented on branch `sharechain` (§3 and §7 step 1, chain id 05); the swap
+Status:  Implemented on branch `sharechain` (§3 and §7 step 1, chain id 06); the swap
          tooling (§4, §7 step 2) is not. Builds on doc/sharechain.md (step 1, live on
          mainnet since 2026-10-28). Written in answer to M. Friedenbach's note of 2026-10-29:
          on-chain PPLNS payouts are costly (part of what killed p2pool on bitcoin); let the
@@ -28,27 +28,28 @@ because the claim is settled by the block itself.
 ## 2. What a claim is
 
 Step 1 already keeps the ledger this needs, just not as a ledger: PPLNS walks the window and
-sums the work of every listed fruit per **miner address** (§9 of the spec). So:
+sums the work of every listed fruit per **miner address** (§9 of the spec). Step 2 makes it one:
 
 - A **fruit** is a claim on future coinbases: `work(f)` of the pool's reward, for every block
   the pool finds while `f` is in the window. Its expected value is `work(f) / work(block) ×
   reward` whatever the window is, because the number of blocks found while `f` is in the window
   is proportional to the window's work.
-- A fruit's **owner** is the address its credit goes to. Initially the miner that mined it.
-- A **transfer** changes the owner of a set of fruits. PPLNS is unchanged except that it credits
-  `owner(f)` instead of `miner(f)`.
+- The **ledger** (`ShareLedger`) is work per address and listing height: listing a fruit mints
+  its work into its miner's bucket for that height. A bucket keeps its age, so credit still
+  leaves with the window; what the ledger adds is that an address's credit is an **amount**
+  that can be moved in parts, to anyone.
+- A **transfer** moves an amount of credit from one address to another, newest buckets first,
+  within a height range. PPLNS credits whatever the ledger says at the anchor.
 
-This keeps PPLNS as it is (hop-proof, window-bounded, no debt) and makes the accounting
-**account-like at the edges** without an account model inside: a transfer moves a whole
-position (every fruit of an address up to a height), not individual fruits, and the coinbase
-already aggregates per address. The state a verifier adds is one owner per fruit in the window,
-20 bytes × at most a few ten thousand fruits, recomputable from the window itself.
+Credit is a flow, not a stock: a block does not consume it, it pays every bucket in the window
+each time, so there is no moment at which "a chunk of shares gets redeemed" that a transfer
+would have to race. A transfer only changes who the next block pays. That is what makes an
+account model workable here: balances need no settlement step, they age out.
 
-Why not balances (an account ledger of FRC owed per address, paid down by each block)? A balance
-is a debt: it does not expire, so a miner who leaves, or a burst of hashrate at a lower
-difficulty, is owed forever by whoever mines later, and the pool's luck becomes a liability. The
-window is what makes p2pool-style payout trust-free; the ledger should sit on top of it, not
-replace it.
+Why not balances in FRC (coin owed per address, paid down by each block)? A balance is a debt:
+it does not expire, so a miner who leaves, or a burst of hashrate at a lower difficulty, is
+owed forever by whoever mines later, and the pool's luck becomes a liability. The window is
+what makes p2pool-style payout trust-free; the ledger sits on top of it.
 
 ## 3. Transactions in the share chain
 
@@ -63,18 +64,21 @@ listed, in list order.
 type         uint8     1
 from         witness program (the owner: a v0 key hash, the only thing a key signs for)
 to           witness program (version ≤ 16, 2–40 bytes)
-upto_height  uint32    fruits listed at or below this chain height
+amount       uint256   work to move, in hashes; null = everything in the range
+min_height   uint32    buckets listed at or above this chain height
+max_height   uint32    ... and at or below this one
 expiry       uint32    chain height after which the transfer lapses (hash-locked only, else 0)
 hashlock     uint256   SHA256 of the claim's preimage; null = unconditional
 pubkey       33 bytes  compressed; `WitnessV0ShortHash(0, pubkey)` (Freicoin's P2WPK program) is `from`
 signature    DER ECDSA by `pubkey` over SHA256d("SHARECHAIN-TRANSFER" ‖ CHAIN_ID ‖ the fields above)
 ```
 
-`txid` = SHA256d of the serialization. Semantics: every fruit **currently owned by `from`**
-and listed at height ≤ `upto_height` (a fruit is listed within `R` of its anchor, so this
-is what a ledger naturally keys on) becomes owned by `to`. Unconditional: effective in this chain share. Hash-locked: the fruits are
-**locked** (no other transfer by `from` can move them) until a `claim` reveals the preimage or
-`expiry` passes, and ownership moves to `to` in the chain share that carries the claim.
+`txid` = SHA256d of the serialization. Semantics: `amount` of `from`'s credit in the buckets
+listed at `min_height..max_height`, taken from the newest bucket down (the buyer gets the credit
+with the most window life left; the seller keeps the oldest), becomes `to`'s in the same
+buckets, so it keeps its age. Unconditional: effective in this chain share. Hash-locked: the
+amount is **held** by the transfer, still paid to `from`, until a `claim` reveals the preimage
+(then it is `to`'s) or `expiry` passes (then it is `from`'s again).
 
 ### 3.2 `claim`
 
@@ -93,14 +97,16 @@ witness program, `from ≠ to` [`tx-self-transfer`]; `pubkey` compressed and has
 [`tx-bad-pubkey`, `tx-key-mismatch`]; the signature verifies [`tx-bad-signature`]; a hashlock
 with an expiry or neither [`tx-bad-lock`]; a claim names a transfer [`tx-bad-claim`].
 
-Chain-dependent (`ShareOwnership::Apply`, over the window's state after the parent with this
-share's fruits listed, `Expire(height)` applied):
+Chain-dependent (`ShareLedger::Apply`, over the window's ledger after the parent with this
+share's fruits minted, `Expire(height)` applied):
 
 1. A transaction id appears at most once in the window [`tx-replay`].
-2. `upto_height` ≤ the carrying chain share's height [`tx-future-height`].
+2. `max_height` ≤ the carrying chain share's height [`tx-future-height`]; `min_height ≤
+   max_height` [`tx-bad-range`].
 3. A hash-locked transfer has `height < expiry ≤ height + MAX_LOCK` [`tx-bad-expiry`].
-4. The transfer moves (or locks) at least one fruit; locked fruits do not move
-   [`tx-moves-nothing`]. A no-op is invalid, so spam costs work (3.4).
+4. The range holds credit of `from` [`tx-moves-nothing`] and, with an amount, at least that
+   much [`tx-insufficient-credit`]; held (locked) credit is not available. A no-op is
+   invalid, so spam costs work (3.4).
 5. A claim names a transfer still pending, i.e. carried, not claimed and not lapsed
    (`expiry ≥ height`) [`tx-unknown-transfer`], with `SHA256(preimage) = hashlock`
    [`tx-bad-preimage`].
@@ -110,11 +116,11 @@ share's fruits listed, `Expire(height)` applied):
    chain-dependent rules are not applied, as the payout check is not: the node lacks the
    fruits they would touch.
 
-Ownership is a function of the chain: every walk of the window (`ComputeWindowCredits`)
-rebuilds it from the window floor by listing fruits and applying transactions chain share by
+The ledger is a function of the chain: every walk of the window (`ComputeWindowCredits`)
+rebuilds it from the window floor by minting fruits and applying transactions chain share by
 chain share, so a fork switch needs nothing beyond what PPLNS already does. Every transaction
-that touches a fruit of a window lies inside that window, because it comes at or after the
-fruit's listing.
+that touches credit of a window lies inside that window, because it comes at or after the
+listing that minted the credit.
 
 ### 3.4 Who includes transactions, and why
 
@@ -184,10 +190,11 @@ The same transfer with an on-chain HTLC (bitcoin or Freicoin script) works for t
 ## 7. Plan
 
 1. **Transfers in the share chain** (`transfer`, `claim`, owner lookup in PPLNS, rules of §3),
-   RPCs: `transfershares privkey to [uptoheight] [hashlock] [expiry]` (signs with a WIF key,
-   `expiry` in chain shares after the next one), `claimshares txid preimage`, `listsharetxs`
-   (pool and pending locks); `getsharecredits` reports credits by owner. Unit test
-   `sharechain_transfers`, functional test `feature_sharechain.py`. Chain id suffix 05.
+   RPCs: `transfershares privkey to [amount] [maxheight] [minheight] [hashlock] [expiry]`
+   (signs with a WIF key; `amount` in difficulty-1 share units, 0 = all; `expiry` in chain
+   shares after the next one), `claimshares txid preimage`, `listsharetxs` (pool and held
+   locks); `getsharecredits` reports credits by address. Unit test `sharechain_transfers`,
+   functional test `feature_sharechain.py`. Chain id suffix 06.
    **Done 2026-10-29.**
 2. **Swap tooling** in `contrib/sharechain/swap/`: a market-maker daemon (quote, verify
    transfers, pay invoices through lnd/CLN, broadcast claims) and a miner-side script (invoice,

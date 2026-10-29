@@ -53,7 +53,7 @@ difficulty adjustment and the PPLNS payout function, with test vectors, as imple
 
 | Name | main | regtest | Meaning |
 |---|---|---|---|
-| `CHAIN_ID` | `"SHARECHAIN-MAIN" ‖ 00… ‖ 05` | `"SHARECHAIN-REGTEST" ‖ 00… ‖ 05` | `share_chain_path`: key of the share commitment in the coinbase Merkle hash map (uint256) |
+| `CHAIN_ID` | `"SHARECHAIN-MAIN" ‖ 00… ‖ 06` | `"SHARECHAIN-REGTEST" ‖ 00… ‖ 06` | `share_chain_path`: key of the share commitment in the coinbase Merkle hash map (uint256) |
 | `COMMIT_ID` | `4b 4a 49 48` | same | 4-byte tag after the commitment root in the coinbase (skeleton) |
 | `SHARE_BITS` | `0x1b068db2` (difficulty 10 000) | `0x207fffff` | initial share target; also the easiest target the chain allows |
 | `M` (`CHAIN_FACTOR`) | 6 | 4 | chain target = share target / `M` |
@@ -373,7 +373,7 @@ blocks: a found Freicoin block does not reset it.
   retargeted share target the next share must meet); `getsharecredits [amount]` (Vintage
   Hash) → the window as the template sees it: size and fill (`windowbits, windowk,
   windowshares, windowwork, filledwork, filled, tipheight, lowheight, chainshares,
-  fruits, pending`) and per owner `fruits, work, share, payout` for a block found now;
+  fruits, pending`) and per address `fruits, work, share, payout` for a block found now;
   `transfershares`, `claimshares`, `listsharetxs` (doc/sharechain-transfers.md §7).
 
 ## 11. Security considerations
@@ -449,7 +449,7 @@ Everything in §4–§10 is implemented in freicoind on top of 28.1 and the `tmp
   `src/test/sharechain_tests.cpp`), `ShareChainstateManager` (fruit and chain-share
   acceptance, listable fruits, template state, LWMA retarget, orphan pool, range sync,
   pruning, trusted base and verified-work tip selection, `sharechain.dat` v4 with the saved
-  tip), share transactions and ownership (`ShareTx`, `ShareOwnership`,
+  tip), share transactions and the credit ledger (`ShareTx`, `ShareLedger`,
   `ComputeWindowCredits`, the transaction pool), `getsharechaininfo`, `transfershares`,
   `claimshares`, `listsharetxs`; `getsharecredits` (Vintage Hash) in `src/stratum.cpp`;
 - `src/stratum.cpp`: payouts + commitment in the coinbase before the segwit commitment, share

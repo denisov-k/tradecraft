@@ -36,7 +36,7 @@ echo "== 3. market maker on node2 (trust mode), seller on node1"
 docker rm -f frc-scp2p-maker >/dev/null 2>&1 || true
 docker run -d --name frc-scp2p-maker --network frc-scp2p_p2pnet -v "$(pwd)/../swap:/swap:ro" python:3.12-slim python -u /swap/maker.py \
   --rpc http://node2:28638 --rpcuser frc --rpcpassword frcpass --address "$MAKER" --sats-per-unit 1000000000000 --min-sats 0 \
-  --expiry 20 --min-left 3 --no-lightning --listen 0.0.0.0:9640 >/dev/null
+  --expiry 40 --min-left 3 --no-lightning --listen 0.0.0.0:9640 >/dev/null
 sleep 3
 $PY /swap/sell.py --rpc http://node1:28638 --rpcuser frc --rpcpassword frcpass --wif "$WIF" --address "$SELLER" \
   --maker http://frc-scp2p-maker:9640 --no-lightning --timeout 300

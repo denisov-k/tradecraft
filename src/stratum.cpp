@@ -2280,7 +2280,7 @@ static RPCHelpMan getsharecredits() {
     obj.pushKV("tipheight", sc_tip ? (int64_t)sc_tip->share.height : -1);
     obj.pushKV("lowheight", low_height);
     obj.pushKV("chainshares", (int64_t)walked);
-    obj.pushKV("pending", (int64_t)wc.ownership.pending.size());
+    obj.pushKV("pending", (int64_t)wc.ledger.locks.size());
     obj.pushKV("fruits", fruits_in_window);
     obj.pushKV("amount", ValueFromAmount(total));
     UniValue arr(UniValue::VARR);

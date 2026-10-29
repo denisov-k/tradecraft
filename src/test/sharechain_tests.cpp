@@ -599,12 +599,14 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
     const WitnessV0ShortHash keyid(0, pubkey);
     const WitnessUnknown MINER_K(0u, std::vector<unsigned char>(keyid.begin(), keyid.end()));
     const uint256 chain_id = ShareParams().ChainId();
-    const auto transfer = [&](const WitnessUnknown& to, uint32_t upto, const uint256& hashlock, uint32_t expiry) {
+    const auto transfer = [&](const WitnessUnknown& to, uint32_t upto, const uint256& hashlock, uint32_t expiry, uint64_t amount = 0) {
         ShareTx tx;
         tx.type = ShareTx::TRANSFER;
         tx.from = MINER_K;
         tx.to = to;
-        tx.upto_height = upto;
+        tx.min_height = 0;
+        tx.max_height = upto;
+        tx.amount = ArithToUint256(arith_uint256(amount));
         tx.hashlock = hashlock;
         tx.expiry = expiry;
         tx.pubkey.assign(pubkey.begin(), pubkey.end());
@@ -636,7 +638,7 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
         return it == by_owner.end() ? int64_t{0} : it->second;
     };
     const auto tip_height = [&]() { return m_man->ActiveTip()->share.height; };
-    const auto pending = [&]() { return m_man->WindowAt(m_man->ActiveTip().get(), bits).ownership.pending.size(); };
+    const auto pending = [&]() { return m_man->WindowAt(m_man->ActiveTip().get(), bits).ledger.locks.size(); };
 
     for (int i = 0; i < 4; ++i) round(MINER_K);
     chain_share(MINER_B); // lists K's last chain share: everything K mined is now credited
@@ -731,6 +733,20 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
     BOOST_CHECK_EQUAL(reason, "tx-unknown-transfer");
     BOOST_CHECK_EQUAL(owned(MINER_K), k_kept);
     BOOST_CHECK_GT(paid(MINER_K), 0);
+
+    // A partial transfer: an amount, newest buckets first (a regtest fruit is 2 hashes of
+    // work; each round minted a fruit and a chain share into one bucket: 4 hashes).
+    const int64_t a_now = owned(MINER_A);
+    const ShareTx t4 = transfer(MINER_A, tip_height(), uint256(), 0, 6);
+    BOOST_REQUIRE_MESSAGE(m_man->AddShareTx(t4, reason), reason);
+    c = chain_share(MINER_B);
+    BOOST_REQUIRE_EQUAL(c.txs.size(), 1U);
+    BOOST_CHECK_EQUAL(owned(MINER_K), k_kept - 3);
+    BOOST_CHECK_EQUAL(owned(MINER_A), a_now + 3);
+    // More than the address holds is refused outright.
+    bad = transfer(MINER_A, tip_height(), uint256(), 0, 1000);
+    BOOST_CHECK(!m_man->AddShareTx(bad, reason));
+    BOOST_CHECK_EQUAL(reason, "tx-insufficient-credit");
 
     // A chain share carrying a bad transaction, or lying about its list, is rejected.
     auto st = m_man->GetTemplateState(MINER_B, 50 * COIN, bits);
