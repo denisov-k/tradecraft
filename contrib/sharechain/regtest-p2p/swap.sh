@@ -13,7 +13,7 @@ PY="docker run --rm --network frc-scp2p_p2pnet -v $(pwd)/../swap:/swap:ro python
 wait_rpc() { local n=0; until $1 getblockchaininfo >/dev/null 2>&1; do sleep 2; n=$((n+1)); if [ $n -gt 60 ]; then echo "timeout"; return 1; fi; done; return 0; }
 owners() { $1 getsharecredits | python3 -c "import sys,json; print({c['address'][:14]: c['fruits'] for c in json.load(sys.stdin)['credits']})"; }
 
-read -r WIF SELLER < <(python3 ../swap/newkey.py regtest)
+if [ -n "${SELLER_WIF:-}" ]; then WIF="$SELLER_WIF"; SELLER="$SELLER_ADDR"; else read -r WIF SELLER < <(python3 ../swap/newkey.py regtest); fi
 echo "== 0. seller key address $SELLER"
 
 echo "== 1. bootstrap: node1 mines to the seller's key address, node2 to its wallet address"
