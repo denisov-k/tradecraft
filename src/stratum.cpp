@@ -2196,9 +2196,92 @@ static RPCHelpMan getstratuminfo() {
     };
 }
 
+// Vintage Hash local patch: read-only view of the PPLNS window.
+static RPCHelpMan getsharecredits() {
+    return RPCHelpMan{"getsharecredits",
+        "\nPPLNS window of the active share chain: work credited to each address,\n"
+        "and what a block found now would pay (same credits the stratum template uses).\n",
+        {
+            {"amount", RPCArg::Type::AMOUNT, RPCArg::Optional::OMITTED, "coinbase value to split (default: subsidy of the next block, no fees)"},
+        },
+        RPCResult{RPCResult::Type::ANY, "", "window totals plus one entry per address"},
+        RPCExamples{
+            HelpExampleCli("getsharecredits", "")
+            + HelpExampleRpc("getsharecredits", "")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    if (!g_context || !g_context->sharechainman || !g_context->chainman) {
+        throw JSONRPCError(RPC_MISC_ERROR, "share chain is not enabled");
+    }
+    LOCK(::cs_main);
+    const ShareChainstateManager& man = *g_context->sharechainman;
+    const CBlockIndex* tip = g_context->chainman->ActiveChain().Tip();
+    if (!tip) {
+        throw JSONRPCError(RPC_MISC_ERROR, "no block chain tip");
+    }
+    CBlockHeader header;
+    header.hashPrevBlock = tip->GetBlockHash();
+    header.nBits = tip->nBits;
+    const uint32_t fallback = tip->m_aux_pow.IsNull() ? tip->nBits : tip->m_aux_pow.m_commit_bits;
+    const uint32_t frc_bits = man.WindowBitsFor(tip->GetBlockHash(), header, fallback);
+    const arith_uint256 window = GetShareWork(frc_bits) * man.Params().WindowK();
+    const CAmount total = request.params[0].isNull() ? GetBlockSubsidy(tip->nHeight + 1, Params().GetConsensus()) : AmountFromValue(request.params[0]);
+
+    // Same walk as ComputeShareCredits, also counting fruits per address.
+    std::map<WitnessUnknown, arith_uint256> credits;
+    std::map<WitnessUnknown, int64_t> nfruits;
+    arith_uint256 acc = 0;
+    int64_t fruits_in_window = 0;
+    int64_t low_height = -1;
+    const std::shared_ptr<ShareIndex> sc_tip = man.ActiveTip();
+    for (const ShareIndex* cur = sc_tip.get(); cur && acc < window; cur = cur->prev_share.get()) {
+        low_height = cur->share.height;
+        for (const uint256& f : cur->fruits) {
+            const std::optional<FruitInfo> info = man.LookupFruit(f);
+            if (!info) continue;
+            const arith_uint256 w = GetShareWork(info->bits);
+            credits[info->miner] += w;
+            nfruits[info->miner] += 1;
+            acc += w;
+            ++fruits_in_window;
+        }
+    }
+    const auto payouts = ComputeSharePayouts(credits, total, g_default_share_address, man.Params().Dust(), man.Params().MaxPayees());
+    std::map<WitnessUnknown, CAmount> pay;
+    for (const auto& p : payouts) pay[p.first] += p.second;
+
+    UniValue obj(UniValue::VOBJ);
+    obj.pushKV("blockheight", (int64_t)tip->nHeight);
+    obj.pushKV("windowbits", strprintf("%08x", frc_bits));
+    obj.pushKV("windowk", (int64_t)man.Params().WindowK());
+    obj.pushKV("windowwork", window.getdouble());
+    obj.pushKV("filledwork", acc.getdouble());
+    obj.pushKV("filled", window == 0 ? 0.0 : std::min(1.0, acc.getdouble() / window.getdouble()));
+    obj.pushKV("tipheight", sc_tip ? (int64_t)sc_tip->share.height : -1);
+    obj.pushKV("lowheight", low_height);
+    obj.pushKV("fruits", fruits_in_window);
+    obj.pushKV("amount", ValueFromAmount(total));
+    UniValue arr(UniValue::VARR);
+    for (const auto& c : credits) {
+        UniValue e(UniValue::VOBJ);
+        e.pushKV("address", EncodeDestination(c.first));
+        e.pushKV("fruits", nfruits[c.first]);
+        e.pushKV("work", c.second.getdouble());
+        e.pushKV("share", acc == 0 ? 0.0 : c.second.getdouble() / acc.getdouble());
+        e.pushKV("payout", ValueFromAmount(pay.count(c.first) ? pay[c.first] : 0));
+        arr.push_back(e);
+    }
+    obj.pushKV("credits", arr);
+    return obj;
+},
+    };
+}
+
 void RegisterStratumRPCCommands(CRPCTable& t) {
     static const CRPCCommand commands[]{
         {"mining", &getstratuminfo},
+        {"mining", &getsharecredits},
     };
     for (const auto& c : commands) {
         t.appendCommand(c.name, &c);
