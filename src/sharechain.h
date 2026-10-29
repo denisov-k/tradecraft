@@ -41,8 +41,11 @@ struct ShareChainParams {
     uint32_t ChainFactor() const { return m_chain_factor; }
     //! How many chain heights after its anchor a fruit stays listable (R).
     uint32_t Recency() const { return m_recency; }
-    //! PPLNS window = WindowK * work(Freicoin aux target).
+    //! PPLNS window = WindowK * work(Freicoin aux target), over at most WindowShares() chain shares.
     uint32_t WindowK() const { return m_window_k; }
+    //! Upper bound of the window in chain shares (p2pool's CHAIN_LENGTH): a pool
+    //! far smaller than the network would otherwise carry weeks of shares.
+    size_t WindowShares() const { return m_window_shares; }
     CAmount Dust() const { return m_dust; }
     size_t MaxPayees() const { return m_max_payees; }
     //! Key of the share commitment in the coinbase Merkle hash map.
@@ -61,6 +64,7 @@ protected:
     uint32_t m_chain_factor{6};
     uint32_t m_recency{10};
     uint32_t m_window_k{4};
+    size_t m_window_shares{4320};
     CAmount m_dust{1000};
     size_t m_max_payees{1000};
     uint256 m_chain_id;
@@ -337,10 +341,11 @@ using FruitLookup = std::function<std::optional<FruitInfo>(const uint256&)>;
 /** Work credited to each miner over the PPLNS window: walk the chain shares
  *  backwards from `anchor`, adding the work of every fruit they list, until
  *  the accumulated work reaches `window_work` (the chain share that crosses
- *  the boundary is counted in full).  Fruits the lookup does not know are
+ *  the boundary is counted in full) or `window_shares` chain shares have
+ *  been walked, whichever comes first.  Fruits the lookup does not know are
  *  skipped; a verifier must make sure they are all known first. */
 using ShareCredits = std::map<WitnessUnknown, arith_uint256>;
-ShareCredits ComputeShareCredits(const ShareIndex* anchor, const arith_uint256& window_work, const FruitLookup& lookup);
+ShareCredits ComputeShareCredits(const ShareIndex* anchor, const arith_uint256& window_work, size_t window_shares, const FruitLookup& lookup);
 
 /** Turn credits into coinbase payouts (doc/sharechain.md section 9):
  *  credits are scaled so their sum fits in 190 bits; out_m = floor(total *

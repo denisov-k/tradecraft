@@ -53,13 +53,14 @@ difficulty adjustment and the PPLNS payout function, with test vectors, as imple
 
 | Name | main | regtest | Meaning |
 |---|---|---|---|
-| `CHAIN_ID` | `"SHARECHAIN-MAIN" ‖ 00… ‖ 03` | `"SHARECHAIN-REGTEST" ‖ 00… ‖ 03` | `share_chain_path`: key of the share commitment in the coinbase Merkle hash map (uint256) |
+| `CHAIN_ID` | `"SHARECHAIN-MAIN" ‖ 00… ‖ 04` | `"SHARECHAIN-REGTEST" ‖ 00… ‖ 04` | `share_chain_path`: key of the share commitment in the coinbase Merkle hash map (uint256) |
 | `COMMIT_ID` | `4b 4a 49 48` | same | 4-byte tag after the commitment root in the coinbase (skeleton) |
 | `SHARE_BITS` | `0x1b068db2` (difficulty 10 000) | `0x207fffff` | initial share target; also the easiest target the chain allows |
 | `M` (`CHAIN_FACTOR`) | 6 | 4 | chain target = share target / `M` |
 | `R` (`RECENCY`) | 10 | 10 | a fruit stays listable for `R` chain heights after its anchor |
 | `SHARE_INTERVAL` | 10 s | n/a | target spacing of shares (retarget on main only) |
 | `WINDOW_K` | 4 | 4 | PPLNS window = `WINDOW_K` × work(Freicoin target of the template) |
+| `WINDOW_SHARES` | 4320 | 48 | the window spans at most this many chain shares (3 days at 60 s on main) |
 | `MAX_PAYEES` | 1000 | 1000 | maximum payout outputs in a coinbase (bounded by the block, not by the share: §4.4) |
 | `DUST` | 1000 kria | 1000 | outputs below this are dropped and redistributed |
 | `MAX_TEMPLATE_AGE` | 2 | 2 | a live share must build on one of the last `MAX_TEMPLATE_AGE` Freicoin blocks |
@@ -305,11 +306,18 @@ Inputs: the anchor `A`, `TOTAL` (kria, the coinbase's total), the builder's addr
 window work `W = WINDOW_K × work(T)` where `T` is the target the block's miners face on top of
 `hashPrevBlock`: the aux target (`GetNextWorkRequiredAux`) once merge mining is active, the
 native one before. It is taken from the block chain, never from the share, so template,
-verifier and pruning agree.
+verifier and pruning agree. The window spans at most `WINDOW_SHARES` chain shares: for a
+pool mining a fraction `p` of the network the work rule alone would hold
+`WINDOW_K × 10 min / p` of shares (46 days at 0.06 %, growing as the network grows), which
+is state every node must keep and walk on every check; the cap holds it to 3 days, as
+p2pool's `CHAIN_LENGTH` does, and only binds for pools below about 1 % of the network. PPLNS
+pays each share its work divided by the block's work in expectation whatever the window is,
+so the cap changes who a block pays (the last 3 days), not what a share is worth.
 
 1. **Credits** (`ComputeShareCredits`): walk the chain shares backwards from `A`; for each, add
    `work(f.bits)` to `f.miner` for every fruit `f` it lists; stop after the chain share whose
-   fruits bring the accumulated work to `W` (counted in full). Chain shares earn nothing for
+   fruits bring the accumulated work to `W` (counted in full) or after `WINDOW_SHARES` chain
+   shares, whichever comes first. Chain shares earn nothing for
    being chain shares (they are listed as fruits by a later chain share like any other).
    Unknown fruits are skipped, so a verifier must hold every listed fruit (§6.2 rule 4
    guarantees it).
@@ -353,7 +361,8 @@ blocks: a found Freicoin block does not reset it.
   a peer may simply be behind.
 - **Persistence**: `sharechain.dat` (version 2: tip hash, then every chain share with body and
   every fruit) written at shutdown, loaded after block headers are available.
-- **Pruning** (`Prune`): keep chain shares from the window floor minus `R` minus 64 heights;
+- **Pruning** (`Prune`): keep chain shares from the window floor (work or `WINDOW_SHARES`,
+  whichever ends it first) minus `R` minus 64 heights;
   drop fruits whose anchor is gone. The lowest kept chain share becomes the node's base (§6.3)
   and is where `getshrchain` answers start. `getsharechaininfo.baseheight` reports it.
 - **RPC**: `getsharechaininfo` → `enabled, network, sharebits` (initial target), `chainfactor,
@@ -386,12 +395,15 @@ blocks: a found Freicoin block does not reset it.
   `DUST` bound the cost.
 - **Window size from the template's `nBits`**: the window is sized by the `nBits` in the
   witness; rule §6.1.6 requires it to be the Freicoin difficulty at `hashPrevBlock`, so a miner
-  cannot shrink the window by claiming an easier Freicoin target.
+  cannot shrink the window by claiming an easier Freicoin target. `WINDOW_SHARES` bounds it
+  from above, so a small pool's nodes cannot be made to hold and walk months of shares.
 
 ## 12. Open questions
 
 1. `WINDOW_K` (3–5), and whether to size the window by Freicoin-block work (as here) or by a
-   fixed share count as p2pool does.
+   fixed share count as p2pool does. **Settled 2026-10-29: both, the smaller wins (§9).
+   Live at 0.06 % of the network the work rule gave a 46-day window; `WINDOW_SHARES` = 4320
+   caps it at 3 days of chain shares. `WINDOW_K` stays 4.**
 2. `M` and `R` on main: `M = 6`, `R = 10` give a 60 s chain-share interval and a 10-minute
    listing window; the simulation in doc/sharechain-uncles.md used `R = 5–10`.
 3. `MAX_TEMPLATE_AGE = 2` and the timestamp slack (`−10 min / +2 h`).
@@ -445,7 +457,7 @@ Everything in §4–§10 is implemented in freicoind on top of 28.1 and the `tmp
 Unit tests (`src/test/sharechain_tests.cpp`): PPLNS vectors and edge cases, acceptance and
 payouts of fruits and chain shares, every rejection reason of §6, prune of a 90-share chain
 followed by a fresh peer syncing it from the base and a reload of the pruned dump, verified
-work, LWMA direction and clamps. Verified on regtest (`contrib/sharechain/regtest*`, Docker): single node with two miners,
+work, the `WINDOW_SHARES` cap of the window, LWMA direction and clamps. Verified on regtest (`contrib/sharechain/regtest*`, Docker): single node with two miners,
 merge mining through mergemine bitcoind (aux fruits and chain shares, Freicoin blocks found),
 two nodes with relay and restart. `test/functional/feature_sharechain.py` (in
 `test_runner.py`) covers two mining nodes converging on one share chain, coinbase payouts and

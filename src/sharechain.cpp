@@ -42,7 +42,8 @@ struct MainShareChainParams : public ShareChainParams {
     MainShareChainParams() {
         is_valid = true;
         m_share_chain_type = ShareChainType::MAIN;
-        m_chain_id = uint256S("5348415245434841494e2d4d41494e0000000000000000000000000000000003"); // 'SHARECHAIN-MAIN' || 3 (2: aux identity = parent hash; 3: committed payouts)
+        m_chain_id = uint256S("5348415245434841494e2d4d41494e0000000000000000000000000000000004"); // 'SHARECHAIN-MAIN' || 4 (2: aux identity = parent hash; 3: committed payouts; 4: window capped at WindowShares)
+        m_window_shares = 4320;      // 3 days of chain shares at 60 s
         m_share_bits = 0x1b068db2;   // difficulty 10000: ~43 TH for 10 s shares; also the easiest target allowed
         m_retarget = true;
         m_share_interval = 10;
@@ -57,7 +58,8 @@ struct RegtestShareChainParams : public ShareChainParams {
         m_chain_factor = 4;
         m_recency = 10;
         m_retarget = false;
-        m_chain_id = uint256S("5348415245434841494e2d5245475445535400000000000000000000000003");
+        m_chain_id = uint256S("5348415245434841494e2d5245475445535400000000000000000000000004");
+        m_window_shares = 48;        // small enough for a unit test to cross it
     }
 };
 
@@ -205,11 +207,12 @@ arith_uint256 GetShareWork(uint32_t bits)
     return (~target / (target + 1)) + 1;
 }
 
-ShareCredits ComputeShareCredits(const ShareIndex* anchor, const arith_uint256& window_work, const FruitLookup& lookup)
+ShareCredits ComputeShareCredits(const ShareIndex* anchor, const arith_uint256& window_work, size_t window_shares, const FruitLookup& lookup)
 {
     ShareCredits credits;
     arith_uint256 acc = 0;
-    for (const ShareIndex* cur = anchor; cur && acc < window_work; cur = cur->prev_share.get()) {
+    size_t walked = 0;
+    for (const ShareIndex* cur = anchor; cur && acc < window_work && walked < window_shares; cur = cur->prev_share.get(), ++walked) {
         for (const uint256& fruit : cur->fruits) {
             std::optional<FruitInfo> info = lookup(fruit);
             if (!info) {
@@ -460,10 +463,11 @@ namespace {
 /** Whether the PPLNS window walked back from `anchor` runs into a trusted base
  *  (a chain share whose own anchor was never seen) before it is full: the
  *  credits below are history this node does not have. */
-bool WindowReachesBase(const ShareIndex* anchor, const arith_uint256& window, const FruitLookup& lookup)
+bool WindowReachesBase(const ShareIndex* anchor, const arith_uint256& window, size_t window_shares, const FruitLookup& lookup)
 {
     arith_uint256 acc = 0;
-    for (const ShareIndex* cur = anchor; cur && acc < window; cur = cur->prev_share.get()) {
+    size_t walked = 0;
+    for (const ShareIndex* cur = anchor; cur && acc < window && walked < window_shares; cur = cur->prev_share.get(), ++walked) {
         for (const uint256& f : cur->fruits) {
             const std::optional<FruitInfo> info = lookup(f);
             if (info) acc += GetShareWork(info->bits);
@@ -490,13 +494,13 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
     // native nBits; with two payees every share failed share-bad-payout.)
     const arith_uint256 window = GetShareWork(WindowBits(share)) * Params().WindowK();
     const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
-    if (WindowReachesBase(anchor, window, lookup)) {
+    if (WindowReachesBase(anchor, window, Params().WindowShares(), lookup)) {
         // Below our trusted base: the share was built from credits we never saw, so
         // its split cannot be checked.  It is history; its own payout only matters
         // if it became a Freicoin block, which the block chain validated.
         return true;
     }
-    ShareCredits credits = ComputeShareCredits(anchor, window, lookup);
+    ShareCredits credits = ComputeShareCredits(anchor, window, Params().WindowShares(), lookup);
     const auto payouts = ComputeSharePayouts(std::move(credits), total, share.miner, Params().Dust(), Params().MaxPayees());
     // The coinbase is exactly these payouts plus the commitment: rebuild it and
     // compare with the txid the proof of work covers.
@@ -656,7 +660,7 @@ ShareChainstateManager::TemplateState ShareChainstateManager::GetTemplateState(c
     }
     const arith_uint256 window = GetShareWork(frc_bits) * Params().WindowK();
     const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
-    st.credits = ComputeShareCredits(tip.get(), window, lookup);
+    st.credits = ComputeShareCredits(tip.get(), window, Params().WindowShares(), lookup);
     st.payouts = ComputeSharePayouts(st.credits, total, miner, Params().Dust(), Params().MaxPayees());
     return st;
 }
@@ -847,6 +851,7 @@ void ShareChainstateManager::Prune()
     // Window floor: walk back the work the PPLNS window needs (sized like CheckPayouts does).
     const arith_uint256 window = GetShareWork(WindowBits(tip->share)) * Params().WindowK();
     arith_uint256 acc = 0;
+    size_t walked = 0;
     int floor_height = static_cast<int>(tip->share.height);
     for (const ShareIndex* cur = tip.get(); cur; cur = cur->prev_share.get()) {
         floor_height = static_cast<int>(cur->share.height);
@@ -854,7 +859,7 @@ void ShareChainstateManager::Prune()
             auto it = state.fruits.find(f);
             if (it != state.fruits.end()) acc += GetShareWork(it->second.bits);
         }
-        if (acc >= window) break;
+        if (acc >= window || ++walked >= Params().WindowShares()) break;
     }
     const int keep_from = std::max(0, floor_height - static_cast<int>(Params().Recency()) - 64);
     if (keep_from <= state.chain.base) return;

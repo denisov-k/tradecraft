@@ -6,8 +6,9 @@ The chain share itself is also a fruit (2-for-1): its own work counts once, in i
 share that lists it, like any share). Here, for the reference, every chain share's `fruits` list
 contains every share (including the chain share before it) recorded by it.
 
-credits(anchor, W): walk chain shares from `anchor` backwards; for each, add work(f) for each
-listed fruit to credit[f.miner]; stop when accumulated >= W (the crossing chain share counted in full).
+credits(anchor, W, N): walk chain shares from `anchor` backwards; for each, add work(f) for each
+listed fruit to credit[f.miner]; stop when accumulated >= W (the crossing chain share counted in full)
+or after N chain shares (WINDOW_SHARES), whichever comes first.
 payouts(credit, TOTAL, builder): floor split, remainder to builder, dust drop (one pass), cap to
 MAX_PAYEES largest (one pass), canonical order by (version, program) = by scriptPubKey bytes.
 """
@@ -26,12 +27,12 @@ def scaled(credit):
     tot = sum(credit.values()); k = max(0, tot.bit_length() - 190)
     return {m: v >> k for m, v in credit.items()}
 
-def credits(chain, anchor_idx, window_work):
-    credit = {}; acc = 0; i = anchor_idx
-    while i >= 0 and acc < window_work:
+def credits(chain, anchor_idx, window_work, window_shares):
+    credit = {}; acc = 0; i = anchor_idx; n = 0
+    while i >= 0 and acc < window_work and n < window_shares:
         for f in chain[i]['fruits']:
             w = work(f['target']); credit[f['miner']] = credit.get(f['miner'], 0) + w; acc += w
-        i -= 1
+        i -= 1; n += 1
     return credit
 
 def payouts(credit, total, builder, dust=DUST, max_payees=MAX_PAYEES):
@@ -57,7 +58,9 @@ def vectors():
     miners = [bytes([i + 1]) * 20 for i in range(8)]      # 20-byte witness v0 programs
     hx = lambda b: b.hex()
     cases = []
-    for case, (n, per, win) in enumerate([(5, 3, 8), (20, 6, 40), (60, 6, 120), (200, 8, 600)]):
+    # (chain shares, max fruits per chain share, window in units of the base work, window in chain shares);
+    # the last case is bounded by the chain-share cap, not by work
+    for case, (n, per, win, shares) in enumerate([(5, 3, 8, 4320), (20, 6, 40, 4320), (60, 6, 120, 4320), (200, 8, 600, 4320), (60, 6, 100000, 20)]):
         exp = 0x1d - case                                   # compact exponent; mantissa random -> exact compact targets
         chain = []
         for i in range(n):
@@ -69,10 +72,10 @@ def vectors():
             chain.append(dict(miner=hx(random.choice(miners)), bits=cbits, fruits=fr))
         W = win * work(compact_to_target((exp << 24) | 0x400000)); total = 9_536_743_164 + random.randrange(0, 20_000_000)
         builder = hx(random.choice(miners))
-        c = credits([dict(miner=s['miner'], target=compact_to_target(s['bits']), fruits=[dict(miner=f['miner'], target=compact_to_target(f['bits'])) for f in s['fruits']]) for s in chain], n - 1, W)
+        c = credits([dict(miner=s['miner'], target=compact_to_target(s['bits']), fruits=[dict(miner=f['miner'], target=compact_to_target(f['bits'])) for f in s['fruits']]) for s in chain], n - 1, W, shares)
         outs = payouts(c, total, builder)
         assert sum(v for _, v in outs) == total
-        cases.append(dict(chain=chain, window_work=hex(W), total=total, builder=builder, dust=DUST, max_payees=MAX_PAYEES,
+        cases.append(dict(chain=chain, window_work=hex(W), window_shares=shares, total=total, builder=builder, dust=DUST, max_payees=MAX_PAYEES,
                           outputs=[[m, v] for m, v in outs]))
     return cases
 

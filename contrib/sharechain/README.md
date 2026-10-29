@@ -54,7 +54,8 @@ addnode=<another share chain node>   # at least one peer that runs the share cha
   `nextbits` / `nextdifficulty` the retargeted one the next share must meet.
 - debug.log: `NEW SHARE CHAIN FRUIT (aux) by …` for every share, `NEW CHAIN SHARE (aux) …`
   for the one in six that extends the chain, `share … accepted from peer=` for relayed ones.
-- The coinbase of a block you find pays every participant with shares in the window; your
+- The coinbase of a block you find pays every participant with shares in the window (four
+  Freicoin blocks' worth of work, but at most the last 4320 chain shares, about 3 days); your
   payout for a block someone else finds arrives in *their* coinbase, to your address.
 - Share target on main starts at difficulty 10 000 (about one share per 10 s at 43 TH/s) and
   retargets per chain share (LWMA, ±25 % per step). With 30–40 TH/s pool-wide expect about one

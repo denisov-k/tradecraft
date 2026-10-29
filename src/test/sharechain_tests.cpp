@@ -66,7 +66,7 @@ BOOST_AUTO_TEST_CASE(pplns_vectors)
     // Vectors from contrib/sharechain/pplns_fruits.py (doc/sharechain-uncles.md section 4).
     UniValue tests = read_json(json_tests::sharechain_pplns);
     BOOST_REQUIRE(tests.isArray());
-    BOOST_REQUIRE(tests.size() == 4);
+    BOOST_REQUIRE(tests.size() == 5);
 
     for (unsigned int idx = 0; idx < tests.size(); ++idx) {
         const UniValue& test = tests[idx];
@@ -102,12 +102,13 @@ BOOST_AUTO_TEST_CASE(pplns_vectors)
         };
 
         const arith_uint256 window = ParseWork(test["window_work"].get_str());
+        const size_t window_shares = static_cast<size_t>(test["window_shares"].getInt<int64_t>());
         const CAmount total = test["total"].getInt<int64_t>();
         const WitnessUnknown builder = MinerFromHex(test["builder"].get_str());
         const CAmount dust = test["dust"].getInt<int64_t>();
         const size_t max_payees = static_cast<size_t>(test["max_payees"].getInt<int64_t>());
 
-        ShareCredits credits = ComputeShareCredits(index.back().get(), window, lookup);
+        ShareCredits credits = ComputeShareCredits(index.back().get(), window, window_shares, lookup);
         const auto payouts = ComputeSharePayouts(std::move(credits), total, builder, dust, max_payees);
 
         const UniValue& expected = test["outputs"];
@@ -538,6 +539,46 @@ BOOST_FIXTURE_TEST_CASE(sharechain_verified_work_beats_claimed_work, ShareChainR
     BOOST_CHECK_EQUAL(GetVerifiedChainWork(*peer.ActiveTip()).GetLow64(), GetShareWork(c1.share.bits).GetLow64());
     BOOST_CHECK(!peer.AcceptBaseChainShare(c0.share, c0.peaks, c0.fruits, reason));
     BOOST_CHECK_EQUAL(reason, "base-chain-not-empty");
+}
+
+BOOST_FIXTURE_TEST_CASE(sharechain_window_share_cap, ShareChainRegtestSetup)
+{
+    LOCK(::cs_main);
+    std::string reason;
+    // A Freicoin target far harder than any regtest share: by work alone the window
+    // would hold the whole chain.  WINDOW_SHARES bounds it to the last 48 chain shares.
+    m_required_bits = 0x1d00ffff;
+    const int cap = static_cast<int>(ShareParams().WindowShares());
+    BOOST_REQUIRE_EQUAL(cap, 48);
+    const auto round = [&](const WitnessUnknown& miner, int i) {
+        const uint32_t t = static_cast<uint32_t>(m_now + 10 * i);
+        const Mined f = Mine(miner, Kind::FRUIT, 100, t, m_required_bits);
+        BOOST_REQUIRE_MESSAGE(Fruit(f, reason), reason);
+        const Mined c = Mine(miner, Kind::CHAIN, 100, t + 5, m_required_bits);
+        BOOST_REQUIRE_MESSAGE(Chain(c, reason), reason);
+    };
+    int i = 0;
+    for (; i < 20; ++i) round(MINER_A, i);
+    for (; i < 30; ++i) round(MINER_B, i);
+    // Both are inside the window.
+    auto st = m_man->GetTemplateState(MINER_B, COIN, m_required_bits);
+    BOOST_CHECK_EQUAL(st.payouts.size(), 2U);
+    // A's last chain share (height 19) is listed by the chain share at height 20: it
+    // stays in the window while that one is among the last `cap` chain shares ...
+    for (; i < 20 + cap; ++i) round(MINER_B, i);
+    BOOST_CHECK_EQUAL(m_man->ActiveHeight(), 20 + cap - 1);
+    st = m_man->GetTemplateState(MINER_B, COIN, m_required_bits);
+    BOOST_CHECK_EQUAL(st.payouts.size(), 2U);
+    // ... and drops out with the next one, although the work window is nowhere near full.
+    round(MINER_B, i);
+    st = m_man->GetTemplateState(MINER_B, COIN, m_required_bits);
+    BOOST_REQUIRE_EQUAL(st.payouts.size(), 1U);
+    BOOST_CHECK(st.payouts[0].first == MINER_B);
+    BOOST_CHECK_EQUAL(st.payouts[0].second, COIN);
+    // A share paying A would now be rejected.
+    const Mined m = Mine(MINER_B, Kind::FRUIT, 100, 0, m_required_bits, [](CMutableTransaction& cb) { cb.vout.emplace_back(1, GetScriptForDestination(MINER_A)); });
+    BOOST_CHECK(!Fruit(m, reason));
+    BOOST_CHECK_EQUAL(reason, "share-bad-payout");
 }
 
 BOOST_AUTO_TEST_CASE(sharechain_lwma_retarget)
