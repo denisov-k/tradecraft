@@ -53,7 +53,7 @@ difficulty adjustment and the PPLNS payout function, with test vectors, as imple
 
 | Name | main | regtest | Meaning |
 |---|---|---|---|
-| `CHAIN_ID` | `"SHARECHAIN-MAIN" ‖ 00… ‖ 04` | `"SHARECHAIN-REGTEST" ‖ 00… ‖ 04` | `share_chain_path`: key of the share commitment in the coinbase Merkle hash map (uint256) |
+| `CHAIN_ID` | `"SHARECHAIN-MAIN" ‖ 00… ‖ 05` | `"SHARECHAIN-REGTEST" ‖ 00… ‖ 05` | `share_chain_path`: key of the share commitment in the coinbase Merkle hash map (uint256) |
 | `COMMIT_ID` | `4b 4a 49 48` | same | 4-byte tag after the commitment root in the coinbase (skeleton) |
 | `SHARE_BITS` | `0x1b068db2` (difficulty 10 000) | `0x207fffff` | initial share target; also the easiest target the chain allows |
 | `M` (`CHAIN_FACTOR`) | 6 | 4 | chain target = share target / `M` |
@@ -61,6 +61,7 @@ difficulty adjustment and the PPLNS payout function, with test vectors, as imple
 | `SHARE_INTERVAL` | 10 s | n/a | target spacing of shares (retarget on main only) |
 | `WINDOW_K` | 4 | 4 | PPLNS window = `WINDOW_K` × work(Freicoin target of the template) |
 | `WINDOW_SHARES` | 4320 | 48 | the window spans at most this many chain shares (3 days at 60 s on main) |
+| `MAX_LOCK` | 60 | 60 | a hash-locked transfer lapses at most this many chain shares after its inclusion (doc/sharechain-transfers.md) |
 | `MAX_PAYEES` | 1000 | 1000 | maximum payout outputs in a coinbase (bounded by the block, not by the share: §4.4) |
 | `DUST` | 1000 kria | 1000 | outputs below this are dropped and redistributed |
 | `MAX_TEMPLATE_AGE` | 2 | 2 | a live share must build on one of the last `MAX_TEMPLATE_AGE` Freicoin blocks |
@@ -87,9 +88,10 @@ the chain links; the witness proves the header was committed in a mined template
 | `anchor` | uint256 | 32 | hash of the chain share this share hangs from; null at height 0 |
 | `prev_root` | uint256 | 32 | MMR root of all chain shares up to and including the anchor |
 | `fruits_root` | uint256 | 32 | Merkle root of the sorted fruit list this template records (§6.2); null if empty |
+| `txs_root` | uint256 | 32 | Merkle root of the share chain transactions this template carries (doc/sharechain-transfers.md); null if none |
 | `miner` | witness program | CompactSize version + program | payout address of this share's miner |
 
-**Header hash** = SHA256d over the fields in this order (`Share::GetHeaderHash`); 161 bytes for
+**Header hash** = SHA256d over the fields in this order (`Share::GetHeaderHash`); 193 bytes for
 a 20-byte program. Only the MMR root enters the header; the MMR peaks travel with chain shares
 (§4.5), so verifiers of fruits never need them. The fruit list is committed in *every* header
 because the template is hashed before anyone knows whether it will reach the chain target.
@@ -155,9 +157,10 @@ independent of the number of payees. The block carries the outputs: 31 B each, 3
 ### 4.5 Chain share body
 
 A chain share travels with a body a fruit does not need: `peaks` (the MMR accumulator of the
-chain shares before it, whose root is `prev_root`) and `fruits` (the sorted list of share
-hashes whose Merkle root is `fruits_root`). On the wire: `ShareMessage = share ‖ has_body ‖
-[peaks ‖ fruits]`.
+chain shares before it, whose root is `prev_root`), `fruits` (the sorted list of share
+hashes whose Merkle root is `fruits_root`) and `txs` (the transactions whose Merkle root is
+`txs_root`, doc/sharechain-transfers.md §3). On the wire: `ShareMessage = share ‖ has_body ‖
+[peaks ‖ fruits ‖ txs]`.
 
 ## 5. The coinbase
 
@@ -359,8 +362,8 @@ blocks: a found Freicoin block does not reset it.
   unknown. While its chain is empty, the node accepts the first chain share of a batch as its
   base (§6.3). Rate limits per peer as in §8; a rejected share is logged, not penalized, since
   a peer may simply be behind.
-- **Persistence**: `sharechain.dat` (version 2: tip hash, then every chain share with body and
-  every fruit) written at shutdown, loaded after block headers are available.
+- **Persistence**: `sharechain.dat` (version 4: tip hash, then every chain share with body and
+  every fruit, orphans last) written at shutdown, loaded after block headers are available.
 - **Pruning** (`Prune`): keep chain shares from the window floor (work or `WINDOW_SHARES`,
   whichever ends it first) minus `R` minus 64 heights;
   drop fruits whose anchor is gone. The lowest kept chain share becomes the node's base (§6.3)
@@ -370,7 +373,8 @@ blocks: a found Freicoin block does not reset it.
   retargeted share target the next share must meet); `getsharecredits [amount]` (Vintage
   Hash) → the window as the template sees it: size and fill (`windowbits, windowk,
   windowshares, windowwork, filledwork, filled, tipheight, lowheight, chainshares,
-  fruits`) and per address `fruits, work, share, payout` for a block found now.
+  fruits, pending`) and per owner `fruits, work, share, payout` for a block found now;
+  `transfershares`, `claimshares`, `listsharetxs` (doc/sharechain-transfers.md §7).
 
 ## 11. Security considerations
 
@@ -444,8 +448,10 @@ Everything in §4–§10 is implemented in freicoind on top of 28.1 and the `tmp
   `ComputeSharePayouts` (unit vectors from `contrib/sharechain/pplns_fruits.py` in
   `src/test/sharechain_tests.cpp`), `ShareChainstateManager` (fruit and chain-share
   acceptance, listable fruits, template state, LWMA retarget, orphan pool, range sync,
-  pruning, trusted base and verified-work tip selection, `sharechain.dat` v2 with the saved
-  tip), `getsharechaininfo`; `getsharecredits` (Vintage Hash) in `src/stratum.cpp`;
+  pruning, trusted base and verified-work tip selection, `sharechain.dat` v4 with the saved
+  tip), share transactions and ownership (`ShareTx`, `ShareOwnership`,
+  `ComputeWindowCredits`, the transaction pool), `getsharechaininfo`, `transfershares`,
+  `claimshares`, `listsharetxs`; `getsharecredits` (Vintage Hash) in `src/stratum.cpp`;
 - `src/stratum.cpp`: payouts + commitment in the coinbase before the segwit commitment, share
   target to native miners and in `mining.aux.notify`, acceptance on `mining.submit` and
   `mining.aux.submit`, no credit for second-stage submissions, work refresh on tip change
@@ -455,15 +461,17 @@ Everything in §4–§10 is implemented in freicoind on top of 28.1 and the `tmp
   setup (optional `min-bit-count` in `mining.configure` for ESP-Miner, up to four
   `mining.subscribe` parameters for Braiins OS, work re-sent after 60 s idle);
 - `src/net_processing.{h,cpp}`, `src/protocol.h`: `NODE_SHARECHAIN`, `share`, `getshares`,
-  `getshrchain`, `shares`, relay, sync at `verack` and on unknown anchor, per-peer limits,
-  orphan retry on Freicoin tip change;
+  `getshrchain`, `shares`, `sharetx`, relay, sync at `verack` and on unknown anchor, per-peer
+  limits, orphan retry on Freicoin tip change;
 - `src/init.cpp`, `src/common/args.cpp`: `-sharechain=<name>`, `-defaultshareaddress`, dump at
   shutdown, load before the network starts.
 
 Unit tests (`src/test/sharechain_tests.cpp`): PPLNS vectors and edge cases, acceptance and
 payouts of fruits and chain shares, every rejection reason of §6, prune of a 90-share chain
 followed by a fresh peer syncing it from the base and a reload of the pruned dump, verified
-work, the `WINDOW_SHARES` cap of the window, LWMA direction and clamps. Verified on regtest (`contrib/sharechain/regtest*`, Docker): single node with two miners,
+work, the `WINDOW_SHARES` cap of the window, transfers of credits (unconditional,
+hash-locked and claimed, lapsed, double sell, replay, malformed, reload), LWMA direction and
+clamps. Verified on regtest (`contrib/sharechain/regtest*`, Docker): single node with two miners,
 merge mining through mergemine bitcoind (aux fruits and chain shares, Freicoin blocks found),
 two nodes with relay and restart. `test/functional/feature_sharechain.py` (in
 `test_runner.py`) covers two mining nodes converging on one share chain, coinbase payouts and

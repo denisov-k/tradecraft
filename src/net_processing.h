@@ -25,6 +25,7 @@
 class AddrMan;
 class CChainParams;
 struct ShareMessage;
+struct ShareTx;
 class CTxMemPool;
 class ChainstateManager;
 

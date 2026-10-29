@@ -1,7 +1,8 @@
 # Freicoin ShareChain, step 2: transferable share credits
 
 ```
-Status:  Design proposal, not implemented. Builds on doc/sharechain.md (step 1, live on
+Status:  Implemented on branch `sharechain` (§3 and §7 step 1, chain id 05); the swap
+         tooling (§4, §7 step 2) is not. Builds on doc/sharechain.md (step 1, live on
          mainnet since 2026-10-28). Written in answer to M. Friedenbach's note of 2026-10-29:
          on-chain PPLNS payouts are costly (part of what killed p2pool on bitcoin); let the
          share chain carry transactions so that market makers can buy small miners' shares
@@ -59,52 +60,70 @@ listed, in list order.
 ### 3.1 `transfer`
 
 ```
-version      uint8
-from         witness program (the owner: v0 key hash today)
-to           witness program
-upto_height  uint32    fruits anchored at or below this height
-expiry       uint32    chain height after which the transfer lapses (hash-locked only)
-hashlock     uint256   optional; zero = unconditional
-pubkey       33 bytes  must hash to `from`
-signature    64 bytes  Schnorr/ECDSA over the transaction id, by `pubkey`
+type         uint8     1
+from         witness program (the owner: a v0 key hash, the only thing a key signs for)
+to           witness program (version ≤ 16, 2–40 bytes)
+upto_height  uint32    fruits listed at or below this chain height
+expiry       uint32    chain height after which the transfer lapses (hash-locked only, else 0)
+hashlock     uint256   SHA256 of the claim's preimage; null = unconditional
+pubkey       33 bytes  compressed; its hash160 is `from`
+signature    DER ECDSA by `pubkey` over SHA256d("SHARECHAIN-TRANSFER" ‖ CHAIN_ID ‖ the fields above)
 ```
 
-Semantics: every fruit **currently owned by `from`** and anchored at height ≤ `upto_height`
-becomes owned by `to`. Unconditional: effective in this chain share. Hash-locked: the fruits are
+`txid` = SHA256d of the serialization. Semantics: every fruit **currently owned by `from`**
+and listed at height ≤ `upto_height` (a fruit is listed within `R` of its anchor, so this
+is what a ledger naturally keys on) becomes owned by `to`. Unconditional: effective in this chain share. Hash-locked: the fruits are
 **locked** (no other transfer by `from` can move them) until a `claim` reveals the preimage or
 `expiry` passes, and ownership moves to `to` in the chain share that carries the claim.
 
 ### 3.2 `claim`
 
 ```
-version      uint8
-txid         uint256   the hash-locked transfer
-preimage     32 bytes  SHA256(preimage) == hashlock
+type         uint8     2
+transfer_id  uint256   the hash-locked transfer
+preimage     uint256   SHA256(preimage) == hashlock
 ```
 
 Anyone may include it (in practice the buyer does, the moment it learns the preimage).
 
 ### 3.3 Rules
 
-1. `pubkey` hashes to `from`; signature valid; `from ≠ to`.
-2. `upto_height` ≤ the height of the chain share carrying the transfer (nothing in the future).
-3. The transfer moves at least one fruit (a no-op is invalid, so spam costs work: see 3.4).
-4. A hash-locked transfer has `expiry` within `MAX_LOCK` (say 60 chain shares, one hour) of the
-   carrying chain share; a claim for a lapsed or unknown transfer is invalid.
-5. Fruits below the window floor are out of scope: their owner is irrelevant and may be pruned.
-   Just above a trusted base (§6.3 of the spec) the node cannot evaluate transfers that touch
-   fruits it never saw; it skips them exactly as it skips the payout check there.
+Stateless (`CheckShareTxForm`, rejection `chainshare-tx-…`): `from` a v0 key hash, `to` a
+witness program, `from ≠ to` [`tx-self-transfer`]; `pubkey` compressed and hashing to `from`
+[`tx-bad-pubkey`, `tx-key-mismatch`]; the signature verifies [`tx-bad-signature`]; a hashlock
+with an expiry or neither [`tx-bad-lock`]; a claim names a transfer [`tx-bad-claim`].
 
-Ownership is a function of the chain, so a fork switch recomputes it from the window floor (at
-most `WINDOW_SHARES` chain shares; cheap), as PPLNS already is.
+Chain-dependent (`ShareOwnership::Apply`, over the window's state after the parent with this
+share's fruits listed, `Expire(height)` applied):
+
+1. A transaction id appears at most once in the window [`tx-replay`].
+2. `upto_height` ≤ the carrying chain share's height [`tx-future-height`].
+3. A hash-locked transfer has `height < expiry ≤ height + MAX_LOCK` [`tx-bad-expiry`].
+4. The transfer moves (or locks) at least one fruit; locked fruits do not move
+   [`tx-moves-nothing`]. A no-op is invalid, so spam costs work (3.4).
+5. A claim names a transfer still pending, i.e. carried, not claimed and not lapsed
+   (`expiry ≥ height`) [`tx-unknown-transfer`], with `SHA256(preimage) = hashlock`
+   [`tx-bad-preimage`].
+6. At most `MAX_TXS_PER_CHAIN_SHARE` (100) transactions per chain share
+   [`chainshare-too-many-txs`], with Merkle root `txs_root` [`chainshare-bad-txs-root`].
+7. Where the window walked back from the parent runs into a trusted base (§6.3 of the spec) the
+   chain-dependent rules are not applied, as the payout check is not: the node lacks the
+   fruits they would touch.
+
+Ownership is a function of the chain: every walk of the window (`ComputeWindowCredits`)
+rebuilds it from the window floor by listing fruits and applying transactions chain share by
+chain share, so a fork switch needs nothing beyond what PPLNS already does. Every transaction
+that touches a fruit of a window lies inside that window, because it comes at or after the
+fruit's listing.
 
 ### 3.4 Who includes transactions, and why
 
-The miner building a chain share includes transactions from a small pool, like a mempool,
-relayed with the `share` messages. There are no fees: a transaction can only move the sender's
-own fruits, and a node rate-limits per sender. Market makers have the incentive to run
-well-connected nodes; a transfer that no chain-share builder includes for `MAX_LOCK` simply
-lapses.
+The miner building a chain share includes transactions from a small pool (1000, like a
+mempool), relayed by the `sharetx` P2P message under the share rate limit. A node accepts into
+the pool what is valid on its tip behind what the pool already holds, and drops what the new
+tip no longer accepts. There are no fees: a transaction can only move the sender's own fruits.
+Market makers have the incentive to run well-connected nodes; a transfer that no chain-share
+builder includes for `MAX_LOCK` simply lapses.
 
 ## 4. The swap
 
@@ -164,9 +183,12 @@ The same transfer with an on-chain HTLC (bitcoin or Freicoin script) works for t
 
 ## 7. Plan
 
-1. **Transfers in the share chain** (`transfer`, `claim`, owner lookup in PPLNS, rules of §3,
-   RPCs `transfershares`, `claimshares`, `listshareclaims`), unit and functional tests. Chain
-   id suffix 05. A few days.
+1. **Transfers in the share chain** (`transfer`, `claim`, owner lookup in PPLNS, rules of §3),
+   RPCs: `transfershares privkey to [uptoheight] [hashlock] [expiry]` (signs with a WIF key,
+   `expiry` in chain shares after the next one), `claimshares txid preimage`, `listsharetxs`
+   (pool and pending locks); `getsharecredits` reports credits by owner. Unit test
+   `sharechain_transfers`, functional test `feature_sharechain.py`. Chain id suffix 05.
+   **Done 2026-10-29.**
 2. **Swap tooling** in `contrib/sharechain/swap/`: a market-maker daemon (quote, verify
    transfers, pay invoices through lnd/CLN, broadcast claims) and a miner-side script (invoice,
    signed transfer). Python, like the regtest miner.
