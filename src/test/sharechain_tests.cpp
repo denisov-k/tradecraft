@@ -754,7 +754,7 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
     st.txs_root = TxsRoot(st.txs);
     c = Mine(MINER_B, Kind::CHAIN, 100, now(), bits, nullptr, std::nullopt, nullptr, st);
     BOOST_CHECK(!Chain(c, reason));
-    BOOST_CHECK_EQUAL(reason, "chainshare-tx-moves-nothing");
+    BOOST_CHECK_EQUAL(reason, "chainshare-tx-insufficient-credit"); // `bad` is the over-sized transfer above
     st.txs = {t1};
     st.txs_root = uint256();
     c = Mine(MINER_B, Kind::CHAIN, 100, now(), bits, nullptr, std::nullopt, nullptr, st);
