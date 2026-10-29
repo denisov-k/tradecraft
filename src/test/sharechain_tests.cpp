@@ -576,7 +576,7 @@ BOOST_FIXTURE_TEST_CASE(sharechain_window_share_cap, ShareChainRegtestSetup)
     BOOST_CHECK(st.payouts[0].first == MINER_B);
     BOOST_CHECK_EQUAL(st.payouts[0].second, COIN);
     // A share paying A would now be rejected.
-    const Mined m = Mine(MINER_B, Kind::FRUIT, 100, 0, m_required_bits, [](CMutableTransaction& cb) { cb.vout.emplace_back(1, GetScriptForDestination(MINER_A)); });
+    const Mined m = Mine(MINER_B, Kind::FRUIT, 100, static_cast<uint32_t>(m_now + 10 * (i + 1)), m_required_bits, [](CMutableTransaction& cb) { cb.vout.emplace_back(1, GetScriptForDestination(MINER_A)); });
     BOOST_CHECK(!Fruit(m, reason));
     BOOST_CHECK_EQUAL(reason, "share-bad-payout");
 }
