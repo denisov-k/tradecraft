@@ -318,7 +318,7 @@ BOOST_FIXTURE_TEST_CASE(sharechain_accept_and_pay, ShareChainRegtestSetup)
 
     // The peaks must be the accumulator behind prev_root.
     const Mined c2 = Mine(MINER_A, Kind::CHAIN);
-    BOOST_CHECK(!m_man->AcceptChainShare(c2.share, MmrAccumulator(), c2.fruits, reason));
+    BOOST_CHECK(!m_man->AcceptChainShare(c2.share, MmrAccumulator(), c2.fruits, c2.txs, reason));
     BOOST_CHECK_EQUAL(reason, "chainshare-bad-peaks");
     BOOST_CHECK_MESSAGE(Chain(c2, reason), reason);
     BOOST_CHECK_EQUAL(m_man->ActiveHeight(), 2);
@@ -537,10 +537,10 @@ BOOST_FIXTURE_TEST_CASE(sharechain_verified_work_beats_claimed_work, ShareChainR
     // A fresh manager started from c1 as a trusted base counts only the work above it.
     ShareChainstateManager peer(MakeOptions());
     peer.Initialize();
-    BOOST_REQUIRE_MESSAGE(peer.AcceptBaseChainShare(c1.share, c1.peaks, c1.fruits, reason), reason);
+    BOOST_REQUIRE_MESSAGE(peer.AcceptBaseChainShare(c1.share, c1.peaks, c1.fruits, c1.txs, reason), reason);
     BOOST_CHECK_EQUAL(peer.BaseHeight(), 1);
     BOOST_CHECK_EQUAL(GetVerifiedChainWork(*peer.ActiveTip()).GetLow64(), GetShareWork(c1.share.bits).GetLow64());
-    BOOST_CHECK(!peer.AcceptBaseChainShare(c0.share, c0.peaks, c0.fruits, reason));
+    BOOST_CHECK(!peer.AcceptBaseChainShare(c0.share, c0.peaks, c0.fruits, c0.txs, reason));
     BOOST_CHECK_EQUAL(reason, "base-chain-not-empty");
 }
 
