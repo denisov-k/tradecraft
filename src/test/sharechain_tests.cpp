@@ -588,6 +588,10 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
 {
     LOCK(::cs_main);
     std::string reason;
+    // A Freicoin target far harder than any regtest share, so the window is the whole
+    // chain (up to the WINDOW_SHARES cap) and credits do not slide out of it.
+    m_required_bits = 0x1d00ffff;
+    const uint32_t bits = m_required_bits;
     // A miner with a key, so it can sign transfers of its credits.
     CKey key;
     key.MakeNewKey(true);
@@ -610,26 +614,34 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
     int step = 0;
     const auto now = [&]() { return static_cast<uint32_t>(m_now + 10 * step++); };
     const auto round = [&](const WitnessUnknown& miner) {
-        const Mined f = Mine(miner, Kind::FRUIT, 100, now());
+        const Mined f = Mine(miner, Kind::FRUIT, 100, now(), bits);
         BOOST_REQUIRE_MESSAGE(Fruit(f, reason), reason);
-        const Mined c = Mine(miner, Kind::CHAIN, 100, now());
+        const Mined c = Mine(miner, Kind::CHAIN, 100, now(), bits);
         BOOST_REQUIRE_MESSAGE(Chain(c, reason), reason);
         return c;
     };
     const auto chain_share = [&](const WitnessUnknown& miner) {
-        const Mined c = Mine(miner, Kind::CHAIN, 100, now());
+        const Mined c = Mine(miner, Kind::CHAIN, 100, now(), bits);
         BOOST_REQUIRE_MESSAGE(Chain(c, reason), reason);
         return c;
     };
     const auto paid = [&](const WitnessUnknown& who) {
-        const auto st = m_man->GetTemplateState(MINER_B, COIN, 0x207fffff);
+        const auto st = m_man->GetTemplateState(MINER_B, COIN, bits);
         for (const auto& p : st.payouts) if (p.first == who) return p.second;
         return CAmount{0};
     };
+    const auto owned = [&](const WitnessUnknown& who) {
+        const auto by_owner = m_man->WindowAt(m_man->ActiveTip().get(), bits).fruits_by_owner;
+        const auto it = by_owner.find(who);
+        return it == by_owner.end() ? int64_t{0} : it->second;
+    };
     const auto tip_height = [&]() { return m_man->ActiveTip()->share.height; };
-    const auto pending = [&]() { return m_man->WindowAt(m_man->ActiveTip().get(), 0x207fffff).ownership.pending.size(); };
+    const auto pending = [&]() { return m_man->WindowAt(m_man->ActiveTip().get(), bits).ownership.pending.size(); };
 
     for (int i = 0; i < 4; ++i) round(MINER_K);
+    chain_share(MINER_B); // lists K's last chain share: everything K mined is now credited
+    const int64_t k_fruits = owned(MINER_K);
+    BOOST_CHECK_EQUAL(k_fruits, 8);
     BOOST_CHECK_GT(paid(MINER_K), 0);
     BOOST_CHECK_EQUAL(paid(MINER_A), 0);
 
@@ -654,10 +666,12 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
     BOOST_CHECK(!m_man->AddShareTx(t1, reason));
     BOOST_CHECK_EQUAL(reason, "sharetx-duplicate");
     BOOST_CHECK_GT(paid(MINER_K), 0); // not applied before a chain share carries it
-    Mined c = Mine(MINER_B, Kind::CHAIN, 100, now());
+    Mined c = Mine(MINER_B, Kind::CHAIN, 100, now(), bits);
     BOOST_REQUIRE_EQUAL(c.txs.size(), 1U);
     BOOST_CHECK(c.share.txs_root == TxsRoot(c.txs));
     BOOST_REQUIRE_MESSAGE(Chain(c, reason), reason);
+    BOOST_CHECK_EQUAL(owned(MINER_K), 0);
+    BOOST_CHECK_EQUAL(owned(MINER_A), k_fruits);
     BOOST_CHECK_EQUAL(paid(MINER_K), 0);
     BOOST_CHECK_GT(paid(MINER_A), 0);
     BOOST_CHECK(m_man->PoolTxs().empty());
@@ -667,8 +681,9 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
 
     // A hash-locked transfer locks the fruits for the buyer until the claim.
     for (int i = 0; i < 3; ++i) round(MINER_K);
-    const CAmount k_before = paid(MINER_K);
-    BOOST_CHECK_GT(k_before, 0);
+    chain_share(MINER_B);
+    const int64_t k_locked = owned(MINER_K);
+    BOOST_CHECK_EQUAL(k_locked, 6);
     uint256 preimage;
     preimage.begin()[0] = 0x42;
     const uint256 hashlock = ShareHashLock(preimage);
@@ -678,7 +693,7 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
     c = chain_share(MINER_B);
     BOOST_REQUIRE_EQUAL(c.txs.size(), 1U);
     BOOST_CHECK_EQUAL(pending(), 1U);
-    BOOST_CHECK_EQUAL(paid(MINER_K), k_before); // locked, not moved
+    BOOST_CHECK_EQUAL(owned(MINER_K), k_locked); // locked, not moved
     // Locked fruits cannot be sold again.
     bad = transfer(MINER_B, upto, uint256(), 0);
     BOOST_CHECK(!m_man->AddShareTx(bad, reason));
@@ -693,16 +708,17 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
     BOOST_CHECK_EQUAL(reason, "tx-bad-preimage");
     claim.preimage = preimage;
     BOOST_REQUIRE_MESSAGE(m_man->AddShareTx(claim, reason), reason);
-    const CAmount a_before = paid(MINER_A);
     c = chain_share(MINER_B);
     BOOST_REQUIRE_EQUAL(c.txs.size(), 1U);
     BOOST_CHECK_EQUAL(pending(), 0U);
-    BOOST_CHECK_LT(paid(MINER_K), k_before);
-    BOOST_CHECK_GT(paid(MINER_A), a_before);
+    BOOST_CHECK_EQUAL(owned(MINER_K), 0);
+    BOOST_CHECK_EQUAL(owned(MINER_A), k_fruits + k_locked);
 
     // A lock nobody claims lapses, and the fruits stay the seller's.
     for (int i = 0; i < 3; ++i) round(MINER_K);
-    const CAmount k_kept = paid(MINER_K);
+    chain_share(MINER_B);
+    const int64_t k_kept = owned(MINER_K);
+    BOOST_CHECK_EQUAL(k_kept, 6);
     const ShareTx t3 = transfer(MINER_A, tip_height(), hashlock, tip_height() + 1 + 2);
     BOOST_REQUIRE_MESSAGE(m_man->AddShareTx(t3, reason), reason);
     c = chain_share(MINER_B);
@@ -713,18 +729,19 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
     claim.transfer_id = t3.GetHash();
     BOOST_CHECK(!m_man->AddShareTx(claim, reason));
     BOOST_CHECK_EQUAL(reason, "tx-unknown-transfer");
-    BOOST_CHECK_EQUAL(paid(MINER_K), k_kept);
+    BOOST_CHECK_EQUAL(owned(MINER_K), k_kept);
+    BOOST_CHECK_GT(paid(MINER_K), 0);
 
     // A chain share carrying a bad transaction, or lying about its list, is rejected.
-    auto st = m_man->GetTemplateState(MINER_B, 50 * COIN, 0x207fffff);
+    auto st = m_man->GetTemplateState(MINER_B, 50 * COIN, bits);
     st.txs = {bad};
     st.txs_root = TxsRoot(st.txs);
-    c = Mine(MINER_B, Kind::CHAIN, 100, now(), 0x207fffff, nullptr, std::nullopt, nullptr, st);
+    c = Mine(MINER_B, Kind::CHAIN, 100, now(), bits, nullptr, std::nullopt, nullptr, st);
     BOOST_CHECK(!Chain(c, reason));
     BOOST_CHECK_EQUAL(reason, "chainshare-tx-moves-nothing");
     st.txs = {t1};
     st.txs_root = uint256();
-    c = Mine(MINER_B, Kind::CHAIN, 100, now(), 0x207fffff, nullptr, std::nullopt, nullptr, st);
+    c = Mine(MINER_B, Kind::CHAIN, 100, now(), bits, nullptr, std::nullopt, nullptr, st);
     BOOST_CHECK(!Chain(c, reason));
     BOOST_CHECK_EQUAL(reason, "chainshare-bad-txs-root");
 
@@ -735,8 +752,8 @@ BOOST_FIXTURE_TEST_CASE(sharechain_transfers, ShareChainRegtestSetup)
     reloaded.Initialize();
     BOOST_REQUIRE(reloaded.LoadFromFile(path));
     BOOST_CHECK_EQUAL(reloaded.ActiveHeight(), m_man->ActiveHeight());
-    const auto before = m_man->GetTemplateState(MINER_B, COIN, 0x207fffff).payouts;
-    const auto after = reloaded.GetTemplateState(MINER_B, COIN, 0x207fffff).payouts;
+    const auto before = m_man->GetTemplateState(MINER_B, COIN, bits).payouts;
+    const auto after = reloaded.GetTemplateState(MINER_B, COIN, bits).payouts;
     BOOST_CHECK(before == after);
 }
 
