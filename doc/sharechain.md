@@ -426,6 +426,9 @@ blocks: a found Freicoin block does not reset it.
    alike and therefore a validation rule; or shares that commit to the payout vector instead
    of carrying it. **Settled 2026-10-28 (with Vintage Hash): shares commit to the payout
    vector (`cb_hash`, §4.2), `MAX_PAYEES` raised to 1000, bounded by the block.**
+8. Coinbase outputs per miner and small miners' income (raised by M. Friedenbach, 2026-10-29):
+   transferable share credits sold to market makers for lightning payments, see
+   doc/sharechain-transfers.md (design proposal).
 
 ## 13. Deliberate exclusions
 
