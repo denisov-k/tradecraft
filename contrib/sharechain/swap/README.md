@@ -8,8 +8,14 @@ library only; lightning through lnd's `lncli`.
 
 ```bash
 python3 maker.py --rpc http://127.0.0.1:8638 --rpcuser frc --rpcpassword ... \
-    --address fc1q... --sats-per-unit 0.05 --lncli "lncli --network=mainnet" --listen 0.0.0.0:9640
+    --address fc1q... --sats-per-unit 0.05 --listen 0.0.0.0:9640 \
+    --lnbits https://legend.lnbits.com --lnbits-key <the wallet's admin key>
 ```
+
+The maker needs a wallet that can pay an invoice and hand back the preimage. No node is
+needed: an **LNbits** wallet (hosted or self-hosted, funded from any wallet) does it through
+its REST API with `--lnbits` / `--lnbits-key`. With your own lnd use `--lncli "lncli …"`
+instead.
 
 - `--address`: where the bought credits are paid (any bech32 address of yours).
 - `--sats-per-unit`: the price for one unit of work (a difficulty-1 share, 2³² hashes). A

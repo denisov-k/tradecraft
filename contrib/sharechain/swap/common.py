@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import subprocess
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -122,6 +123,69 @@ def lnaddress_invoice(address: str, sats: int, comment: str = "") -> str:
     if reply.get("status") == "ERROR":
         raise ValueError(f"{address}: {reply.get('reason')}")
     return reply["pr"]
+
+
+def bolt11_amount_sats(invoice: str) -> int:
+    """Amount of a BOLT11 invoice in sats (0 when the invoice names none)."""
+    hrp = invoice.strip().lower().rpartition("1")[0]
+    i = 2
+    while i < len(hrp) and hrp[i].isalpha():
+        i += 1
+    digits = ""
+    while i < len(hrp) and hrp[i].isdigit():
+        digits += hrp[i]
+        i += 1
+    if not digits:
+        return 0
+    mult = {"m": 10 ** 8 // 1000, "u": 10 ** 8 // 10 ** 6, "n": 10 ** 8 // 10 ** 9, "p": 10 ** 8 // 10 ** 12}
+    unit = hrp[i] if i < len(hrp) else ""
+    if unit == "p":
+        return int(digits) // 10_000  # 1 sat = 10 000 pBTC
+    if unit == "n":
+        return int(digits) // 10  # 1 sat = 10 nBTC
+    if unit == "u":
+        return int(digits) * 100
+    if unit == "m":
+        return int(digits) * 100_000
+    return int(digits) * 100_000_000
+
+
+class LNbits:
+    """An LNbits wallet (hosted or self-hosted) through its REST API: pays invoices and
+    hands back the preimage.  No node needed; the wallet's admin key pays."""
+
+    def __init__(self, url, admin_key):
+        self.url = url.rstrip("/")
+        self.key = admin_key
+
+    def _call(self, method, path, payload=None):
+        data = json.dumps(payload).encode() if payload is not None else None
+        req = urllib.request.Request(self.url + path, data, {"Content-Type": "application/json", "X-Api-Key": self.key}, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            body = e.read().decode(errors="replace")
+            raise RuntimeError(f"LNbits {path}: HTTP {e.code} {body[:200]}")
+
+    def decode(self, payment_request):
+        return bolt11_amount_sats(payment_request), bolt11_payment_hash(payment_request)
+
+    def pay(self, payment_request):
+        r = self._call("POST", "/api/v1/payments", {"out": True, "bolt11": payment_request})
+        payment_hash = r.get("payment_hash") or bolt11_payment_hash(payment_request)
+        # the preimage comes with the payment record once it is settled
+        for _ in range(60):
+            p = self._call("GET", f"/api/v1/payments/{payment_hash}")
+            preimage = p.get("preimage") or (p.get("details") or {}).get("preimage")
+            if p.get("paid") and preimage and int(preimage, 16) != 0:
+                return preimage
+            time.sleep(2)
+        raise RuntimeError("payment not settled within two minutes")
+
+    def settled(self, payment_hash):
+        p = self._call("GET", f"/api/v1/payments/{payment_hash}")
+        return bool(p.get("paid"))
 
 
 def sha256_hex(data: bytes) -> str:

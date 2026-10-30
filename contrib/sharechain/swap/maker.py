@@ -7,7 +7,8 @@ payment hash is the transfer's hashlock), and claims the transfer with the preim
 payment reveals.
 
   maker.py --rpc http://127.0.0.1:8638 --rpcuser frc --rpcpassword ... \
-           --address fc1q... --sats-per-unit 0.05 --lncli lncli --listen 0.0.0.0:9640
+           --address fc1q... --sats-per-unit 0.05 --listen 0.0.0.0:9640 \
+           --lnbits https://legend.lnbits.com --lnbits-key <admin key>      (or --lncli lncli)
 
 Sellers talk to it over HTTP:
   GET  /quote?address=<seller>   -> {"sats": n, "uptoheight": h, "work": w, "fruits": k,
@@ -27,7 +28,7 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from common import WORK_UNIT, Lncli, Rpc, sha256_hex
+from common import WORK_UNIT, LNbits, Lncli, Rpc, sha256_hex
 
 
 class Maker:
@@ -36,7 +37,12 @@ class Maker:
         self.address = args.address
         self.sats_per_unit = args.sats_per_unit
         self.min_sats = args.min_sats
-        self.lightning = None if args.no_lightning else Lncli(args.lncli.split())
+        if args.no_lightning:
+            self.lightning = None
+        elif args.lnbits:
+            self.lightning = LNbits(args.lnbits, args.lnbits_key)
+        else:
+            self.lightning = Lncli(args.lncli.split())
         self.expiry = args.expiry        # chain shares a seller should lock for
         self.min_left = args.min_left    # chain shares that must remain when we pay
         self.lock = threading.Lock()
@@ -154,10 +160,14 @@ def main():
     ap.add_argument("--min-sats", type=int, default=100, help="smallest purchase")
     ap.add_argument("--expiry", type=int, default=30, help="chain shares a seller should lock for (quoted)")
     ap.add_argument("--min-left", type=int, default=5, help="chain shares that must remain before the lock lapses when we pay")
-    ap.add_argument("--lncli", default="lncli", help="lncli command (quoted, may include docker exec ...)")
+    ap.add_argument("--lncli", default="lncli", help="pay with your own lnd: lncli command (quoted, may include docker exec ...)")
+    ap.add_argument("--lnbits", default=None, help="pay from an LNbits wallet instead: its URL, e.g. https://legend.lnbits.com")
+    ap.add_argument("--lnbits-key", default=None, help="that wallet's admin key")
     ap.add_argument("--no-lightning", action="store_true", help="regtest trust mode: sellers send the preimage, nothing is paid")
     ap.add_argument("--listen", default="127.0.0.1:9640", help="HTTP endpoint for sellers")
     args = ap.parse_args()
+    if args.lnbits and not args.lnbits_key:
+        ap.error("--lnbits needs --lnbits-key")
     maker = Maker(args)
     threading.Thread(target=serve, args=(maker, args.listen), daemon=True).start()
     print(f"market maker {args.address}: {args.sats_per_unit} sats/unit, listening on {args.listen}" + (" (trust mode)" if args.no_lightning else ""))
