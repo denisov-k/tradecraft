@@ -1602,14 +1602,22 @@ std::vector<ShareMessage> ShareChainstateManager::GetShareRange(const std::vecto
     std::vector<ShareMessage> out;
     std::set<uint256> sent;
     // Emit a chain share after everything it depends on: its listed fruits, and for a listed
-    // fruit that is itself a (forked) chain share, that one's dependencies too.
+    // fruit that is itself a (forked) chain share, that one's dependencies too.  Chain shares
+    // of the active chain below `start` are what the peer's locator matched: the peer has
+    // them, so they are not re-sent (seen live: every chain share is listed as a fruit by the
+    // next one, so following that link re-sent the whole chain from the base, 3 MB, which
+    // the receiver refused; a node that restarted with a long chain never caught up).
     std::function<void(const ShareIndex&)> emit_chain_share = [&](const ShareIndex& cs) {
         if (sent.count(cs.GetHash())) return;
+        if (out.size() >= max_entries) return;
         for (const uint256& f : cs.fruits) {
             if (sent.count(f)) continue;
+            if (out.size() >= max_entries) return;
             auto fork = state.chain_shares.find(f);
             if (fork != state.chain_shares.end()) {
-                emit_chain_share(*fork->second);
+                const ShareIndex& dep = *fork->second;
+                if (static_cast<int>(dep.share.height) < start && chain.Contains(dep)) continue; // the peer has it
+                emit_chain_share(dep);
                 continue;
             }
             auto fit = state.fruits.find(f);
