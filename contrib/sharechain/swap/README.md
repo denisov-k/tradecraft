@@ -57,6 +57,15 @@ The WIF is the private key of the mining address (`-defaultshareaddress`). Keep 
 a plain single-key bech32 address (`fc1q…` of 20 bytes, the wallet's `getnewaddress "" bech32`):
 that is what the transfer signature covers. `newkey.py` makes one outside the wallet.
 
+## Selling without handing a key to a node
+
+A storefront (a web page talking to a share chain node) can let a miner sell without the
+node ever seeing the key: `createsharetransfer <pubkey> <maker address> …` returns the
+unsigned transfer and its `sighash` (32 bytes, byte order); the page signs it with the
+miner's key (DER ECDSA, e.g. noble-secp256k1 in the browser), `completesharetx` attaches
+the signature, `sendsharetx` relays. A newcomer can make the key in the page itself and
+point the Bitaxe at its address; `claimshares` needs no key.
+
 ## Regtest trust mode
 
 `--no-lightning` on both sides: the seller sends the preimage with the offer, the maker claims

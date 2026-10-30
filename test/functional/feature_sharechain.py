@@ -285,6 +285,36 @@ class ShareChainTest(FreicoinTestFramework):
         payees = {o["scriptPubKey"].get("address") for o in tip["tx"][0]["vout"] if o["scriptPubKey"].get("address")}
         assert addr[2] in payees and seller not in payees, payees
 
+        self.log.info("a storefront flow: the node never sees the key (createsharetransfer, sign outside, completesharetx, sendsharetx)")
+        key2 = ECKey()
+        key2.generate(compressed=True)
+        pub2 = key2.get_pubkey().get_bytes()
+        seller2 = key_to_p2wpk(pub2)
+        m = StratumMiner(stratum_port(0), seller2, self.log)
+        for _ in range(2):
+            result, error = m.mine_one()
+            assert_equal(error, None)
+        m.close()
+        m = StratumMiner(stratum_port(1), addr[1], self.log)
+        while owners(n0).get(seller2, 0) < 2:
+            result, error = m.mine_one()
+            assert_equal(error, None)
+            self.wait_same_tip(n0, n1)
+        unsigned = n0.createsharetransfer(pub2.hex(), addr[1])
+        assert_equal(unsigned["from"], seller2)
+        assert_equal(n0.decodesharetx(unsigned["hex"])["signed"], False)
+        sig = key2.sign_ecdsa(bytes.fromhex(unsigned["sighash"]))
+        signed = n0.completesharetx(unsigned["hex"], sig.hex())
+        assert_equal(n0.decodesharetx(signed["hex"])["txid"], signed["txid"])
+        assert_equal(n0.sendsharetx(signed["hex"]), signed["txid"])
+        assert_equal(n0.listsharetxs()["pool"][0]["txid"], signed["txid"])
+        while seller2 in owners(n0):
+            result, error = m.mine_one()
+            assert_equal(error, None)
+            self.wait_same_tip(n0, n1)
+        m.close()
+        assert_equal(owners(n0), owners(n1))
+
 
 if __name__ == "__main__":
     ShareChainTest(__file__).main()

@@ -1913,12 +1913,170 @@ static RPCHelpMan listsharetxs() {
     };
 }
 
+static RPCHelpMan createsharetransfer() {
+    return RPCHelpMan{"createsharetransfer",
+        "\nBuild an unsigned share transfer for a key held elsewhere (a storefront signing in the\n"
+        "browser): returns the serialized transfer and the 32 bytes to sign.  Sign them with the\n"
+        "key behind pubkey (ECDSA, DER), then completesharetx and sendsharetx.\n",
+        {
+            {"pubkey", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "the owner's compressed public key (33 bytes); its address is the seller"},
+            {"to", RPCArg::Type::STR, RPCArg::Optional::NO, "the new owner, a bech32 address"},
+            {"amount", RPCArg::Type::NUM, RPCArg::DefaultHint{"everything in the range"}, "work to transfer, in units of a difficulty-1 share (2^32 hashes); 0 for all"},
+            {"maxheight", RPCArg::Type::NUM, RPCArg::DefaultHint{"the share chain tip"}, "credit listed at or below this chain height"},
+            {"minheight", RPCArg::Type::NUM, RPCArg::Default{0}, "credit listed at or above this chain height"},
+            {"hashlock", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "SHA256 of the preimage the buyer must reveal (32 bytes of hex in byte order); omit for an unconditional transfer"},
+            {"expiry", RPCArg::Type::NUM, RPCArg::DefaultHint{"the chain's maximum lock"}, "with a hashlock: chain shares after the next one until the lock lapses"},
+        },
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::STR, "from", "the seller's address, derived from pubkey"},
+            {RPCResult::Type::STR_HEX, "hex", "the transfer, unsigned"},
+            {RPCResult::Type::STR_HEX, "sighash", "the 32 bytes to sign, in byte order"},
+        }},
+        RPCExamples{HelpExampleCli("createsharetransfer", "\"02...\" \"fcrt1q...\"") + HelpExampleRpc("createsharetransfer", "\"02...\", \"fcrt1q...\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const node::NodeContext& node = EnsureAnyNodeContext(request.context);
+    if (!node.sharechainman) throw JSONRPCError(RPC_MISC_ERROR, "share chain is not enabled");
+    const std::vector<unsigned char> pub = ParseHexV(request.params[0], "pubkey");
+    const CPubKey pubkey(pub);
+    if (pub.size() != CPubKey::COMPRESSED_SIZE || !pubkey.IsFullyValid()) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "pubkey must be a valid compressed public key");
+    const CTxDestination dest = DecodeDestination(request.params[1].get_str());
+    const std::optional<WitnessUnknown> to = IsValidDestination(dest) ? WitnessUnknownFromDestination(dest) : std::nullopt;
+    if (!to) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid destination (a bech32 address is required)");
+    const WitnessV0ShortHash id(0, pubkey);
+    ShareTx tx;
+    tx.type = ShareTx::TRANSFER;
+    tx.from = WitnessUnknown(0u, std::vector<unsigned char>(id.begin(), id.end()));
+    tx.to = *to;
+    tx.pubkey = pub;
+    LOCK(::cs_main);
+    ShareChainstateManager& man = *node.sharechainman;
+    const std::shared_ptr<ShareIndex> tip = man.ActiveTip();
+    if (!tip) throw JSONRPCError(RPC_MISC_ERROR, "the share chain is empty");
+    if (!request.params[2].isNull() && request.params[2].get_real() > 0) {
+        tx.amount = ArithToUint256(arith_uint256(static_cast<uint64_t>(request.params[2].get_real())) << 32);
+    }
+    tx.max_height = request.params[3].isNull() ? tip->share.height : static_cast<uint32_t>(request.params[3].getInt<int>());
+    tx.min_height = request.params[4].isNull() ? 0 : static_cast<uint32_t>(request.params[4].getInt<int>());
+    if (!request.params[5].isNull()) {
+        tx.hashlock = RawHash32(request.params[5], "hashlock");
+        const uint32_t after = request.params[6].isNull() ? man.Params().MaxLock() : static_cast<uint32_t>(request.params[6].getInt<int>());
+        if (after == 0 || after > man.Params().MaxLock()) throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("expiry must be 1..%d chain shares", man.Params().MaxLock()));
+        tx.expiry = tip->share.height + 1 + after;
+    }
+    DataStream ss;
+    ss << tx;
+    UniValue obj(UniValue::VOBJ);
+    obj.pushKV("from", ShareAddressString(tx.from));
+    obj.pushKV("hex", HexStr(ss));
+    obj.pushKV("sighash", HexStr(tx.GetSigHash(man.Params().ChainId())));
+    return obj;
+},
+    };
+}
+
+static ShareTx ParseShareTxHex(const UniValue& v)
+{
+    const std::vector<unsigned char> raw = ParseHexV(v, "hex");
+    DataStream ss{raw};
+    ShareTx tx;
+    try {
+        ss >> tx;
+    } catch (const std::exception&) {
+        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "not a share transaction");
+    }
+    return tx;
+}
+
+static RPCHelpMan completesharetx() {
+    return RPCHelpMan{"completesharetx",
+        "\nAttach the owner's signature to a transfer built by createsharetransfer.\n",
+        {
+            {"hex", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "the unsigned transfer"},
+            {"signature", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "DER ECDSA signature of the sighash by the owner's key"},
+        },
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::STR_HEX, "hex", "the signed transfer, for sendsharetx"},
+            {RPCResult::Type::STR_HEX, "txid", "its id"},
+        }},
+        RPCExamples{HelpExampleCli("completesharetx", "\"hex\" \"3045...\"") + HelpExampleRpc("completesharetx", "\"hex\", \"3045...\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    if (!g_share_chain_params) throw JSONRPCError(RPC_MISC_ERROR, "share chain is not enabled");
+    ShareTx tx = ParseShareTxHex(request.params[0]);
+    tx.signature = ParseHexV(request.params[1], "signature");
+    std::string reason;
+    if (!CheckShareTxForm(tx, g_share_chain_params->ChainId(), reason)) throw JSONRPCError(RPC_VERIFY_REJECTED, "share transaction rejected: " + reason);
+    DataStream ss;
+    ss << tx;
+    UniValue obj(UniValue::VOBJ);
+    obj.pushKV("hex", HexStr(ss));
+    obj.pushKV("txid", tx.GetHash().GetHex());
+    return obj;
+},
+    };
+}
+
+static RPCHelpMan sendsharetx() {
+    return RPCHelpMan{"sendsharetx",
+        "\nSubmit a signed share transaction (transfer or claim) to the pool and relay it.\n",
+        {
+            {"hex", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "the signed transaction"},
+        },
+        RPCResult{RPCResult::Type::STR_HEX, "txid", "the share transaction id"},
+        RPCExamples{HelpExampleCli("sendsharetx", "\"hex\"") + HelpExampleRpc("sendsharetx", "\"hex\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const node::NodeContext& node = EnsureAnyNodeContext(request.context);
+    if (!node.sharechainman) throw JSONRPCError(RPC_MISC_ERROR, "share chain is not enabled");
+    const ShareTx tx = ParseShareTxHex(request.params[0]);
+    LOCK(::cs_main);
+    SubmitShareTx(node, tx);
+    return tx.GetHash().GetHex();
+},
+    };
+}
+
+static RPCHelpMan decodesharetx() {
+    return RPCHelpMan{"decodesharetx",
+        "\nDecode a serialized share transaction.\n",
+        {
+            {"hex", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "the transaction"},
+        },
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::STR_HEX, "txid", ""},
+            {RPCResult::Type::STR, "type", "transfer or claim"},
+            {RPCResult::Type::STR, "from", /*optional=*/true, ""},
+            {RPCResult::Type::STR, "to", /*optional=*/true, ""},
+            {RPCResult::Type::NUM, "amount", /*optional=*/true, "work, in hashes (0: everything in the range)"},
+            {RPCResult::Type::NUM, "minheight", /*optional=*/true, ""},
+            {RPCResult::Type::NUM, "maxheight", /*optional=*/true, ""},
+            {RPCResult::Type::STR_HEX, "hashlock", /*optional=*/true, ""},
+            {RPCResult::Type::NUM, "expiry", /*optional=*/true, ""},
+            {RPCResult::Type::STR_HEX, "transfer", /*optional=*/true, "the transfer a claim completes"},
+            {RPCResult::Type::BOOL, "signed", /*optional=*/true, "whether a transfer carries a signature"},
+        }},
+        RPCExamples{HelpExampleCli("decodesharetx", "\"hex\"") + HelpExampleRpc("decodesharetx", "\"hex\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const ShareTx tx = ParseShareTxHex(request.params[0]);
+    UniValue o = ShareTxToJSON(tx);
+    if (tx.type == ShareTx::TRANSFER) o.pushKV("signed", !tx.signature.empty());
+    return o;
+},
+    };
+}
+
 void RegisterShareChainRPCCommands(CRPCTable& t) {
     static const CRPCCommand commands[]{
         {"mining", &getsharechaininfo},
         {"mining", &transfershares},
         {"mining", &claimshares},
         {"mining", &listsharetxs},
+        {"mining", &createsharetransfer},
+        {"mining", &completesharetx},
+        {"mining", &sendsharetx},
+        {"mining", &decodesharetx},
     };
     for (const auto& c : commands) {
         t.appendCommand(c.name, &c);

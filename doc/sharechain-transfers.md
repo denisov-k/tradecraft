@@ -193,7 +193,10 @@ The same transfer with an on-chain HTLC (bitcoin or Freicoin script) works for t
    RPCs: `transfershares privkey to [amount] [maxheight] [minheight] [hashlock] [expiry]`
    (signs with a WIF key; `amount` in difficulty-1 share units, 0 = all; `expiry` in chain
    shares after the next one), `claimshares txid preimage`, `listsharetxs` (pool and held
-   locks); `getsharecredits` reports credits by address. Unit test `sharechain_transfers`,
+   locks); for a key held elsewhere (a storefront signing in the browser):
+   `createsharetransfer pubkey to …` → unsigned hex + sighash (32 bytes, byte order),
+   `completesharetx hex signature`, `sendsharetx hex`, `decodesharetx hex`; `getsharecredits`
+   reports credits by address with their buckets by listing height. Unit test `sharechain_transfers`,
    functional test `feature_sharechain.py`. Chain id suffix 06.
    **Done 2026-10-29.**
 2. **Swap tooling** in `contrib/sharechain/swap/`: a market-maker daemon (quote, verify
