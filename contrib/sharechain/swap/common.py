@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 
 # One unit of work is the work of a difficulty-1 share (2^32 hashes); getsharecredits and
@@ -71,6 +72,56 @@ class Lncli:
     def settled(self, payment_hash):
         r = self._run("lookupinvoice", payment_hash)
         return r.get("state") == "SETTLED" or r.get("settled") is True
+
+
+BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
+
+def bolt11_payment_hash(invoice: str) -> str:
+    """Payment hash (hex, byte order) of a BOLT11 invoice: the tagged field `p`.  Pure
+    decoding, no node needed; the signature is not checked (the maker's node does that
+    when it pays)."""
+    inv = invoice.strip().lower()
+    hrp, _, data = inv.rpartition("1")
+    if not hrp.startswith("ln") or len(data) < 104 + 7:
+        raise ValueError("not a BOLT11 invoice")
+    values = [BECH32_CHARSET.index(c) for c in data[:-6]]  # checksum off
+    pos = 7  # 35-bit timestamp
+    while pos + 3 <= len(values) - 104:  # 104 = 520-bit signature
+        tag, length = values[pos], values[pos + 1] * 32 + values[pos + 2]
+        pos += 3
+        if tag == 1 and length == 52:
+            bits = 0
+            acc = 0
+            out = bytearray()
+            for v in values[pos:pos + 52]:
+                acc = (acc << 5) | v
+                bits += 5
+                while bits >= 8:
+                    bits -= 8
+                    out.append((acc >> bits) & 0xff)
+            return bytes(out[:32]).hex()
+        pos += length
+    raise ValueError("no payment hash in the invoice")
+
+
+def lnaddress_invoice(address: str, sats: int, comment: str = "") -> str:
+    """Fetch an invoice for `sats` from a lightning address (LNURL-pay: user@domain)."""
+    name, _, domain = address.partition("@")
+    meta = http_json(f"https://{domain}/.well-known/lnurlp/{name}")
+    if meta.get("tag") != "payRequest":
+        raise ValueError(f"{address}: not a pay request")
+    msat = sats * 1000
+    if msat < meta.get("minSendable", 0) or msat > meta.get("maxSendable", 1 << 62):
+        raise ValueError(f"{address}: {sats} sats outside {meta.get('minSendable', 0) // 1000}..{meta.get('maxSendable', 0) // 1000}")
+    sep = "&" if "?" in meta["callback"] else "?"
+    url = f"{meta['callback']}{sep}amount={msat}"
+    if comment and meta.get("commentAllowed", 0) >= len(comment):
+        url += "&comment=" + urllib.parse.quote(comment)
+    reply = http_json(url)
+    if reply.get("status") == "ERROR":
+        raise ValueError(f"{address}: {reply.get('reason')}")
+    return reply["pr"]
 
 
 def sha256_hex(data: bytes) -> str:

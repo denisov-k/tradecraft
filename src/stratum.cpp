@@ -27,6 +27,8 @@
 #include <rpc/protocol.h>
 #include <rpc/server.h>
 #include <rpc/util.h>
+#include <rpc/server_util.h> // for EnsureAnyNodeContext
+#include <util/translation.h> // for Untranslated
 #include <net_processing.h> // for PeerManager::RelayShare
 #include <sharechain.h> // for SelectShareParams
 #include <atomic>
@@ -39,7 +41,9 @@
 #include <util/strencodings.h>
 #include <util/time.h> // for NodeClock
 #include <validation.h>
+#ifdef ENABLE_WALLET
 #include <wallet/miner.h>
+#endif
 
 #include <univalue.h>
 
@@ -595,7 +599,11 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
         WitnessUnknown witness_dest = g_default_share_address;
         if (!IsValidDestination(coinbase_dest)) {
             bilingual_str error;
+#ifdef ENABLE_WALLET
             wallet::ReserveMiningDestination(*g_context, coinbase_dest, error);
+#else
+            error = Untranslated("no -defaultminingaddress and no wallet to draw one from");
+#endif
         }
         // Update block template
         const CScript script = CScript() << OP_FALSE;
@@ -1905,12 +1913,9 @@ struct SetDefaultShareAddress {
     }
 };
 
-/** Configure the stratum server */
-bool InitStratumServer(node::NodeContext& node)
+/** Set up the share chain (relay, validation, RPC), with or without a stratum server. */
+bool InitShareChain(node::NodeContext& node)
 {
-    LOCK(cs_stratum);
-
-    // Setup the share chain parameters.
     SelectShareParams(gArgs.GetShareChainType());
     const ShareChainParams& sharechainparams = ShareParams();
     if (sharechainparams.IsValid()) {
@@ -1954,7 +1959,15 @@ bool InitStratumServer(node::NodeContext& node)
         node.sharechainman->Initialize();
         g_sharechainman = node.sharechainman.get();
         // sharechain.dat is loaded from init once the block chain is available (template-age rule).
+        LogPrintf("Share chain: %s%s\n", sharechainparams.GetShareChainTypeString(), gArgs.GetBoolArg("-stratum", false) ? "" : " (relay only: no stratum server)");
     }
+    return true;
+}
+
+/** Configure the stratum server */
+bool InitStratumServer(node::NodeContext& node)
+{
+    LOCK(cs_stratum);
 
     // Either -defaultminingaddress or -stratumwallet can be set, but not both.
     if (gArgs.IsArgSet("-defaultminingaddress") && gArgs.IsArgSet("-stratumwallet")) {
@@ -2239,12 +2252,13 @@ static RPCHelpMan getsharecredits() {
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
-    if (!g_context || !g_context->sharechainman || !g_context->chainman) {
+    const node::NodeContext& node = EnsureAnyNodeContext(request.context);
+    if (!node.sharechainman || !node.chainman) {
         throw JSONRPCError(RPC_MISC_ERROR, "share chain is not enabled");
     }
     LOCK(::cs_main);
-    const ShareChainstateManager& man = *g_context->sharechainman;
-    const CBlockIndex* tip = g_context->chainman->ActiveChain().Tip();
+    const ShareChainstateManager& man = *node.sharechainman;
+    const CBlockIndex* tip = node.chainman->ActiveChain().Tip();
     if (!tip) {
         throw JSONRPCError(RPC_MISC_ERROR, "no block chain tip");
     }

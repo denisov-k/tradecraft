@@ -753,6 +753,11 @@ static bool AppInitServers(NodeContext& node)
     if (!InitHTTPServer(*Assert(node.shutdown))) {
         return false;
     }
+    // The share chain runs with or without a stratum server: a relay-only node
+    // (explorer, seed) follows and passes on shares and serves the share RPCs.
+    if (!InitShareChain(node)) {
+        return false;
+    }
     if (args.GetBoolArg("-stratum", DEFAULT_STRATUM_ENABLE) && !InitStratumServer(node)) {
         return false;
     }

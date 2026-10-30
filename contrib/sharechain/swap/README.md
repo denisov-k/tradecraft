@@ -28,10 +28,24 @@ python3 sell.py --rpc http://127.0.0.1:8638 --rpcuser frc --rpcpassword ... \
     --wif cV... --address fc1q... --maker http://maker.example:9640 --lncli lncli
 ```
 
-Asks for a quote, issues an invoice whose payment hash it chose (`addinvoice --preimage`),
-publishes the locked transfer with that hash, sends the maker the txid and the invoice, and
-waits for the payment. Run it whenever enough credit has built up (the quote says what it is
-worth); until the claim the credits are still yours, and an unpaid lock lapses by itself.
+Asks for a quote, gets an invoice for that amount, publishes the locked transfer with the
+invoice's payment hash, sends the maker the txid and the invoice, and waits for the claim.
+Run it whenever enough credit has built up (the quote says what it is worth); until the claim
+the credits are still yours, and an unpaid lock lapses by itself.
+
+**No lightning node is needed to sell.** The share chain only needs the invoice's payment
+hash, and only the wallet that issued the invoice knows the preimage; the maker learns it by
+paying. So any wallet works:
+
+- `--lnaddress you@walletofsatoshi.com` (or any LNURL-pay address): the script fetches an
+  invoice for the quoted amount itself.
+- `--invoice lnbc…`: run with `--quote-only`, make an invoice for that amount in any
+  wallet, run again with it.
+- `--lncli …`: your own lnd makes the invoice.
+
+Costs: the protocol charges nothing. Receiving on lightning costs whatever your wallet
+charges (custodial ones usually nothing; a self-custodial phone wallet may charge a small fee
+for inbound capacity the first time).
 
 The WIF is the private key of the mining address (`-defaultshareaddress`). Keep that address
 a plain single-key bech32 address (`fc1q…` of 20 bytes, the wallet's `getnewaddress "" bech32`):

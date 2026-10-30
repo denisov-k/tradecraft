@@ -496,11 +496,10 @@ libfreicoin_node_a_SOURCES = \
   validation.cpp \
   validationinterface.cpp \
   versionbits.cpp \
-  wallet/miner.cpp \
   $(FREICOIN_CORE_H)
 
 if ENABLE_WALLET
-libfreicoin_node_a_SOURCES += wallet/init.cpp
+libfreicoin_node_a_SOURCES += wallet/init.cpp wallet/miner.cpp
 libfreicoin_node_a_CPPFLAGS += $(BDB_CPPFLAGS)
 endif
 if !ENABLE_WALLET

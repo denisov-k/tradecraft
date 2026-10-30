@@ -12,6 +12,8 @@ const double DEFAULT_MINING_DIFFICULTY = 1e3;
 
 /** Configure the stratum server. */
 bool InitStratumServer(node::NodeContext& node);
+/** Set up the share chain selected by -sharechain (relay, validation, RPC); needed with or without stratum. */
+bool InitShareChain(node::NodeContext& node);
 
 /** Interrupt the stratum server connections. */
 void InterruptStratumServer();
