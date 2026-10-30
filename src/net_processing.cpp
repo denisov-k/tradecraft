@@ -4754,8 +4754,11 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
         std::vector<ShareMessage> batch;
         vRecv >> batch;
-        if (batch.size() > 500) {
-            LogPrint(BCLog::NET, "shares batch too large from peer=%d\n", pfrom.GetId());
+        // Our own batches hold at most 500 entries; older peers answered with their whole
+        // chain (see GetShareRange), so accept what the 4 MB message limit lets through
+        // rather than stall behind them.
+        if (batch.size() > 5000) {
+            LogPrint(BCLog::NET, "shares batch too large from peer=%d (%d entries)\n", pfrom.GetId(), batch.size());
             return;
         }
         size_t accepted = 0, dup = 0, invalid = 0, missing_n = 0;

@@ -6,6 +6,7 @@ and Freicoin's P2WPK address derivation (test/functional/test_framework).
   newkey.py [main|regtest]      (default regtest)
 """
 import os
+import secrets
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "test", "functional"))
@@ -15,7 +16,8 @@ from test_framework.wallet_util import bytes_to_wif  # noqa: E402
 
 main = len(sys.argv) > 1 and sys.argv[1] == "main"
 key = ECKey()
-key.generate(compressed=True)
+key.set(secrets.token_bytes(32), compressed=True)  # the OS's CSPRNG, not the test framework's random module
+assert key.is_valid
 wif = bytes_to_wif(key.get_bytes()) if not main else None
 if main:
     # bytes_to_wif hardcodes the regtest/testnet prefix (239); mainnet is 128

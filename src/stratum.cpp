@@ -2243,6 +2243,11 @@ static RPCHelpMan getsharecredits() {
                         {RPCResult::Type::NUM, "work", "their work"},
                         {RPCResult::Type::NUM, "share", "work / filledwork"},
                         {RPCResult::Type::STR_AMOUNT, "payout", "what a block found now would pay this address"},
+                        {RPCResult::Type::ARR, "buckets", "the address's credit by listing height (held locks excluded)", {{RPCResult::Type::OBJ, "", "", {
+                            {RPCResult::Type::NUM, "height", "chain share that listed the fruits"},
+                            {RPCResult::Type::NUM, "fruits", ""},
+                            {RPCResult::Type::NUM, "work", ""},
+                        }}}},
                     }},
                 }},
             }},
@@ -2305,6 +2310,19 @@ static RPCHelpMan getsharecredits() {
         e.pushKV("work", c.second.getdouble());
         e.pushKV("share", acc == 0 ? 0.0 : c.second.getdouble() / acc.getdouble());
         e.pushKV("payout", ValueFromAmount(pay.count(c.first) ? pay[c.first] : 0));
+        // the ledger behind the number: credit by listing height (what a transfer moves)
+        UniValue buckets(UniValue::VARR);
+        auto bal = wc.ledger.balance.find(c.first);
+        if (bal != wc.ledger.balance.end()) {
+            for (const auto& b : bal->second) {
+                UniValue bk(UniValue::VOBJ);
+                bk.pushKV("height", (int64_t)b.first);
+                bk.pushKV("fruits", b.second.fruits);
+                bk.pushKV("work", b.second.work.getdouble());
+                buckets.push_back(bk);
+            }
+        }
+        e.pushKV("buckets", buckets);
         arr.push_back(e);
     }
     obj.pushKV("credits", arr);
