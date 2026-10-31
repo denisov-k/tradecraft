@@ -64,6 +64,45 @@ The WIF is the private key of the mining address (`-defaultshareaddress`). Keep 
 a plain single-key bech32 address (`fc1q…` of 20 bytes, the wallet's `getnewaddress "" bech32`):
 that is what the transfer signature covers. `newkey.py` makes one outside the wallet.
 
+## Selling for FRC instead of sats
+
+`frchtlc.py` does the swap with an HTLC on the Freicoin chain (doc/sharechain-transfers.md
+§4.2): no lightning, no bitcoin, and no late-settlement problem, since the maker chooses its
+timeout.
+
+    # maker: fund the HTLC (its node's wallet pays), keep the state file
+    frchtlc.py --rpc http://127.0.0.1:8638/wallet/maker ... offer --seller-pubkey 02..         --frc 1.5 --credits-to fc1q<maker> --state swap1.json > offer.json
+    # seller: check it and lock the credits for 30 chain shares
+    frchtlc.py --rpc ... lock --offer offer.json --frc-wif K.. --credit-wif K..
+    # maker: claim the credits (this reveals the preimage)
+    frchtlc.py --rpc ... claim --state swap1.json
+    # seller: take the FRC
+    frchtlc.py --rpc ... redeem --offer offer.json --transfer <txid> --frc-wif K.. --to fc1q..
+    # maker, if the seller never locked: after the timeout
+    frchtlc.py --rpc ... refund --state swap1.json --to fc1q..
+
+`newkey.py main` makes the seller's FRC key. The seller locks only while at least
+`--min-blocks` (12) Freicoin blocks remain before the maker's refund; the maker claims only
+while `--min-left` (5) chain shares remain on the lock.
+
+## BTC for FRC, atomically
+
+`atomicswap.py` trades bitcoin for Freicoin with an HTLC on each chain under one hash: no
+exchange, no third party. A (has BTC) picks the secret and locks BTC for long; B (has FRC)
+checks it and locks FRC for short; A takes the FRC, which puts the secret on the Freicoin
+chain; B finds it there and takes the BTC.
+
+    A: atomicswap.py <rpc options> initiate --b-btc-pubkey 02.. --btc 0.001 --frc 50 --state a.json > offer.json
+    B: atomicswap.py <rpc options> participate --offer offer.json --btc-wif K.. --state b.json > reply.json
+    A: atomicswap.py <rpc options> redeem-frc --state a.json --reply reply.json --to fc1q..
+    B: atomicswap.py <rpc options> redeem-btc --state b.json --btc-wif K.. --to bc1q..
+    refunds after the timeouts: refund-btc (A, --state a.json), refund-frc (B, --state b.json)
+
+`<rpc options>` are `--btc-rpc/--btc-rpcuser/--btc-rpcpassword` and the same for `--frc-`.
+B demands at least `--min-btc-blocks` (36) bitcoin blocks before A's refund and locks FRC for
+`--timeout-blocks` (12) Freicoin blocks; widen the gap if Freicoin blocks are irregular, since
+a stalled Freicoin chain delays B's refund but not A's.
+
 ## Selling without handing a key to a node
 
 A storefront (a web page talking to a share chain node) can let a miner sell without the

@@ -1,0 +1,81 @@
+# Home mining on the Freicoin share chain, one command:
+#   cp .env.example .env   (set FRC_ADDR)
+#   docker compose up -d --build                      # miners point at this host :9638
+#   docker compose --profile mergemine up -d --build  # also merge-mine with Bitcoin (:3333)
+# See README.md.
+name: frc-sharechain
+services:
+  freicoind:
+    build:
+      context: ./freicoind
+      args:
+        TC_REF: ${TC_REF:-sharechain}
+        JOBS: ${BUILD_JOBS:-2}
+    image: frc-sharechain/freicoind:${TC_REF:-sharechain}
+    restart: unless-stopped
+    stop_grace_period: 300s               # freicoind flushes its chain state and sharechain.dat
+    command:
+      - -server=1
+      - -rpcbind=0.0.0.0
+      - -rpcallowip=172.16.0.0/12
+      - -rpcuser=frc
+      - -rpcpassword=${FRC_RPC_PASSWORD:-change-me-frc}
+      - -listen=1
+      - -port=8639
+      - -sharechain=main                  # also connects to the share chain's known nodes
+      - -stratum=1
+      - -stratumbind=0.0.0.0
+      - -stratumport=9638
+      - -stratumallowip=192.168.0.0/16    # home networks and the docker network only
+      - -stratumallowip=10.0.0.0/8
+      - -stratumallowip=172.16.0.0/12
+      - -defaultminingaddress=${FRC_ADDR:?set FRC_ADDR in .env}
+      - -stratumanyusername               # every miner here is yours: a username like "x" mines to FRC_ADDR
+      - -miningmindiff=${MINING_MINDIFF:-1000}
+      - -printtoconsole=1
+      - -shrinkdebugfile=1
+    ports:
+      - "9638:9638"                       # stratum for your miners
+      - "8639:8639"                       # Freicoin and share chain P2P (optional, helps the network)
+    volumes:
+      - frc-data:/data
+
+  bitcoind:
+    profiles: [mergemine]
+    build:
+      context: ./mergemine
+      args:
+        JOBS: ${BUILD_JOBS:-2}
+    image: frc-sharechain/mergemine:v29.0.0.1
+    restart: unless-stopped
+    stop_grace_period: 300s
+    depends_on: [freicoind]
+    command:
+      - -server=1
+      - -rpcbind=0.0.0.0
+      - -rpcallowip=172.16.0.0/12
+      - -rpcuser=btc
+      - -rpcpassword=${BTC_RPC_PASSWORD:-change-me-btc}
+      - -prune=${BTC_PRUNE_MB:-2000}
+      - -dbcache=${BTC_DBCACHE:-1000}
+      - -listen=1
+      - -stratum=1
+      - -stratumbind=0.0.0.0
+      - -stratumport=3333
+      - -stratumallowip=192.168.0.0/16
+      - -stratumallowip=10.0.0.0/8
+      - -stratumallowip=172.16.0.0/12
+      - -miningmindiff=${MINING_MINDIFF:-1000}
+      - -defaultminingaddress=${BTC_ADDR:-}
+      - -mergemine=freicoind:9638
+      - -mergeminedefault=freicoin:${FRC_ADDR}
+      - -printtoconsole=1
+    ports:
+      - "3333:3333"                       # stratum for merge mining
+      - "8333:8333"
+    volumes:
+      - btc-data:/data
+
+volumes:
+  frc-data: {}
+  btc-data: {}

@@ -1913,6 +1913,13 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     connOptions.nSendBufferMaxSize = 1000 * args.GetIntArg("-maxsendbuffer", DEFAULT_MAXSENDBUFFER);
     connOptions.nReceiveFloodSize = 1000 * args.GetIntArg("-maxreceivebuffer", DEFAULT_MAXRECEIVEBUFFER);
     connOptions.m_added_nodes = args.GetArgs("-addnode");
+    if (node.sharechainman && args.GetBoolArg("-sharechainseeds", true)) {
+        for (const std::string& seed : ShareParams().Seeds()) {
+            if (std::find(connOptions.m_added_nodes.begin(), connOptions.m_added_nodes.end(), seed) == connOptions.m_added_nodes.end()) {
+                connOptions.m_added_nodes.push_back(seed);
+            }
+        }
+    }
     connOptions.nMaxOutboundLimit = *opt_max_upload;
     connOptions.m_peer_connect_timeout = peer_connect_timeout;
     connOptions.whitelist_forcerelay = args.GetBoolArg("-whitelistforcerelay", DEFAULT_WHITELISTFORCERELAY);

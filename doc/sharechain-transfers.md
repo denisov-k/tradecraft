@@ -198,9 +198,25 @@ Costs: one extra coinbase output per open lock (bounded by the pool limits and `
 learn one more output kind. This is a share chain format change (new chain id), so it is
 proposed here for review before it is written.
 
-An on-chain Freicoin HTLC (`M` locks FRC, `X` takes them with `P`) has no such problem: `M`
-chooses its timeout, and makes it end well before the share chain lock does, so the preimage
-is public in time.
+### 4.2 Selling for FRC on the Freicoin chain
+
+Without lightning the timing is ours to choose, so the roles turn around: the side that locks
+longer is the one that must wait for a secret.
+
+1. `M` picks `P`, funds a P2WSH output: `X`'s key with the preimage of `H = SHA256(P)`, or
+   `M`'s key once the Freicoin height passes `T` (`OP_CHECKLOCKTIMEVERIFY`).
+2. `X` checks the output (script, amount, confirmations, and that `T` is far enough ahead),
+   then signs `transfer(X → M, hashlock = H, expiry = E)` with a short `E`.
+3. `M` claims the credits with `P`; the claim puts `P` in the share chain
+   (`listsharetxs.claimed`, or the pool before that).
+4. `X` spends the output with `P`.
+
+`X` gives up nothing before `P` is public, and has until `T` to use it; `M` pays nothing
+unless it gets the credits. `M`'s FRC wait out `T` if `X` walks away; `X`'s credits wait out
+`E` if `M` does. `M` still carries §4's race (a block during the lock pays `X`). Tools:
+`contrib/sharechain/swap/frchtlc.py` (`offer`, `lock`, `claim`, `redeem`, `refund`); test:
+`test/functional/feature_sharechain_frcswap.py`. Nothing in the share chain's rules changes;
+the node only reports claims' preimages.
 
 ## 5. Why this answers the problem
 

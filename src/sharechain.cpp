@@ -42,6 +42,7 @@ constexpr size_t MAX_TXPOOL = 1000;
 
 void SetupShareChainParamsOptions(ArgsManager& argsman) {
     argsman.AddArg("-sharechain=<name>", "Use the share chain <name> (default: main). Allowed values: solo, main or regtest", ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
+    argsman.AddArg("-sharechainseeds", "Connect to the known nodes of the share chain, as with -addnode (default: 1)", ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
 }
 
 struct SoloShareChainParams : public ShareChainParams {
@@ -60,6 +61,7 @@ struct MainShareChainParams : public ShareChainParams {
         m_share_bits = 0x1b068db2;   // difficulty 10000: ~43 TH for 10 s shares; also the easiest target allowed
         m_retarget = true;
         m_share_interval = 10;
+        m_seeds = {"freicoin.ru:8640"}; // the share chain seed of freicoin.ru
     }
 };
 
@@ -379,6 +381,7 @@ bool ShareLedger::Apply(const ShareTx& tx, uint32_t height, uint32_t max_lock, b
     seen.insert(txid);
     Merge(balance[it->second.tx.to], it->second.held);
     locks.erase(it);
+    claimed[tx.transfer_id] = Claimed{txid, tx.preimage, height};
     return true;
 }
 
@@ -1762,6 +1765,7 @@ UniValue ShareTxToJSON(const ShareTx& tx)
     } else {
         o.pushKV("type", "claim");
         o.pushKV("transfer", tx.transfer_id.GetHex());
+        o.pushKV("preimage", HexStr(tx.preimage));
     }
     return o;
 }
@@ -1887,6 +1891,7 @@ static RPCHelpMan listsharetxs() {
                 {RPCResult::Type::STR_HEX, "hashlock", /*optional=*/true, ""},
                 {RPCResult::Type::NUM, "expiry", /*optional=*/true, ""},
                 {RPCResult::Type::STR_HEX, "transfer", /*optional=*/true, "the transfer a claim completes"},
+                {RPCResult::Type::STR_HEX, "preimage", /*optional=*/true, "a claim's preimage (32 bytes, byte order)"},
             }}}},
             {RPCResult::Type::ARR, "pending", "hash-locked transfers in the window, waiting for a claim", {{RPCResult::Type::OBJ, "", "", {
                 {RPCResult::Type::STR_HEX, "txid", ""},
@@ -1902,6 +1907,12 @@ static RPCHelpMan listsharetxs() {
                 {RPCResult::Type::NUM, "fruits", "fruits' worth it holds"},
                 {RPCResult::Type::NUM, "work", "the work it holds (what the buyer is paying for)"},
             }}}},
+            {RPCResult::Type::ARR, "claimed", "hash-locked transfers claimed in the window, with the preimage the claim revealed", {{RPCResult::Type::OBJ, "", "", {
+                {RPCResult::Type::STR_HEX, "transfer", "the transfer"},
+                {RPCResult::Type::STR_HEX, "txid", "the claim"},
+                {RPCResult::Type::STR_HEX, "preimage", "32 bytes, byte order: what a seller paid on another chain takes its payment with"},
+                {RPCResult::Type::NUM, "height", "chain share that carried the claim"},
+            }}}},
         }},
         RPCExamples{HelpExampleCli("listsharetxs", "") + HelpExampleRpc("listsharetxs", "")},
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
@@ -1913,9 +1924,18 @@ static RPCHelpMan listsharetxs() {
     UniValue pool(UniValue::VARR);
     for (const ShareTx& tx : man.PoolTxs()) pool.push_back(ShareTxToJSON(tx));
     UniValue pending(UniValue::VARR);
+    UniValue claimed(UniValue::VARR);
     const std::shared_ptr<ShareIndex> tip = man.ActiveTip();
     if (tip) {
         const ShareLedger own = man.WindowAt(tip.get(), man.WindowBits(tip->share)).ledger;
+        for (const auto& item : own.claimed) {
+            UniValue o(UniValue::VOBJ);
+            o.pushKV("transfer", item.first.GetHex());
+            o.pushKV("txid", item.second.claim.GetHex());
+            o.pushKV("preimage", HexStr(item.second.preimage));
+            o.pushKV("height", (int64_t)item.second.height);
+            claimed.push_back(o);
+        }
         for (const auto& item : own.locks) {
             UniValue o = ShareTxToJSON(item.second.tx);
             o.pushKV("height", (int64_t)item.second.height);
@@ -1933,6 +1953,7 @@ static RPCHelpMan listsharetxs() {
     UniValue obj(UniValue::VOBJ);
     obj.pushKV("pool", pool);
     obj.pushKV("pending", pending);
+    obj.pushKV("claimed", claimed);
     return obj;
 },
     };
@@ -2079,6 +2100,7 @@ static RPCHelpMan decodesharetx() {
             {RPCResult::Type::STR_HEX, "hashlock", /*optional=*/true, ""},
             {RPCResult::Type::NUM, "expiry", /*optional=*/true, ""},
             {RPCResult::Type::STR_HEX, "transfer", /*optional=*/true, "the transfer a claim completes"},
+            {RPCResult::Type::STR_HEX, "preimage", /*optional=*/true, "a claim's preimage"},
             {RPCResult::Type::BOOL, "signed", /*optional=*/true, "whether a transfer carries a signature"},
         }},
         RPCExamples{HelpExampleCli("decodesharetx", "\"hex\"") + HelpExampleRpc("decodesharetx", "\"hex\"")},

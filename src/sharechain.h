@@ -59,6 +59,9 @@ struct ShareChainParams {
     uint32_t MaxLock() const { return m_max_lock; }
     //! Target spacing of shares, seconds.
     int64_t ShareInterval() const { return m_share_interval; }
+    //! Nodes known to run this share chain, connected like -addnode when the share chain
+    //! is on (most Freicoin nodes do not run it, so the usual peer search rarely finds one).
+    const std::vector<std::string>& Seeds() const { return m_seeds; }
 
 protected:
     bool is_valid{false};
@@ -75,6 +78,7 @@ protected:
     int64_t m_share_interval{10};
     int m_max_template_age{2};
     uint32_t m_max_lock{60};
+    std::vector<std::string> m_seeds;
 };
 
 /**
@@ -409,6 +413,14 @@ struct ShareLedger {
     };
     std::map<uint256, Lock> locks;
     std::set<uint256> seen; //!< transaction ids applied in this window
+    //! Claims carried in this window, by the transfer they completed: what a seller
+    //! paid on another chain reads the preimage from (no consensus meaning).
+    struct Claimed {
+        uint256 claim;     //!< the claim's txid
+        uint256 preimage;
+        uint32_t height{0};
+    };
+    std::map<uint256, Claimed> claimed;
 
     //! Credit a listed fruit to its miner's bucket for `height`.
     void Mint(const WitnessUnknown& miner, uint32_t height, const arith_uint256& work);
