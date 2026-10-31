@@ -59,6 +59,9 @@ struct ShareChainParams {
     uint32_t MaxLock() const { return m_max_lock; }
     //! Target spacing of shares, seconds.
     int64_t ShareInterval() const { return m_share_interval; }
+    //! Nodes known to run this share chain, connected like -addnode when the share chain
+    //! is on (most Freicoin nodes do not run it, so the usual peer search rarely finds one).
+    const std::vector<std::string>& Seeds() const { return m_seeds; }
 
 protected:
     bool is_valid{false};
@@ -75,6 +78,7 @@ protected:
     int64_t m_share_interval{10};
     int m_max_template_age{2};
     uint32_t m_max_lock{60};
+    std::vector<std::string> m_seeds;
 };
 
 /**

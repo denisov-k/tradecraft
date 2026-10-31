@@ -42,6 +42,7 @@ constexpr size_t MAX_TXPOOL = 1000;
 
 void SetupShareChainParamsOptions(ArgsManager& argsman) {
     argsman.AddArg("-sharechain=<name>", "Use the share chain <name> (default: main). Allowed values: solo, main or regtest", ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
+    argsman.AddArg("-sharechainseeds", "Connect to the known nodes of the share chain, as with -addnode (default: 1)", ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
 }
 
 struct SoloShareChainParams : public ShareChainParams {
@@ -60,6 +61,7 @@ struct MainShareChainParams : public ShareChainParams {
         m_share_bits = 0x1b068db2;   // difficulty 10000: ~43 TH for 10 s shares; also the easiest target allowed
         m_retarget = true;
         m_share_interval = 10;
+        m_seeds = {"freicoin.ru:8640"}; // the share chain seed of freicoin.ru
     }
 };
 

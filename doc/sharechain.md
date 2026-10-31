@@ -367,6 +367,10 @@ blocks: a found Freicoin block does not reset it.
 - **Work refresh**: when the share chain tip changes (local or relayed chain share) every
   connected miner gets a new job, so fruits hang from the newest anchor.
 - **P2P**: service bit `NODE_SHARECHAIN` (1 << 12), set when the share chain is enabled.
+  Most Freicoin nodes do not run the share chain, so the usual peer search rarely finds one:
+  a node with the share chain on also connects to the chain's known nodes as with `-addnode`
+  (`freicoin.ru:8640` on main; `-sharechainseeds=0` turns it off). DNS seeds that filter by
+  service bit would replace the list.
   Messages: `share` (one `ShareMessage`), `getshares` (hashes), `getshrchain` (locator of up to
   64 chain-share hashes, newest first), `shares` (batch of up to 500 `ShareMessage`s, oldest
   first, from the locator match, including forked chain shares and fruits not yet listed;
