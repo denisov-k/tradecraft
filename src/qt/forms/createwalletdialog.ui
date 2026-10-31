@@ -97,6 +97,58 @@
     </widget>
    </item>
    <item>
+    <widget class="QCheckBox" name="use_mnemonic_checkbox">
+     <property name="toolTip">
+      <string>Make the wallet from a 12-word recovery phrase. Writing the words down is all the backup you need: the same words restore this wallet on any computer, and in the freicoin.ru web wallet.</string>
+     </property>
+     <property name="text">
+      <string>Back up with a 12-word recovery phrase (recommended)</string>
+     </property>
+     <property name="checked">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="restore_mnemonic_checkbox">
+     <property name="toolTip">
+      <string>Rebuild a wallet from recovery words you already have. The whole block chain is scanned for its coins, which can take a few minutes.</string>
+     </property>
+     <property name="text">
+      <string>Restore from recovery words I already have</string>
+     </property>
+     <property name="checked">
+      <bool>false</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPlainTextEdit" name="mnemonic_edit">
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>70</height>
+      </size>
+     </property>
+     <property name="placeholderText">
+      <string>Type your recovery words, separated by spaces</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="mnemonic_status_label">
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+    </widget>
+   </item>
+   <item>
     <spacer name="verticalSpacer_1">
      <property name="orientation">
       <enum>Qt::Vertical</enum>

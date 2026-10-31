@@ -18,6 +18,8 @@
 
 #include <QDialog>
 
+#include <support/allocators/secure.h>
+
 #include <memory>
 
 namespace interfaces {
@@ -47,8 +49,13 @@ public:
     bool isDisablePrivateKeysChecked() const;
     bool isMakeBlankWalletChecked() const;
     bool isExternalSignerChecked() const;
+    bool isMnemonicChecked() const;
+    bool isRestoreChecked() const;
+    //! The typed recovery words, normalized; empty if not valid.
+    SecureString restoreMnemonic() const;
 
 private:
+    void updateOkButton();
     Ui::CreateWalletDialog *ui;
     bool m_has_signers = false;
 };

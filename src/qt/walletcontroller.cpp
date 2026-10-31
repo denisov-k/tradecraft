@@ -28,12 +28,23 @@
 #include <util/string.h>
 #include <util/threadnames.h>
 #include <util/translation.h>
+#include <support/cleanse.h>
+#include <wallet/bip39.h>
 #include <wallet/wallet.h>
+
+#include <univalue.h>
 
 #include <algorithm>
 #include <chrono>
 
 #include <QApplication>
+#include <QCheckBox>
+#include <QDialogButtonBox>
+#include <QGridLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QUrl>
+#include <QVBoxLayout>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QMutexLocker>
@@ -254,14 +265,100 @@ void CreateWalletActivity::askPassphrase()
     });
 }
 
+
+namespace {
+//! Show a new recovery phrase and make the user confirm they wrote it down.
+bool ShowNewMnemonic(QWidget* parent, const SecureString& mnemonic)
+{
+    QDialog dlg(parent, GUIUtil::dialog_flags);
+    dlg.setWindowTitle(QObject::tr("Your recovery words"));
+    auto* layout = new QVBoxLayout(&dlg);
+
+    auto* intro = new QLabel(QObject::tr(
+        "<b>Write these 12 words down on paper, in order, and keep them somewhere safe.</b><br><br>"
+        "They are the only backup of this wallet. Anyone who has them can spend your coins, so never "
+        "type them into a website, a message or a photo. The same words restore this wallet on any "
+        "computer, and in the freicoin.ru web wallet."));
+    intro->setWordWrap(true);
+    layout->addWidget(intro);
+
+    auto* grid = new QGridLayout();
+    std::vector<std::string> words;
+    {
+        std::string cur;
+        for (char c : mnemonic) {
+            if (c == ' ') { words.push_back(cur); cur.clear(); } else { cur += c; }
+        }
+        if (!cur.empty()) words.push_back(cur);
+    }
+    const int cols = 3;
+    const int rows = (int(words.size()) + cols - 1) / cols;
+    for (size_t i = 0; i < words.size(); ++i) {
+        auto* w = new QLabel(QString("%1. <b>%2</b>").arg(i + 1, 2).arg(QString::fromStdString(words[i])));
+        w->setTextInteractionFlags(Qt::NoTextInteraction);
+        w->setStyleSheet("font-family: monospace; font-size: 13pt; padding: 4px 12px;");
+        // Fill down the columns so the numbers read naturally.
+        grid->addWidget(w, int(i) % rows, int(i) / rows);
+        memory_cleanse(words[i].data(), words[i].size());
+    }
+    layout->addLayout(grid);
+
+    auto* confirm = new QCheckBox(QObject::tr("I have written down all 12 words and will keep them safe"));
+    layout->addWidget(confirm);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttons->button(QDialogButtonBox::Ok)->setText(QObject::tr("Continue"));
+    buttons->button(QDialogButtonBox::Ok)->setEnabled(false);
+    layout->addWidget(buttons);
+    QObject::connect(confirm, &QCheckBox::toggled, buttons->button(QDialogButtonBox::Ok), &QPushButton::setEnabled);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    return dlg.exec() == QDialog::Accepted;
+}
+
+//! Run a wallet RPC from the GUI; returns an error message, empty on success.
+std::string RunWalletRpc(interfaces::Node& node, const std::string& wallet_name, const std::string& method, const UniValue& params, UniValue* result = nullptr)
+{
+    const std::string uri = "/wallet/" + std::string(QUrl::toPercentEncoding(QString::fromStdString(wallet_name)).constData());
+    try {
+        UniValue r = node.executeRpc(method, params, uri);
+        if (result) *result = r;
+        return {};
+    } catch (const UniValue& e) {
+        const UniValue& msg = e.find_value("message");
+        return msg.isStr() ? msg.get_str() : e.write();
+    } catch (const std::exception& e) {
+        return e.what();
+    }
+}
+} // namespace
+
 void CreateWalletActivity::createWallet()
 {
+    const bool use_mnemonic = m_create_wallet_dialog->isMnemonicChecked();
+    const bool restore = m_create_wallet_dialog->isRestoreChecked();
+    SecureString mnemonic;
+    if (use_mnemonic) {
+        if (restore) {
+            mnemonic = m_create_wallet_dialog->restoreMnemonic();
+        } else {
+            mnemonic = wallet::bip39::GenerateMnemonic(12);
+            if (!ShowNewMnemonic(m_parent_widget, mnemonic)) {
+                memory_cleanse(mnemonic.data(), mnemonic.size());
+                Q_EMIT finished();
+                return;
+            }
+        }
+    }
+
     showProgressDialog(
         //: Title of window indicating the progress of creation of a new wallet.
-        tr("Create Wallet"),
+        restore ? tr("Restore Wallet") : tr("Create Wallet"),
         /*: Descriptive text of the create wallet progress window which indicates
             to the user which wallet is currently being created. */
-        tr("Creating Wallet <b>%1</b>…").arg(m_create_wallet_dialog->walletName().toHtmlEscaped()));
+        restore ? tr("Restoring Wallet <b>%1</b> and scanning the block chain for its coins…").arg(m_create_wallet_dialog->walletName().toHtmlEscaped())
+                : tr("Creating Wallet <b>%1</b>…").arg(m_create_wallet_dialog->walletName().toHtmlEscaped()));
 
     std::string name = m_create_wallet_dialog->walletName().toStdString();
     uint64_t flags = 0;
@@ -270,21 +367,42 @@ void CreateWalletActivity::createWallet()
     if (m_create_wallet_dialog->isDisablePrivateKeysChecked()) {
         flags |= WALLET_FLAG_DISABLE_PRIVATE_KEYS;
     }
-    if (m_create_wallet_dialog->isMakeBlankWalletChecked()) {
+    if (m_create_wallet_dialog->isMakeBlankWalletChecked() || use_mnemonic) {
+        // A recovery-phrase wallet starts blank; the phrase's descriptors are imported next.
         flags |= WALLET_FLAG_BLANK_WALLET;
     }
     if (m_create_wallet_dialog->isExternalSignerChecked()) {
         flags |= WALLET_FLAG_EXTERNAL_SIGNER;
     }
 
-    QTimer::singleShot(500ms, worker(), [this, name, flags] {
-        auto wallet{node().walletLoader().createWallet(name, m_passphrase, flags, m_warning_message)};
+    QTimer::singleShot(500ms, worker(), [this, name, flags, use_mnemonic, restore, mnemonic]() mutable {
+        // With a recovery phrase the wallet is created unencrypted, the phrase imported,
+        // and only then encrypted (importing needs the keys unlocked).
+        const SecureString create_passphrase = use_mnemonic ? SecureString() : m_passphrase;
+        auto wallet{node().walletLoader().createWallet(name, create_passphrase, flags, m_warning_message)};
 
         if (wallet) {
             m_wallet_model = m_wallet_controller->getOrCreateWallet(std::move(*wallet));
+            if (use_mnemonic) {
+                UniValue params(UniValue::VARR);
+                params.push_back(std::string(mnemonic.begin(), mnemonic.end()));
+                if (restore) params.push_back(0); else params.push_back("now");
+                UniValue res;
+                std::string err = RunWalletRpc(node(), name, "importmnemonic", params, &res);
+                if (err.empty() && !(res.isObject() && res["success"].isBool() && res["success"].get_bool())) {
+                    err = "Importing the recovery phrase failed: " + res.write();
+                }
+                if (err.empty() && !m_passphrase.empty()) {
+                    UniValue p(UniValue::VARR);
+                    p.push_back(std::string(m_passphrase.begin(), m_passphrase.end()));
+                    err = RunWalletRpc(node(), name, "encryptwallet", p);
+                }
+                if (!err.empty()) m_error_message = Untranslated(err);
+            }
         } else {
             m_error_message = util::ErrorString(wallet);
         }
+        memory_cleanse(mnemonic.data(), mnemonic.size());
 
         QTimer::singleShot(500ms, this, &CreateWalletActivity::finish);
     });

@@ -21,6 +21,9 @@
 
 #include <qt/guiutil.h>
 
+#include <wallet/bip39.h>
+
+#include <QPlainTextEdit>
 #include <QPushButton>
 
 CreateWalletDialog::CreateWalletDialog(QWidget* parent) :
@@ -32,9 +35,26 @@ CreateWalletDialog::CreateWalletDialog(QWidget* parent) :
     ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(false);
     ui->wallet_name_line_edit->setFocus(Qt::ActiveWindowFocusReason);
 
-    connect(ui->wallet_name_line_edit, &QLineEdit::textEdited, [this](const QString& text) {
-        ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(!text.isEmpty());
+    connect(ui->wallet_name_line_edit, &QLineEdit::textEdited, [this](const QString&) {
+        updateOkButton();
     });
+
+    // 12-word recovery phrase options.
+    connect(ui->use_mnemonic_checkbox, &QCheckBox::toggled, [this](bool checked) {
+        if (checked) ui->blank_wallet_checkbox->setChecked(false);
+        if (!checked) ui->restore_mnemonic_checkbox->setChecked(false);
+        updateOkButton();
+    });
+    connect(ui->restore_mnemonic_checkbox, &QCheckBox::toggled, [this](bool checked) {
+        if (checked) ui->use_mnemonic_checkbox->setChecked(true);
+        ui->mnemonic_edit->setVisible(checked);
+        ui->mnemonic_status_label->setVisible(checked);
+        ui->buttonBox->button(QDialogButtonBox::Ok)->setText(checked ? tr("Restore") : tr("Create"));
+        if (checked) ui->mnemonic_edit->setFocus();
+        adjustSize();
+        updateOkButton();
+    });
+    connect(ui->mnemonic_edit, &QPlainTextEdit::textChanged, [this] { updateOkButton(); });
 
     connect(ui->encrypt_wallet_checkbox, &QCheckBox::toggled, [this](bool checked) {
         // Disable the disable_privkeys_checkbox and external_signer_checkbox when isEncryptWalletChecked is
@@ -73,6 +93,11 @@ CreateWalletDialog::CreateWalletDialog(QWidget* parent) :
         // set to true, enable it when isDisablePrivateKeysChecked is false.
         ui->encrypt_wallet_checkbox->setEnabled(!checked);
 
+        // Wallets without private keys cannot have a recovery phrase
+        ui->use_mnemonic_checkbox->setEnabled(!checked);
+        ui->restore_mnemonic_checkbox->setEnabled(!checked);
+        if (checked) ui->use_mnemonic_checkbox->setChecked(false);
+
         // Wallets without private keys cannot set blank
         ui->blank_wallet_checkbox->setEnabled(!checked);
         if (checked) {
@@ -86,6 +111,7 @@ CreateWalletDialog::CreateWalletDialog(QWidget* parent) :
     });
 
     connect(ui->blank_wallet_checkbox, &QCheckBox::toggled, [this](bool checked) {
+        if (checked) ui->use_mnemonic_checkbox->setChecked(false);
         // Disable the disable_privkeys_checkbox when blank_wallet_checkbox is checked
         // as blank-ness only pertains to wallets with private keys.
         ui->disable_privkeys_checkbox->setEnabled(!checked);
@@ -152,4 +178,42 @@ bool CreateWalletDialog::isMakeBlankWalletChecked() const
 bool CreateWalletDialog::isExternalSignerChecked() const
 {
     return ui->external_signer_checkbox->isChecked();
+}
+
+bool CreateWalletDialog::isMnemonicChecked() const
+{
+    return ui->use_mnemonic_checkbox->isEnabled() && ui->use_mnemonic_checkbox->isChecked();
+}
+
+bool CreateWalletDialog::isRestoreChecked() const
+{
+    return isMnemonicChecked() && ui->restore_mnemonic_checkbox->isChecked();
+}
+
+SecureString CreateWalletDialog::restoreMnemonic() const
+{
+    const std::string typed = ui->mnemonic_edit->toPlainText().toStdString();
+    auto norm = wallet::bip39::NormalizeAndCheck(SecureString(typed.begin(), typed.end()));
+    return norm ? *norm : SecureString();
+}
+
+void CreateWalletDialog::updateOkButton()
+{
+    bool ok = !ui->wallet_name_line_edit->text().isEmpty();
+    if (isRestoreChecked()) {
+        const QString typed = ui->mnemonic_edit->toPlainText().simplified();
+        const int n = typed.isEmpty() ? 0 : typed.split(' ').size();
+        const bool valid = !restoreMnemonic().empty();
+        if (n == 0) {
+            ui->mnemonic_status_label->setText(tr("Enter your 12 recovery words."));
+        } else if (valid) {
+            ui->mnemonic_status_label->setText(tr("Recovery words look correct."));
+        } else if (n < 12) {
+            ui->mnemonic_status_label->setText(tr("%1 of 12 words entered.").arg(n));
+        } else {
+            ui->mnemonic_status_label->setText(tr("These words are not a valid recovery phrase. Check the spelling and order."));
+        }
+        ok = ok && valid;
+    }
+    ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(ok);
 }
