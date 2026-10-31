@@ -160,6 +160,48 @@ it.
 Nothing here needs Freicoin lightning: the sats are bitcoin, which merge-miners already deal in.
 The same transfer with an on-chain HTLC (bitcoin or Freicoin script) works for the rest.
 
+### 4.1 Timing: a seller who settles late
+
+A submarine swap is safe only if the side that learns the preimage last can still use it: here
+`M` learns `P` when `X` settles, and must then get `claim(P)` in before `expiry`. Lightning does
+not let `M` choose when `X` settles. `X` may hold the incoming HTLC (a hold invoice) until its
+CLTV is close, which is at least `min_final_cltv_expiry_delta` bitcoin blocks (18 by the BOLT
+default, often 40 to 144 in wallets), i.e. three hours or more, while `MAX_LOCK` is 60 chain
+shares, about an hour. A dishonest `X` with its own lightning node:
+
+1. locks credits for `M`, `M` pays, `X` holds the HTLC;
+2. waits until the lock lapses at `expiry` and the credits are `X`'s again;
+3. settles: `X` has the sats and the credits, `M`'s `claim(P)` is refused as lapsed.
+
+Meanwhile the locked credits were paid to `X` by every block found during the lock (§3.3), so
+even an honest but slow settlement transfers less than `M` paid for. Custodial wallets and
+lightning addresses (what small miners use, and what the tools in `contrib/sharechain/swap/`
+expect) settle on arrival, so this needs a seller who runs a node and means to cheat; `M` caps
+its exposure per sale until the rule below is in.
+
+Shortening the lock to fit the window, the obvious fix when a large miner shrinks the window to
+an hour, makes this worse. The fix runs the other way:
+
+- **The lock outlives the lightning HTLC.** `M` pays with a CLTV limit (`lncli payinvoice
+  --cltv_limit`), say 40 blocks, and accepts only transfers whose `expiry` lies beyond that
+  plus a margin: `MAX_LOCK` of the order of 600 chain shares (10 hours at 60 s).
+- **A locked credit pays into the lock, not to the seller.** For a lock carried before the
+  anchor and still pending at it, the coinbase pays the locked credit's share to a P2WSH HTLC
+  output: `to` with `P`, or `from` after a Freicoin height past `expiry`. Then nothing the lock
+  holds is consumed by the seller while it is open, a long lock costs `X` nothing but the wait,
+  and **the race of §4 disappears**: a block found between settlement and the claim pays the
+  HTLC output, which `M` spends with the `P` it already has. A window that slides past the
+  lock's buckets is harmless for the same reason: what they earned is in the HTLC outputs.
+
+Costs: one extra coinbase output per open lock (bounded by the pool limits and `MAX_PAYEES`),
+`M` sweeps them with ordinary Freicoin transactions, and the payout rules and `CheckPayouts`
+learn one more output kind. This is a share chain format change (new chain id), so it is
+proposed here for review before it is written.
+
+An on-chain Freicoin HTLC (`M` locks FRC, `X` takes them with `P`) has no such problem: `M`
+chooses its timeout, and makes it end well before the share chain lock does, so the preimage
+is public in time.
+
 ## 5. Why this answers the problem
 
 - **Coinbase size.** With market makers active, the window's credit concentrates on a few
@@ -175,7 +217,8 @@ The same transfer with an on-chain HTLC (bitcoin or Freicoin script) works for t
 
 ## 6. Open points
 
-1. `MAX_LOCK` and the transaction pool limits.
+1. `MAX_LOCK` and the transaction pool limits; with lightning, the lock must outlive the
+   payment's CLTV and locked credit should pay into an HTLC output (§4.1).
 2. Whether `to` may be any script (market maker's P2SH/multisig) or a witness program only, as
    miners' addresses are today. Any script works for the coinbase; witness-program-only keeps
    the canonical order rule (§9.5) as is.

@@ -26,6 +26,13 @@ instead.
   amount is within the price, then `claimshares` with the preimage the payment returns.
 - `--min-left` (chain shares that must remain before the lock lapses) is the maker's safety
   margin for the claim to land; `--expiry` is what it asks sellers to lock for.
+- `--max-sats` caps a single purchase (default 20 000). Lightning lets a seller with its own
+  node hold the payment and settle only after the lock lapses, keeping both the sats and the
+  credits (doc/sharechain-transfers.md §4.1); until the share chain rule there is in, the cap
+  is the maker's limit on that loss. Wallets and lightning addresses settle on arrival.
+- A payment is sent once. If it has not settled, the maker waits for its preimage and claims
+  then, rather than paying again; a claim refused after paying is logged as `LOST`.
+- `--cltv-limit` (lnd only, default 40 blocks) bounds how long a payment can stay locked.
 
 ## Seller
 
