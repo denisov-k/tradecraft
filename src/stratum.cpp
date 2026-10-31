@@ -713,7 +713,12 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
     }
 
     CBlockIndex tmp_index;
-    if (!current_work.GetBlock().m_aux_pow.IsNull() && !current_work.m_aux_hash2) {
+    if (current_work.m_share_state && !current_work.m_aux_hash2) {
+        // Share chain: miners work at the share target, for native and for
+        // first-stage auxiliary (merge-mining-active) work alike.  Submissions
+        // that also meet the block target are still found and submitted.
+        tmp_index.nBits = current_work.m_share_state->bits;
+    } else if (!current_work.GetBlock().m_aux_pow.IsNull() && !current_work.m_aux_hash2) {
         // Auxiliary proof-of-work difficulty
         tmp_index.nBits = current_work.GetBlock().m_aux_pow.m_commit_bits;
     } else if (current_work.m_share_state) {
@@ -952,8 +957,32 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
         blkhdr.m_aux_pow.m_aux_version = version;
 
         const Consensus::Params& params = Params().GetConsensus();
-        res = CheckAuxiliaryProofOfWork(blkhdr, params);
         auto aux_hash = blkhdr.GetAuxiliaryHash(params);
+        // Share chain: a direct miner's first-stage (auxiliary) hash that meets the
+        // share target is a fruit, exactly as for a merge-mined submission
+        // (SubmitAuxiliaryBlock): the stratum-built parent is the aux proof.
+        if (g_context->sharechainman && current_work.m_share_state) {
+            const CTxDestination who = IsValidDestination(client.m_addr) ? client.m_addr : current_work.m_coinbase_dest;
+            const std::optional<WitnessUnknown> miner = WitnessUnknownFromDestination(who);
+            if (miner) {
+                Share share = ShareFromTemplateState(*current_work.m_share_state, *miner);
+                CBlockHeader frc_header(current_work.GetBlock());
+                frc_header.nTime = nTime;
+                if (!FillNativeShareWitness(share, cb, cb_branch, frc_header, ShareParams().ChainId())) {
+                    LogPrintf("Share chain: cannot build witness for direct aux share from %s\n", EncodeDestination(who));
+                } else {
+                    SetAuxShareWitness(share, blkhdr.m_aux_pow);
+                    bool mutated = false;
+                    const uint256 pow_hash = share.GetPoWHash(params, &mutated);
+                    if (mutated || pow_hash != aux_hash.first) {
+                        LogPrintf("Share chain: BUG: reconstructed direct aux share hash %s != %s\n", pow_hash.ToString(), aux_hash.first.ToString());
+                    } else {
+                        SubmitShareToChain(share, pow_hash, current_work, client, who, " (direct aux)");
+                    }
+                }
+            }
+        }
+        res = CheckAuxiliaryProofOfWork(blkhdr, params);
         if (res) {
             LogPrintf("GOT AUXILIARY BLOCK!!! by %s: %s, %s\n", EncodeDestination(client.m_addr), aux_hash.first.ToString(), aux_hash.second.ToString());
             blkhdr.hashMerkleRoot = ComputeMerkleRootFromBranch(cb.GetHash(), cb_branch, 0);
@@ -1269,7 +1298,6 @@ UniValue stratum_mining_authorize(StratumClient& client, const UniValue& params)
             throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Invalid Freicoin address: %s", username));
         }
     }
-
     client.m_addr = addr;
     client.m_mindiff = mindiff;
     client.m_authorized = true;
