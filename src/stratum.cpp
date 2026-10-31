@@ -726,11 +726,10 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
     } else if (!current_work.GetBlock().m_aux_pow.IsNull() && !current_work.m_aux_hash2) {
         // Auxiliary proof-of-work difficulty
         tmp_index.nBits = current_work.GetBlock().m_aux_pow.m_commit_bits;
-    } else if (current_work.m_share_state) {
-        // Share chain: miners work at the share target
-        tmp_index.nBits = current_work.m_share_state->bits;
     } else {
-        // Native proof-of-work difficulty
+        // Native proof-of-work difficulty, and the second stage of a merge-mined
+        // block: it is no share (SubmitBlock), so it must not wait for one.  At the
+        // share target a 1 TH/s miner would sit on a found block for minutes.
         tmp_index.nBits = current_work.GetBlock().nBits;
     }
     double diff = ClampDifficulty(client, GetDifficulty(tmp_index));

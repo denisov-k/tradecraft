@@ -28,7 +28,7 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from common import WORK_UNIT, LNbits, Lncli, Rpc, sha256_hex
+from common import WORK_UNIT, LNbits, Lncli, PaymentInFlight, Rpc, sha256_hex
 
 
 class Maker:
@@ -42,9 +42,10 @@ class Maker:
         elif args.lnbits:
             self.lightning = LNbits(args.lnbits, args.lnbits_key)
         else:
-            self.lightning = Lncli(args.lncli.split())
+            self.lightning = Lncli(args.lncli.split(), cltv_limit=args.cltv_limit)
         self.expiry = args.expiry        # chain shares a seller should lock for
         self.min_left = args.min_left    # chain shares that must remain when we pay
+        self.max_sats = args.max_sats    # exposure per sale (doc/sharechain-transfers.md §4.1)
         self.lock = threading.Lock()
         self.offers = {}                 # txid -> offer (invoice or preimage)
         self.done = set()
@@ -67,6 +68,8 @@ class Maker:
         return {p["txid"]: p for p in self.rpc("listsharetxs")["pending"] if p["to"] == self.address}
 
     def settle(self, txid, offer):
+        if offer.get("paid_hash"):
+            return self.finish(txid, offer)
         p = self.pending().get(txid)
         if not p:
             return "not pending (not carried yet, claimed, or lapsed)"
@@ -87,9 +90,36 @@ class Maker:
                 return "invoice payment hash is not the transfer's hashlock"
             if sats > worth:
                 return f"invoice asks {sats} sats, the credits are worth {worth}"
+            if sats > self.max_sats:
+                return f"invoice asks {sats} sats, above our limit of {self.max_sats} per sale"
             print(f"paying {sats} sats for {p['fruits']} fruits ({p['work'] / WORK_UNIT:.3f} units)")
-            preimage = self.lightning.pay(offer["invoice"])
-        claim = self.rpc("claimshares", txid, preimage)
+            # From here on the sats may be gone: never pay this offer again, only wait for
+            # the preimage (a slow or holding seller) and claim.
+            offer["paid_hash"] = payment_hash
+            offer["expiry"] = p["expiry"]
+            try:
+                preimage = self.lightning.pay(offer["invoice"])
+            except PaymentInFlight:
+                return "paid, waiting for the seller to settle"
+        return self.claim(txid, offer, preimage)
+
+    def finish(self, txid, offer):
+        """A payment we already sent: claim once it has settled."""
+        preimage = self.lightning.sent_preimage(offer["paid_hash"])
+        if not preimage:
+            height = self.rpc("getsharechaininfo")["height"]
+            return f"paid, seller has not settled; the lock lapses in {offer['expiry'] - height} chain shares"
+        return self.claim(txid, offer, preimage)
+
+    def claim(self, txid, offer, preimage):
+        try:
+            claim = self.rpc("claimshares", txid, preimage)
+        except Exception as e:
+            if offer.get("paid_hash"):
+                # Paid and refused: the seller settled after the lock lapsed (§4.1).
+                print(f"LOST {txid}: paid but the claim was refused ({e}); seller settled too late")
+                self.done.add(txid)
+            raise
         print(f"claimed {txid} with {claim}")
         return None
 
@@ -160,6 +190,8 @@ def main():
     ap.add_argument("--min-sats", type=int, default=100, help="smallest purchase")
     ap.add_argument("--expiry", type=int, default=30, help="chain shares a seller should lock for (quoted)")
     ap.add_argument("--min-left", type=int, default=5, help="chain shares that must remain before the lock lapses when we pay")
+    ap.add_argument("--max-sats", type=int, default=20000, help="largest single purchase: a seller who settles after the lock lapses keeps both (doc/sharechain-transfers.md 4.1)")
+    ap.add_argument("--cltv-limit", type=int, default=40, help="lnd: largest total CLTV (bitcoin blocks) a payment may lock")
     ap.add_argument("--lncli", default="lncli", help="pay with your own lnd: lncli command (quoted, may include docker exec ...)")
     ap.add_argument("--lnbits", default=None, help="pay from an LNbits wallet instead: its URL, e.g. https://legend.lnbits.com")
     ap.add_argument("--lnbits-key", default=None, help="that wallet's admin key")

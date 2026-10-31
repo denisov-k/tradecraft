@@ -48,8 +48,9 @@ class Lncli:
     """lnd through its CLI.  `cmd` is e.g. ['lncli', '--network=mainnet'] or
     ['docker', 'exec', 'lnd', 'lncli']."""
 
-    def __init__(self, cmd):
+    def __init__(self, cmd, cltv_limit=None):
         self.cmd = list(cmd)
+        self.cltv_limit = cltv_limit
 
     def _run(self, *args):
         out = subprocess.run(self.cmd + list(args), capture_output=True, text=True, check=True).stdout
@@ -65,10 +66,24 @@ class Lncli:
 
     def pay(self, payment_request):
         # lnd >= 0.11 prints {"payment_preimage": ..., "status": "SUCCEEDED", ...}
-        r = self._run("payinvoice", "--force", "--json", payment_request)
+        extra = ["--cltv_limit", str(self.cltv_limit)] if self.cltv_limit else []
+        r = self._run("payinvoice", "--force", "--json", *extra, payment_request)
         if r.get("status") not in (None, "SUCCEEDED"):
             raise RuntimeError(f"payment {r.get('status')}: {r.get('failure_reason')}")
         return r["payment_preimage"]
+
+    def sent_preimage(self, payment_hash):
+        """The preimage of a payment we already sent, once it has succeeded; None while it is
+        in flight; raises if it failed (the sats came back)."""
+        for p in self._run("listpayments", "--include_incomplete").get("payments", []):
+            if p.get("payment_hash") != payment_hash:
+                continue
+            if p.get("status") == "SUCCEEDED":
+                return p["payment_preimage"]
+            if p.get("status") == "FAILED":
+                raise RuntimeError("payment failed")
+            return None
+        raise RuntimeError("no such payment")
 
     def settled(self, payment_hash):
         r = self._run("lookupinvoice", payment_hash)
@@ -150,6 +165,10 @@ def bolt11_amount_sats(invoice: str) -> int:
     return int(digits) * 100_000_000
 
 
+class PaymentInFlight(Exception):
+    """A payment was sent and has not settled yet.  Never pay again: ask sent_preimage()."""
+
+
 class LNbits:
     """An LNbits wallet (hosted or self-hosted) through its REST API: pays invoices and
     hands back the preimage.  No node needed; the wallet's admin key pays."""
@@ -176,12 +195,22 @@ class LNbits:
         payment_hash = r.get("payment_hash") or bolt11_payment_hash(payment_request)
         # the preimage comes with the payment record once it is settled
         for _ in range(60):
-            p = self._call("GET", f"/api/v1/payments/{payment_hash}")
-            preimage = p.get("preimage") or (p.get("details") or {}).get("preimage")
-            if p.get("paid") and preimage and int(preimage, 16) != 0:
+            preimage = self.sent_preimage(payment_hash)
+            if preimage:
                 return preimage
             time.sleep(2)
-        raise RuntimeError("payment not settled within two minutes")
+        raise PaymentInFlight(payment_hash)
+
+    def sent_preimage(self, payment_hash):
+        """The preimage of a payment we already sent, once settled; None while in flight."""
+        p = self._call("GET", f"/api/v1/payments/{payment_hash}")
+        preimage = p.get("preimage") or (p.get("details") or {}).get("preimage")
+        if p.get("paid") and preimage and int(preimage, 16) != 0:
+            return preimage
+        status = (p.get("details") or {}).get("status") or p.get("status")
+        if status == "failed":
+            raise RuntimeError("payment failed")
+        return None
 
     def settled(self, payment_hash):
         p = self._call("GET", f"/api/v1/payments/{payment_hash}")
