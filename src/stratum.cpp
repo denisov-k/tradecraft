@@ -1107,9 +1107,11 @@ bool SubmitBlock(StratumClient& client, const JobId& job_id, const StratumWork& 
         // If the client is mining directly to the local wallet, consume the
         // destination used for this work unit so that new work mines to a
         // fresh address.
+#ifdef ENABLE_WALLET
         if (!IsValidDestination(client.m_addr) && !IsValidDestination(g_default_mining_address)) {
             wallet::KeepMiningDestination(current_work.m_coinbase_dest);
         }
+#endif
         // The client needs new work!
         client.m_send_work = true;
     }
@@ -2141,8 +2143,10 @@ void StopStratumServer()
         block_watcher_thread.join();
     }
     LOCK(cs_stratum);
+#ifdef ENABLE_WALLET
     /* Release any reserved keys back to the pool. */
     wallet::ReleaseMiningDestinations();
+#endif
     /* Tear-down active connections. */
     for (const auto& subscription : subscriptions) {
         LogPrint(BCLog::STRATUM, "Closing stratum server connection to %s due to process termination\n", subscription.second.GetPeer().ToStringAddrPort());
