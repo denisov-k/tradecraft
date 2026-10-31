@@ -1288,6 +1288,14 @@ UniValue stratum_mining_authorize(StratumClient& client, const UniValue& params)
         boost::trim_right(username);
     }
 
+    // Many miners are set up as "address.workername": a Freicoin address never
+    // contains a '.', so drop the worker name.
+    pos = username.find('.');
+    if (pos != std::string::npos) {
+        username.resize(pos);
+        boost::trim_right(username);
+    }
+
     // If the username is a valid Freicoin address, use it as the destination
     // for block rewards.  Otherwise setup the miner to use fresh keys from the
     // wallet.
@@ -1295,9 +1303,18 @@ UniValue stratum_mining_authorize(StratumClient& client, const UniValue& params)
     if (!username.empty()) {
         addr = DecodeDestination(username);
         if (!IsValidDestination(addr)) {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Invalid Freicoin address: %s", username));
+            // A home miner pointed at its own node with a placeholder username
+            // ("x", a pool login...) mines to the node's default address rather
+            // than being turned away.
+            if (IsValidDestination(g_default_mining_address)) {
+                LogPrintf("Stratum miner %s sent username \"%s\", which is not a Freicoin address; mining to the default address instead\n", client.GetPeer().ToStringAddrPort(), username);
+                addr = CNoDestination();
+            } else {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Invalid Freicoin address: %s", username));
+            }
         }
     }
+
     client.m_addr = addr;
     client.m_mindiff = mindiff;
     client.m_authorized = true;
