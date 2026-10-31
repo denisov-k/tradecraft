@@ -409,6 +409,14 @@ struct ShareLedger {
     };
     std::map<uint256, Lock> locks;
     std::set<uint256> seen; //!< transaction ids applied in this window
+    //! Claims carried in this window, by the transfer they completed: what a seller
+    //! paid on another chain reads the preimage from (no consensus meaning).
+    struct Claimed {
+        uint256 claim;     //!< the claim's txid
+        uint256 preimage;
+        uint32_t height{0};
+    };
+    std::map<uint256, Claimed> claimed;
 
     //! Credit a listed fruit to its miner's bucket for `height`.
     void Mint(const WitnessUnknown& miner, uint32_t height, const arith_uint256& work);

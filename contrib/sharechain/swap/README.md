@@ -64,6 +64,27 @@ The WIF is the private key of the mining address (`-defaultshareaddress`). Keep 
 a plain single-key bech32 address (`fc1q…` of 20 bytes, the wallet's `getnewaddress "" bech32`):
 that is what the transfer signature covers. `newkey.py` makes one outside the wallet.
 
+## Selling for FRC instead of sats
+
+`frchtlc.py` does the swap with an HTLC on the Freicoin chain (doc/sharechain-transfers.md
+§4.2): no lightning, no bitcoin, and no late-settlement problem, since the maker chooses its
+timeout.
+
+    # maker: fund the HTLC (its node's wallet pays), keep the state file
+    frchtlc.py --rpc http://127.0.0.1:8638/wallet/maker ... offer --seller-pubkey 02..         --frc 1.5 --credits-to fc1q<maker> --state swap1.json > offer.json
+    # seller: check it and lock the credits for 30 chain shares
+    frchtlc.py --rpc ... lock --offer offer.json --frc-wif K.. --credit-wif K..
+    # maker: claim the credits (this reveals the preimage)
+    frchtlc.py --rpc ... claim --state swap1.json
+    # seller: take the FRC
+    frchtlc.py --rpc ... redeem --offer offer.json --transfer <txid> --frc-wif K.. --to fc1q..
+    # maker, if the seller never locked: after the timeout
+    frchtlc.py --rpc ... refund --state swap1.json --to fc1q..
+
+`newkey.py main` makes the seller's FRC key. The seller locks only while at least
+`--min-blocks` (12) Freicoin blocks remain before the maker's refund; the maker claims only
+while `--min-left` (5) chain shares remain on the lock.
+
 ## Selling without handing a key to a node
 
 A storefront (a web page talking to a share chain node) can let a miner sell without the
