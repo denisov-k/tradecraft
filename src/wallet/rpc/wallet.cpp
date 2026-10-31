@@ -1067,6 +1067,9 @@ RPCHelpMan importdescriptors();
 RPCHelpMan listdescriptors();
 RPCHelpMan backupwallet();
 RPCHelpMan restorewallet();
+RPCHelpMan generatemnemonic();
+RPCHelpMan mnemonicdescriptors();
+RPCHelpMan importmnemonic();
 
 // coins
 RPCHelpMan getreceivedbyaddress();
@@ -1142,6 +1145,9 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &importaddress},
         {"wallet", &importdescriptors},
         {"wallet", &importmulti},
+        {"wallet", &importmnemonic},
+        {"wallet", &generatemnemonic},
+        {"wallet", &mnemonicdescriptors},
         {"wallet", &importprivkey},
         {"wallet", &importprunedfunds},
         {"wallet", &importpubkey},

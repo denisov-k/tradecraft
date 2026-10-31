@@ -376,6 +376,8 @@ FREICOIN_CORE_H = \
   wallet/rpc/util.h \
   wallet/rpc/wallet.h \
   wallet/salvage.h \
+  wallet/bip39.h \
+  wallet/bip39_english.h \
   wallet/scriptpubkeyman.h \
   wallet/spend.h \
   wallet/sqlite.h \
@@ -535,9 +537,11 @@ libfreicoin_wallet_a_SOURCES = \
   wallet/interfaces.cpp \
   wallet/load.cpp \
   wallet/migrate.cpp \
+  wallet/bip39.cpp \
   wallet/receive.cpp \
   wallet/rpc/addresses.cpp \
   wallet/rpc/backup.cpp \
+  wallet/rpc/mnemonic.cpp \
   wallet/rpc/coins.cpp \
   wallet/rpc/encrypt.cpp \
   wallet/rpc/spend.cpp \
