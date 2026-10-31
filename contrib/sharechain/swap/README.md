@@ -85,6 +85,24 @@ timeout.
 `--min-blocks` (12) Freicoin blocks remain before the maker's refund; the maker claims only
 while `--min-left` (5) chain shares remain on the lock.
 
+## BTC for FRC, atomically
+
+`atomicswap.py` trades bitcoin for Freicoin with an HTLC on each chain under one hash: no
+exchange, no third party. A (has BTC) picks the secret and locks BTC for long; B (has FRC)
+checks it and locks FRC for short; A takes the FRC, which puts the secret on the Freicoin
+chain; B finds it there and takes the BTC.
+
+    A: atomicswap.py <rpc options> initiate --b-btc-pubkey 02.. --btc 0.001 --frc 50 --state a.json > offer.json
+    B: atomicswap.py <rpc options> participate --offer offer.json --btc-wif K.. --state b.json > reply.json
+    A: atomicswap.py <rpc options> redeem-frc --state a.json --reply reply.json --to fc1q..
+    B: atomicswap.py <rpc options> redeem-btc --state b.json --btc-wif K.. --to bc1q..
+    refunds after the timeouts: refund-btc (A, --state a.json), refund-frc (B, --state b.json)
+
+`<rpc options>` are `--btc-rpc/--btc-rpcuser/--btc-rpcpassword` and the same for `--frc-`.
+B demands at least `--min-btc-blocks` (36) bitcoin blocks before A's refund and locks FRC for
+`--timeout-blocks` (12) Freicoin blocks; widen the gap if Freicoin blocks are irregular, since
+a stalled Freicoin chain delays B's refund but not A's.
+
 ## Selling without handing a key to a node
 
 A storefront (a web page talking to a share chain node) can let a miner sell without the
