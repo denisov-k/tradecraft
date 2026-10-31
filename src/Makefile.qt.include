@@ -177,6 +177,7 @@ FREICOIN_QT_H = \
   qt/walletmodel.h \
   qt/walletmodeltransaction.h \
   qt/walletview.h \
+  qt/miningpage.h \
   qt/winshutdownmonitor.h
 
 QT_RES_FONTS = \
@@ -289,7 +290,8 @@ FREICOIN_QT_WALLET_CPP = \
   qt/walletframe.cpp \
   qt/walletmodel.cpp \
   qt/walletmodeltransaction.cpp \
-  qt/walletview.cpp
+  qt/walletview.cpp \
+  qt/miningpage.cpp
 
 FREICOIN_QT_CPP = $(FREICOIN_QT_BASE_CPP)
 if TARGET_WINDOWS

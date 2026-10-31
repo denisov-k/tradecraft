@@ -50,6 +50,7 @@
 
 #ifdef ENABLE_WALLET
 #include <qt/paymentserver.h>
+#include <qt/miningpage.h>
 #include <qt/walletcontroller.h>
 #include <qt/walletmodel.h>
 #include <wallet/types.h>
@@ -65,6 +66,7 @@
 #include <QLibraryInfo>
 #include <QLocale>
 #include <QMessageBox>
+#include <QProcess>
 #include <QSettings>
 #include <QThread>
 #include <QTimer>
@@ -523,6 +525,13 @@ int GuiMain(int argc, char* argv[])
     SetupEnvironment();
     util::ThreadSetInternalName("main");
 
+    // Started again by a previous instance (mining page "restart"): give it a moment
+    // to finish exiting and release the data directory.
+    if (qEnvironmentVariableIsSet("FREICOIN_QT_RESTART_WAIT")) {
+        qunsetenv("FREICOIN_QT_RESTART_WAIT");
+        QThread::sleep(4);
+    }
+
     // Subscribe to global signals from core
     boost::signals2::scoped_connection handler_message_box = ::uiInterface.ThreadSafeMessageBox_connect(noui_ThreadSafeMessageBox);
     boost::signals2::scoped_connection handler_question = ::uiInterface.ThreadSafeQuestion_connect(noui_ThreadSafeQuestion);
@@ -715,6 +724,14 @@ int GuiMain(int argc, char* argv[])
             WinShutdownMonitor::registerShutdownBlockReason(QObject::tr("%1 didn't yet exit safely…").arg(PACKAGE_NAME), (HWND)app.getMainWinId());
 #endif
             app.exec();
+#ifdef ENABLE_WALLET
+            if (g_qt_restart_requested) {
+                QStringList args;
+                for (int i = 1; i < argc; ++i) args << QString::fromUtf8(argv[i]);
+                qputenv("FREICOIN_QT_RESTART_WAIT", "1");
+                QProcess::startDetached(QCoreApplication::applicationFilePath(), args);
+            }
+#endif
         } else {
             // A dialog with detailed error will have been shown by InitError()
             return EXIT_FAILURE;
