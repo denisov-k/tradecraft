@@ -338,9 +338,15 @@ blocks: a found Freicoin block does not reset it.
 
 ## 10. Node integration (freicoind)
 
-- **Enable**: `-stratum` plus `-sharechain=main|regtest` (`solo` = skeleton default, no chain).
-  Payout address `-defaultshareaddress` (defaults to `-defaultminingaddress`; must be a witness
-  address) or the stratum username address.
+- **Enable**: `-sharechain=main|regtest` (`solo` = skeleton default, no chain). Without
+  `-stratum` the node relays and validates the share chain only (a seed or a storefront
+  backend); with it, it also builds templates for miners. Payout address
+  `-defaultshareaddress` (defaults to `-defaultminingaddress`; must be a witness address) or
+  the stratum username address. Usernames may be `address.worker` (the worker name is
+  dropped) and `address+mindiff`; a username that is not an address is refused unless
+  `-stratumanyusername` is set, which mines it to `-defaultminingaddress` (for a node whose
+  miners are all its owner's: on a public stratum a mistyped address would mine to the
+  operator).
 - **Template**: `GetWorkUnit` snapshots the share chain tip (anchor, `prev_root`, listable
   fruits, bits, credits) into the work unit; `CustomizeWork` builds the payout vector for the
   client's address and appends the commitment before the segwit commitment is computed.
@@ -348,8 +354,14 @@ blocks: a found Freicoin block does not reset it.
 - **Share target to miners**: native `mining.set_difficulty` and the `bits` of
   `mining.aux.notify` carry the share target, so mergemine bitcoind submits every parent hash
   that meets it (`mining.aux.submit` with the full `AuxProofOfWork`). No mergemine change.
-- **Submit path**: `mining.submit` and `mining.aux.submit` reconstruct the share from the work
-  unit and the submission, run §6.1 (and §6.2 when the PoW meets the chain target), relay, and
+  A miner connected straight to the node gets first-stage auxiliary work at the share target
+  too (Vintage Hash), not at the aux block difficulty; the second stage of a found block is at
+  native difficulty (past the protocol cleanup it is not checked), so a block is not held
+  back waiting for a share.
+- **Submit path**: `mining.submit` (native, or first-stage auxiliary from a direct miner) and
+  `mining.aux.submit` reconstruct the share from the work unit and the submission, check the
+  reconstructed proof-of-work hash against the submitted one, run §6.1 (and §6.2 when the PoW
+  meets the chain target), relay, and
   continue into the usual block path if the Freicoin target is met. Second-stage submissions of
   a merge-mined block earn no share (the first stage already did).
 - **Work refresh**: when the share chain tip changes (local or relayed chain share) every
@@ -357,13 +369,20 @@ blocks: a found Freicoin block does not reset it.
 - **P2P**: service bit `NODE_SHARECHAIN` (1 << 12), set when the share chain is enabled.
   Messages: `share` (one `ShareMessage`), `getshares` (hashes), `getshrchain` (locator of up to
   64 chain-share hashes, newest first), `shares` (batch of up to 500 `ShareMessage`s, oldest
-  first, including forked chain shares and fruits not yet listed). A node asks `getshrchain`
+  first, from the locator match, including forked chain shares and fruits not yet listed;
+  batches of up to 5000 are accepted from older peers), `sharetx` (one share transaction,
+  doc/sharechain-transfers.md). A node asks `getshrchain`
   from every `NODE_SHARECHAIN` peer at `verack` and whenever a relayed share's anchor is
   unknown. While its chain is empty, the node accepts the first chain share of a batch as its
   base (§6.3). Rate limits per peer as in §8; a rejected share is logged, not penalized, since
   a peer may simply be behind.
 - **Persistence**: `sharechain.dat` (version 4: tip hash, then every chain share with body and
   every fruit, orphans last) written at shutdown, loaded after block headers are available.
+  Loading our own file checks linkage, proof of work and time rules but not the payouts,
+  which every saved share passed when it arrived (Vintage Hash: minutes to seconds on a
+  laptop); entries left over go to the orphan pool and get full checks. `CheckPayouts` caches
+  window credits per anchor, since every fruit hung on one chain share pays from one window;
+  pruning clears the cache.
 - **Pruning** (`Prune`): keep chain shares from the window floor (work or `WINDOW_SHARES`,
   whichever ends it first) minus `R` minus 64 heights;
   drop fruits whose anchor is gone. The lowest kept chain share becomes the node's base (§6.3)
@@ -440,7 +459,7 @@ The skeleton's `SOLO` type, light share-chain clients and proofs, a share-chain 
 statistics, cross-chain (multi-aux) share chains, and payout outputs other than witness
 programs are out of scope for the first implementation.
 
-## 14. Implementation status (branch `sharechain`, 2026-10-23)
+## 14. Implementation status (branch `sharechain`, 2026-10-31)
 
 Everything in §4–§10 is implemented in freicoind on top of 28.1 and the `tmp` skeleton:
 
@@ -451,7 +470,11 @@ Everything in §4–§10 is implemented in freicoind on top of 28.1 and the `tmp
   pruning, trusted base and verified-work tip selection, `sharechain.dat` v4 with the saved
   tip), share transactions and the credit ledger (`ShareTx`, `ShareLedger`,
   `ComputeWindowCredits`, the transaction pool), `getsharechaininfo`, `transfershares`,
-  `claimshares`, `listsharetxs`; `getsharecredits` (Vintage Hash) in `src/stratum.cpp`;
+  `claimshares`, `listsharetxs`, `createsharetransfer`, `completesharetx`, `sendsharetx`,
+  `decodesharetx`; `getsharecredits` (Vintage Hash) in `src/stratum.cpp`, which needs the
+  default share address and the block subsidy (`sharechain.cpp` takes everything it needs
+  from the node through the callbacks in `ShareChainstateManager::Options` and includes no
+  validation code);
 - `src/stratum.cpp`: payouts + commitment in the coinbase before the segwit commitment, share
   target to native miners and in `mining.aux.notify`, acceptance on `mining.submit` and
   `mining.aux.submit`, no credit for second-stage submissions, work refresh on tip change
@@ -459,7 +482,10 @@ Everything in §4–§10 is implemented in freicoind on top of 28.1 and the `tmp
   own thread, which crashed inside libevent once pushes became frequent), `-miningmindiff`
   fixed to match its registered name; miner compatibility fixes from Vintage Hash's live
   setup (optional `min-bit-count` in `mining.configure` for ESP-Miner, up to four
-  `mining.subscribe` parameters for Braiins OS, work re-sent after 60 s idle);
+  `mining.subscribe` parameters for Braiins OS, work re-sent after 60 s idle), direct miners
+  earning fruit on first-stage auxiliary work, `address.worker` usernames and
+  `-stratumanyusername`, second-stage work at native difficulty; `InitShareChain`
+  (relay-only share chain without `-stratum`);
 - `src/net_processing.{h,cpp}`, `src/protocol.h`: `NODE_SHARECHAIN`, `share`, `getshares`,
   `getshrchain`, `shares`, `sharetx`, relay, sync at `verack` and on unknown anchor, per-peer
   limits, orphan retry on Freicoin tip change;
@@ -476,6 +502,20 @@ merge mining through mergemine bitcoind (aux fruits and chain shares, Freicoin b
 two nodes with relay and restart. `test/functional/feature_sharechain.py` (in
 `test_runner.py`) covers two mining nodes converging on one share chain, coinbase payouts and
 commitment, a late third node syncing with `getshrchain`, reload from `sharechain.dat`, and
-propagation after the restart.
+propagation after the restart, credits sold with `transfershares` and through the storefront
+flow (`createsharetransfer`, signed outside the node), and stratum usernames with and without
+`-stratumanyusername`. Swap tools in `contrib/sharechain/swap/` (market maker over LNbits or
+lnd, seller, key maker) with a regtest stand in `contrib/sharechain/regtest-p2p/swap.sh`.
 
-Not done: §12 items, mainnet parameters on real hashrate, the §13 exclusions.
+On mainnet since 2026-10-28 with Vintage Hash's home miners and our seed node; the first
+credit sale (trust mode) went through on chain id 06.
+
+Not done: §12 items, the §13 exclusions, and the lock timing of doc/sharechain-transfers.md
+§4.1 (proposed, not written).
+
+**Reading order for review.** `doc/sharechain.md` §4–§9, then `src/sharechain.h` (formats,
+`ShareLedger`, the manager's interface), `src/sharechain.cpp` top to bottom (credits and
+payouts, acceptance, chain selection, sync, persistence, RPCs), the share chain hunks of
+`src/stratum.cpp` (`GetWorkUnit`, `CustomizeWork`, `SubmitShareToChain`, `SubmitBlock`,
+`SubmitAuxiliaryBlock`), then `src/net_processing.cpp`. Tests: `src/test/sharechain_tests.cpp`,
+`test/functional/feature_sharechain.py`.
