@@ -451,7 +451,11 @@ blocks: a found Freicoin block does not reset it.
    vector (`cb_hash`, §4.2), `MAX_PAYEES` raised to 1000, bounded by the block.**
 8. Coinbase outputs per miner and small miners' income (raised by M. Friedenbach, 2026-10-29):
    transferable share credits sold to market makers for lightning payments, see
-   doc/sharechain-transfers.md (design proposal).
+   doc/sharechain-transfers.md (implemented, chain id 06; lock timing §4.1 proposed).
+9. Small miners under a large one: the share target follows the largest participant, so a
+   Bitaxe would wait days for a fruit if a PH/s miner joined. Proposal: fruits lighter than the
+   share target on a power-of-two ladder, credited by their own work, with chain shares and the
+   retarget unchanged (doc/sharechain-light-fruits.md).
 
 ## 13. Deliberate exclusions
 
