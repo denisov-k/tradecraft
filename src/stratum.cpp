@@ -302,6 +302,11 @@ void StratumNotifyShareTipChanged()
 //! Set once at startup, so it doesn't need to be protected by cs_stratum.f
 static CTxDestination g_default_mining_address;
 static WitnessUnknown g_default_share_address{0u, std::vector<unsigned char>{}};
+//! -stratumanyusername: a username that is not an address mines to the default
+//! address instead of being refused.  For a node whose miners are all its owner's
+//! (the Qt Mining tab); on a public stratum it would silently send a miner's
+//! work to the operator when the miner mistypes its address.  Set once at startup.
+static bool g_stratum_any_username{false};
 
 //! The minimum difficulty to use for mining, for DoS protection.  This is
 //! configurable via the -miningmindifficulty option.  As of late 2023, reasonable
@@ -1303,10 +1308,10 @@ UniValue stratum_mining_authorize(StratumClient& client, const UniValue& params)
     if (!username.empty()) {
         addr = DecodeDestination(username);
         if (!IsValidDestination(addr)) {
-            // A home miner pointed at its own node with a placeholder username
-            // ("x", a pool login...) mines to the node's default address rather
-            // than being turned away.
-            if (IsValidDestination(g_default_mining_address)) {
+            // With -stratumanyusername, a home miner pointed at its own node with a
+            // placeholder username ("x", a pool login...) mines to the node's default
+            // address rather than being turned away.
+            if (g_stratum_any_username && IsValidDestination(g_default_mining_address)) {
                 LogPrintf("Stratum miner %s sent username \"%s\", which is not a Freicoin address; mining to the default address instead\n", client.GetPeer().ToStringAddrPort(), username);
                 addr = CNoDestination();
             } else {
@@ -2024,6 +2029,10 @@ bool InitStratumServer(node::NodeContext& node)
         return false;
     }
     std::optional<std::string> defaultminingaddress = gArgs.GetArg("-defaultminingaddress");
+    g_stratum_any_username = gArgs.GetBoolArg("-stratumanyusername", false);
+    if (g_stratum_any_username && !defaultminingaddress) {
+        LogPrintf("WARNING: -stratumanyusername has no effect without -defaultminingaddress\n");
+    }
     bool have_default_share_address = false;
     if (defaultminingaddress) {
         std::string error;

@@ -127,6 +127,32 @@ class StratumMiner:
         raise AssertionError("no share found in 2^20 nonces")
 
 
+def stratum_authorize(port, username):
+    """Subscribe and authorize as `username`; returns the authorize reply's (result, error)."""
+    sock = socket.create_connection(("127.0.0.1", port), timeout=30)
+    try:
+        sock.sendall((json.dumps({"id": 1, "method": "mining.subscribe", "params": ["feature_sharechain/0.1"]}) + "\n").encode())
+        sock.sendall((json.dumps({"id": 2, "method": "mining.authorize", "params": [username, "x"]}) + "\n").encode())
+        buf = b""
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                m = json.loads(line)
+                # the server reuses small ids for its own notifications: skip anything with a method
+                if m.get("id") == 2 and "method" not in m:
+                    return m.get("result"), m.get("error")
+            ready, _, _ = select.select([sock], [], [], max(0, deadline - time.time()))
+            if not ready:
+                break
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+        raise AssertionError("no mining.authorize reply")
+    finally:
+        sock.close()
+
 class ShareChainTest(FreicoinTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser, legacy=False)
@@ -314,6 +340,19 @@ class ShareChainTest(FreicoinTestFramework):
             self.wait_same_tip(n0, n1)
         m.close()
         assert_equal(owners(n0), owners(n1))
+
+        self.log.info("stratum usernames: address.worker is accepted; a non-address only with -stratumanyusername")
+        assert_equal(stratum_authorize(stratum_port(0), addr[0] + ".rig1"), (True, None))
+        assert_equal(stratum_authorize(stratum_port(0), addr[0] + ".rig1+0.000001"), (True, None))
+        result, error = stratum_authorize(stratum_port(0), "x")
+        assert error is not None and "Invalid Freicoin address" in error["message"], error
+        # a default address alone does not take placeholder usernames (a public stratum)
+        self.restart_node(2, extra_args=self.node_args(2) + ["-defaultminingaddress=" + addr[2]])
+        result, error = stratum_authorize(stratum_port(2), "x")
+        assert error is not None and "Invalid Freicoin address" in error["message"], error
+        self.restart_node(2, extra_args=self.node_args(2) + ["-defaultminingaddress=" + addr[2], "-stratumanyusername"])
+        assert_equal(stratum_authorize(stratum_port(2), "x"), (True, None))
+        assert_equal(stratum_authorize(stratum_port(2), addr[0] + ".rig1"), (True, None))
 
 
 if __name__ == "__main__":
