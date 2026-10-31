@@ -53,6 +53,7 @@ pay you. Credits can be sold for sats or FRC before a block is found:
 ## Notes
 
 - Stop with `docker compose stop` (it waits for freicoind to save its state), not `kill`.
+- Update: `docker compose up -d --build` again. It rebuilds when the branch has new commits.
 - `TC_REF` in `.env` picks the branch freicoind is built from. The node is built without a
   wallet: it holds no keys, payouts go to `FRC_ADDR`.
 - Small miners while a very large one is on the share chain: see

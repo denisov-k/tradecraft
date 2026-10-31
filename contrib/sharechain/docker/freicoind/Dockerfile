@@ -7,6 +7,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libboost-dev libevent-dev && rm -rf /var/lib/apt/lists/*
 ARG TC_REPO=https://github.com/denisov-k/tradecraft.git
 ARG TC_REF=sharechain
+# The branch head, fetched on every build: when the branch moves, the clone below is redone
+# instead of coming from the build cache.
+ADD https://api.github.com/repos/denisov-k/tradecraft/git/refs/heads/${TC_REF} /tmp/branch-head.json
 RUN git clone --depth 1 --branch ${TC_REF} ${TC_REPO} /src
 WORKDIR /src
 ARG JOBS=2
