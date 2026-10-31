@@ -33,7 +33,25 @@ from common import Rpc
 from frchtlc import (CScript, ECKey, OP_CHECKLOCKTIMEVERIFY, OP_CHECKSIG, OP_DROP, OP_ELSE, OP_ENDIF,
                      OP_EQUALVERIFY, OP_IF, OP_SHA256, htlc_script, new_key, wif_to_key)
 from test_framework.messages import ser_compact_size, ser_string  # noqa: E402
-from test_framework.segwit_addr import decode_segwit_address, encode_segwit_address  # noqa: E402
+from test_framework.segwit_addr import Encoding, bech32_decode, bech32_encode, convertbits  # noqa: E402
+
+
+# Bitcoin addresses follow BIP350: bech32 for version 0, bech32m above.  (The test framework's
+# own helpers speak Freicoin, which uses bech32m for every version.)
+def encode_segwit_address(hrp, witver, witprog):
+    return bech32_encode(Encoding.BECH32 if witver == 0 else Encoding.BECH32M, hrp, [witver] + convertbits(witprog, 8, 5))
+
+
+def decode_segwit_address(hrp, addr):
+    encoding, hrpgot, data = bech32_decode(addr)
+    if hrpgot != hrp or not data:
+        return (None, None)
+    prog = convertbits(data[1:], 5, 8, False)
+    if prog is None or not 2 <= len(prog) <= 40 or data[0] > 16:
+        return (None, None)
+    if encoding != (Encoding.BECH32 if data[0] == 0 else Encoding.BECH32M):
+        return (None, None)
+    return (data[0], prog)
 
 SAT = 100_000_000
 SIGHASH_ALL = 1
