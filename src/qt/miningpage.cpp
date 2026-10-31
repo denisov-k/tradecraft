@@ -302,6 +302,10 @@ void MiningPage::applyMode()
         node.updateRwSetting("stratumbind", bind);
         node.updateRwSetting("stratumallowip", allow);
         node.updateRwSetting("defaultminingaddress", addr);
+        // Only home-network miners can connect (stratumallowip above), and they are
+        // all this wallet's: let one with a placeholder username ("x") mine to the
+        // payout address instead of being refused.
+        node.updateRwSetting("stratumanyusername", true);
         node.updateRwSetting("sharechain", mode == SOLO ? "solo" : "main");
         if (mode == SHARE) {
             // Make sure the share chain can find other share chain nodes (most
