@@ -706,13 +706,31 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
     // native nBits; with two payees every share failed share-bad-payout.)
     const arith_uint256 window = GetShareWork(WindowBits(share)) * Params().WindowK();
     const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
-    if (WindowReachesBase(anchor, window, Params().WindowShares(), lookup)) {
+    // The window below a given chain share never changes (its fruits are fixed by
+    // the chain shares that listed them), so its credits are cached per anchor.
+    const uint256 anchor_hash = anchor ? anchor->GetHash() : uint256();
+    const uint256 window_key = ArithToUint256(window);
+    const PayoutWindowCache* cached = nullptr;
+    for (const PayoutWindowCache& c : m_payout_window_cache) {
+        if (c.anchor == anchor_hash && c.window == window_key) { cached = &c; break; }
+    }
+    if (!cached) {
+        PayoutWindowCache entry;
+        entry.anchor = anchor_hash;
+        entry.window = window_key;
+        entry.reaches_base = WindowReachesBase(anchor, window, Params().WindowShares(), lookup);
+        if (!entry.reaches_base) entry.credits = ComputeShareCredits(anchor, window, Params().WindowShares(), lookup);
+        if (m_payout_window_cache.size() >= 32) m_payout_window_cache.erase(m_payout_window_cache.begin());
+        m_payout_window_cache.push_back(std::move(entry));
+        cached = &m_payout_window_cache.back();
+    }
+    if (cached->reaches_base) {
         // Below our trusted base: the share was built from credits we never saw, so
         // its split cannot be checked.  It is history; its own payout only matters
         // if it became a Freicoin block, which the block chain validated.
         return true;
     }
-    ShareCredits credits = ComputeShareCredits(anchor, window, Params().WindowShares(), lookup);
+    ShareCredits credits = cached->credits;
     const auto payouts = ComputeSharePayouts(std::move(credits), total, share.miner, Params().Dust(), Params().MaxPayees());
     // The coinbase is exactly these payouts plus the commitment: rebuild it and
     // compare with the txid the proof of work covers.
@@ -797,7 +815,7 @@ bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason
         }
         // The PPLNS window is sized by the template's nBits (CheckPayouts): it must be
         // the Freicoin difficulty for that block, not whatever the miner wrote.
-        if (m_options.required_bits_callback) {
+        if (m_options.required_bits_callback && !m_loading_own_file) {
             const std::optional<uint32_t> required = m_options.required_bits_callback(share.wit.hashPrevBlock, share.GetBlockHeader(nullptr));
             if (required && *required != share.wit.nBits) {
                 reason = "share-bad-frc-bits";
@@ -806,7 +824,10 @@ bool ShareChainstateManager::AcceptFruit(const Share& share, std::string& reason
         }
     }
     std::optional<CMutableTransaction> cb;
-    if (!CheckPayouts(share, anchor, cb, reason)) {
+    // Shares from our own sharechain.dat were fully checked when they arrived
+    // (payouts, aux binding): re-deriving every payout at startup costs a window
+    // walk per fruit.  Linkage, proof of work and time rules above still apply.
+    if (!m_loading_own_file && !CheckPayouts(share, anchor, cb, reason)) {
         return false;
     }
     // The parent header must commit to that very coinbase (not checkable below a
@@ -1172,6 +1193,8 @@ void ShareChainstateManager::Prune()
     }
     const int keep_from = std::max(0, floor_height - static_cast<int>(Params().Recency()) - 64);
     if (keep_from <= state.chain.base) return;
+    // Pruning cuts links the cached payout windows may have walked through.
+    m_payout_window_cache.clear();
     // Drop chain shares below keep_from (active chain and forks) and cut the links into them.
     for (auto it = state.chain_shares.begin(); it != state.chain_shares.end();) {
         if (static_cast<int>(it->second->share.height) < keep_from) it = state.chain_shares.erase(it);
@@ -1479,6 +1502,8 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
     }
     size_t accepted = 0, rejected = 0, deferred = 0;
     uint256 saved_tip;
+    m_loading_own_file = true;
+    struct ResetFlag { bool& f; ~ResetFlag() { f = false; } } reset_flag{m_loading_own_file};
     try {
         uint64_t version = 0, count = 0;
         file >> version;

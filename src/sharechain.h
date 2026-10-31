@@ -728,6 +728,20 @@ private:
     void SetActiveTip(const std::shared_ptr<ShareIndex>& tip) EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Shares waiting for an anchor or fruits we have not seen yet.
     std::map<uint256, ShareMessage> m_orphans;
+    //! True while re-reading our own sharechain.dat: every share in it passed the
+    //! full checks when it first arrived, so the expensive payout re-derivation
+    //! (a PPLNS window walk per fruit, minutes on a slow PC) is skipped then.
+    bool m_loading_own_file{false};
+    //! Window credits per (anchor, window) for CheckPayouts: every fruit hung on
+    //! the same chain share pays out from the same window, so a sync batch or a
+    //! busy share chain recomputes it once per anchor instead of once per fruit.
+    struct PayoutWindowCache {
+        uint256 anchor;
+        uint256 window;
+        bool reaches_base{false};
+        ShareCredits credits;
+    };
+    mutable std::vector<PayoutWindowCache> m_payout_window_cache;
     //! Transactions waiting for a chain share to carry them.
     std::map<uint256, ShareTx> m_txpool;
     //! Drop pool transactions the current tip no longer accepts.
