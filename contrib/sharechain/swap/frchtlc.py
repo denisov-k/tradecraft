@@ -48,10 +48,11 @@ DEFAULT_FEE = 5000  # kria; a redeem or refund is ~250 vbytes
 # ---- script and keys ---------------------------------------------------------------------
 def htlc_script(hashlock: bytes, seller_pub: bytes, maker_pub: bytes, timeout: int) -> CScript:
     """X's key with the preimage of `hashlock`, or M's key once the Freicoin height is past
-    `timeout` (absolute, CHECKLOCKTIMEVERIFY)."""
+    `timeout` (absolute, CHECKLOCKTIMEVERIFY).  Unlike bitcoin's, Freicoin's
+    CHECKLOCKTIMEVERIFY drops its argument in witness scripts: no OP_DROP after it."""
     assert len(hashlock) == 32 and len(seller_pub) == 33 and len(maker_pub) == 33
     return CScript([OP_IF, OP_SHA256, hashlock, OP_EQUALVERIFY, seller_pub,
-                    OP_ELSE, timeout, OP_CHECKLOCKTIMEVERIFY, OP_DROP, maker_pub,
+                    OP_ELSE, timeout, OP_CHECKLOCKTIMEVERIFY, maker_pub,
                     OP_ENDIF, OP_CHECKSIG])
 
 
