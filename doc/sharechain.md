@@ -455,7 +455,8 @@ blocks: a found Freicoin block does not reset it.
    vector (`cb_hash`, §4.2), `MAX_PAYEES` raised to 1000, bounded by the block.**
 8. Coinbase outputs per miner and small miners' income (raised by M. Friedenbach, 2026-10-29):
    transferable share credits sold to market makers for lightning payments, see
-   doc/sharechain-transfers.md (implemented, chain id 06; lock timing §4.1 proposed).
+   doc/sharechain-transfers.md (implemented, chain id 06; late lightning settlement §4.1 and
+   closing the race §4.3 proposed).
 9. Small miners under a large one: the share target follows the largest participant, so a
    Bitaxe would wait days for a fruit if a PH/s miner joined. Proposal: fruits lighter than the
    share target on a power-of-two ladder, credited by their own work, with chain shares and the
@@ -518,8 +519,8 @@ lnd, seller, key maker) with a regtest stand in `contrib/sharechain/regtest-p2p/
 On mainnet since 2026-10-28 with Vintage Hash's home miners and our seed node; the first
 credit sale (trust mode) went through on chain id 06.
 
-Not done: §12 items, the §13 exclusions, and the lock timing of doc/sharechain-transfers.md
-§4.1 (proposed, not written).
+Not done: §12 items, the §13 exclusions, and doc/sharechain-transfers.md §4.1 and §4.3 (late
+lightning settlement and the race: proposed, not written).
 
 **Reading order for review.** `doc/sharechain.md` §4–§9, then `src/sharechain.h` (formats,
 `ShareLedger`, the manager's interface), `src/sharechain.cpp` top to bottom (credits and

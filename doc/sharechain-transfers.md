@@ -155,7 +155,7 @@ it is `60 s / expected block interval` (0.3 % for today's pool, 10 % for a pool 
 network), and it is the market maker's risk to price. The alternative (ownership moves at the
 transfer, reverts if unclaimed) puts the same race on the miner, who would be paid nothing for
 a block found during the lock and then see the sale fail; the professional side should carry
-it.
+it. Rules that shrink or close it are proposed in §4.3.
 
 Nothing here needs Freicoin lightning: the sats are bitcoin, which merge-miners already deal in.
 The same transfer with an on-chain HTLC (bitcoin or Freicoin script) works for the rest.
@@ -180,23 +180,17 @@ expect) settle on arrival, so this needs a seller who runs a node and means to c
 its exposure per sale until the rule below is in.
 
 Shortening the lock to fit the window, the obvious fix when a large miner shrinks the window to
-an hour, makes this worse. The fix runs the other way:
+an hour, makes this worse. What there is:
 
-- **The lock outlives the lightning HTLC.** `M` pays with a CLTV limit (`lncli payinvoice
-  --cltv_limit`), say 40 blocks, and accepts only transfers whose `expiry` lies beyond that
-  plus a margin: `MAX_LOCK` of the order of 600 chain shares (10 hours at 60 s).
-- **A locked credit pays into the lock, not to the seller.** For a lock carried before the
-  anchor and still pending at it, the coinbase pays the locked credit's share to a P2WSH HTLC
-  output: `to` with `P`, or `from` after a Freicoin height past `expiry`. Then nothing the lock
-  holds is consumed by the seller while it is open, a long lock costs `X` nothing but the wait,
-  and **the race of §4 disappears**: a block found between settlement and the claim pays the
-  HTLC output, which `M` spends with the `P` it already has. A window that slides past the
-  lock's buckets is harmless for the same reason: what they earned is in the HTLC outputs.
-
-Costs: one extra coinbase output per open lock (bounded by the pool limits and `MAX_PAYEES`),
-`M` sweeps them with ordinary Freicoin transactions, and the payout rules and `CheckPayouts`
-learn one more output kind. This is a share chain format change (new chain id), so it is
-proposed here for review before it is written.
+- **A cap per sale** (`maker.py --max-sats`, 20 000 sats by default): the most a cheating
+  seller takes at once. In the tools now.
+- **Selling for FRC** (§4.2): `M` chooses both timeouts, so the problem does not arise.
+- **A lock that outlives the lightning HTLC.** `M` pays with a CLTV limit (`lncli payinvoice
+  --cltv_limit`, not available through LNbits), say 40 blocks, and accepts only transfers whose
+  `expiry` lies beyond that plus a margin: `MAX_LOCK` of the order of 600 chain shares (10
+  hours at 60 s). This needs the locked credit not to pay the seller while it is open, or a
+  holding seller is paid for ten hours of credit it has sold; §4.3's rules do that, at a cost
+  to the seller if `M` walks away from a long lock.
 
 ### 4.2 Selling for FRC on the Freicoin chain
 
@@ -218,6 +212,46 @@ unless it gets the credits. `M`'s FRC wait out `T` if `X` walks away; `X`'s cred
 `test/functional/feature_sharechain_frcswap.py`. Nothing in the share chain's rules changes;
 the node only reports claims' preimages.
 
+### 4.3 Closing the race (proposal for review)
+
+Mark's concern: a block can be found at any moment and pay out credits that are being sold. In
+the swap this is the race of §4, a block between the payment and the claim's inclusion. It is
+not lightning's: it is there whatever pays the seller (§4.2 too), because the payment and the
+change of owner happen in two systems and cannot be one event. Something has to decide who
+gets the payout of a block found in between.
+
+**Proposed: two rules.**
+
+1. **Locked credit pays no one.** For a lock pending at the anchor, the locked credit is left
+   out of the split; its share goes to the rest of the window. A seller gains nothing by
+   delaying settlement or the claim, and a block in the gap costs the pair that block's share
+   instead of handing it to the seller.
+2. **A share's payouts see its own transactions.** Payouts are computed from the ledger at the
+   anchor with the share's own transactions applied. A block is always a chain share (the
+   Freicoin target is harder than the chain target, blocks being ten times rarer), so it carries
+   them; a fruit with transactions carries them too. A claim then pays from the first block
+   whose template holds it, not from the next chain share, and stratum sends new work when a
+   claim enters the pool (batched, every few seconds).
+
+The race window shrinks from one chain share (60 s) to the time a miner takes to get new work:
+seconds on its own node, about 30 s for merge-mined work through bitcoin pools, which refresh
+jobs at that pace. Costs: if `M` never pays, `X`'s locked credit earns nothing until the lock
+lapses, so locks stay short; fruits with transactions are larger and their payout check
+applies them (the window cache is keyed by anchor and transaction root); more job changes for
+miners; a new chain id.
+
+**Full alternative: locked credit pays into an HTLC output.** For a lock pending at the
+anchor, the coinbase pays the locked credit's share to a P2WSH output: `to` with `P`, or
+`from` after a Freicoin height past `expiry`. A block found between settlement and the claim
+pays that output, which `M` spends with the `P` it already has: the race is gone, and a long
+lock (§4.1) is safe. Costs: one more coinbase output per open lock per block, many of them
+dust for small sales; a seller whose buyer walked away sweeps its refunds with its own tool;
+the payment hash becomes public on the Freicoin chain, linking the lightning payment to the
+seller's address; every node must build the script byte for byte alike; refunds wait out
+Freicoin blocks, however long those take.
+
+Both are share chain format changes, to be made together with any other (one restart).
+
 ## 5. Why this answers the problem
 
 - **Coinbase size.** With market makers active, the window's credit concentrates on a few
@@ -233,8 +267,8 @@ the node only reports claims' preimages.
 
 ## 6. Open points
 
-1. `MAX_LOCK` and the transaction pool limits; with lightning, the lock must outlive the
-   payment's CLTV and locked credit should pay into an HTLC output (§4.1).
+1. `MAX_LOCK` and the transaction pool limits; a lightning seller who settles late (§4.1);
+   closing the race (§4.3).
 2. Whether `to` may be any script (market maker's P2SH/multisig) or a witness program only, as
    miners' addresses are today. Any script works for the coinbase; witness-program-only keeps
    the canonical order rule (§9.5) as is.
