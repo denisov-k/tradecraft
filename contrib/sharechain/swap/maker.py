@@ -22,6 +22,7 @@ chain shares left before it lapses for the claim to land.
 """
 import argparse
 import json
+import os
 import sys
 import threading
 import time
@@ -40,7 +41,7 @@ class Maker:
         if args.no_lightning:
             self.lightning = None
         elif args.lnbits:
-            self.lightning = LNbits(args.lnbits, args.lnbits_key)
+            self.lightning = LNbits(args.lnbits, lnbits_key(args))
         else:
             self.lightning = Lncli(args.lncli.split(), cltv_limit=args.cltv_limit)
         self.expiry = args.expiry        # chain shares a seller should lock for
@@ -49,6 +50,26 @@ class Maker:
         self.lock = threading.Lock()
         self.offers = {}                 # txid -> offer (invoice or preimage)
         self.done = set()
+        self.sales_file = args.sales_file
+        self.sales = []                  # completed purchases, newest last (GET /offers)
+        if self.sales_file and os.path.exists(self.sales_file):
+            with open(self.sales_file) as fh:
+                self.sales = [json.loads(line) for line in fh if line.strip()]
+
+    def record_sale(self, sale):
+        sale = dict(sale, time=int(time.time()))
+        self.sales.append(sale)
+        if self.sales_file:
+            with open(self.sales_file, "a") as fh:
+                fh.write(json.dumps(sale) + "\n")
+
+    def feed(self):
+        """Public, read-only: what we buy at and what we bought (for a shop window)."""
+        return {"maker": {"address": self.address, "rail": "lightning" if self.lightning else "trust",
+                          "satsperunit": self.sats_per_unit, "unit": "difficulty-1 share (2^32 hashes)",
+                          "minsats": self.min_sats, "maxsats": self.max_sats, "expiry": self.expiry,
+                          "quote": "/quote?address=<your address>", "offer": "POST /offer"},
+                "sales": self.sales[-100:]}
 
     # ---- pricing -------------------------------------------------------------------
     def quote(self, seller):
@@ -93,6 +114,7 @@ class Maker:
             if sats > self.max_sats:
                 return f"invoice asks {sats} sats, above our limit of {self.max_sats} per sale"
             print(f"paying {sats} sats for {p['fruits']} fruits ({p['work'] / WORK_UNIT:.3f} units)")
+            offer["sale"] = {"transfer": txid, "seller": p["from"], "sats": sats, "units": p["work"] / WORK_UNIT, "fruits": p["fruits"]}
             # From here on the sats may be gone: never pay this offer again, only wait for
             # the preimage (a slow or holding seller) and claim.
             offer["paid_hash"] = payment_hash
@@ -121,6 +143,8 @@ class Maker:
                 self.done.add(txid)
             raise
         print(f"claimed {txid} with {claim}")
+        if offer.get("sale"):
+            self.record_sale(dict(offer["sale"], claim=claim))
         return None
 
     def loop(self):
@@ -139,6 +163,13 @@ class Maker:
             time.sleep(5)
 
 
+def lnbits_key(args):
+    if args.lnbits_key_file:
+        with open(args.lnbits_key_file) as fh:
+            return fh.read().strip()
+    return os.environ.get("LNBITS_ADMIN_KEY") or args.lnbits_key
+
+
 def serve(maker, listen):
     class Handler(BaseHTTPRequestHandler):
         def _reply(self, code, obj):
@@ -151,6 +182,8 @@ def serve(maker, listen):
 
         def do_GET(self):
             u = urlparse(self.path)
+            if u.path in ("/offers", "/offers.json"):
+                return self._reply(200, maker.feed())
             if u.path != "/quote":
                 return self._reply(404, {"error": "unknown"})
             seller = parse_qs(u.query).get("address", [""])[0]
@@ -194,12 +227,14 @@ def main():
     ap.add_argument("--cltv-limit", type=int, default=40, help="lnd: largest total CLTV (bitcoin blocks) a payment may lock")
     ap.add_argument("--lncli", default="lncli", help="pay with your own lnd: lncli command (quoted, may include docker exec ...)")
     ap.add_argument("--lnbits", default=None, help="pay from an LNbits wallet instead: its URL, e.g. https://legend.lnbits.com")
-    ap.add_argument("--lnbits-key", default=None, help="that wallet's admin key")
+    ap.add_argument("--lnbits-key", default=None, help="that wallet's admin key (prefer --lnbits-key-file: arguments show in ps)")
+    ap.add_argument("--lnbits-key-file", default=None, help="a file holding the admin key (or set LNBITS_ADMIN_KEY)")
+    ap.add_argument("--sales-file", default=None, help="append completed purchases here (JSON lines), served at GET /offers")
     ap.add_argument("--no-lightning", action="store_true", help="regtest trust mode: sellers send the preimage, nothing is paid")
     ap.add_argument("--listen", default="127.0.0.1:9640", help="HTTP endpoint for sellers")
     args = ap.parse_args()
-    if args.lnbits and not args.lnbits_key:
-        ap.error("--lnbits needs --lnbits-key")
+    if args.lnbits and not (args.lnbits_key or args.lnbits_key_file or os.environ.get("LNBITS_ADMIN_KEY")):
+        ap.error("--lnbits needs its admin key: --lnbits-key-file, LNBITS_ADMIN_KEY or --lnbits-key")
     maker = Maker(args)
     threading.Thread(target=serve, args=(maker, args.listen), daemon=True).start()
     print(f"market maker {args.address}: {args.sats_per_unit} sats/unit, listening on {args.listen}" + (" (trust mode)" if args.no_lightning else ""))
