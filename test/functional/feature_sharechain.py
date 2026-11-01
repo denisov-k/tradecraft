@@ -219,7 +219,11 @@ class ShareChainTest(FreicoinTestFramework):
         # One share in chainfactor (4) is a chain share, so 12 shares leave a ~3% chance of
         # none at all: keep mining (alternately) until the chain has started.
         extra = 0
-        while self.sc(n0)["chainshares"] < 1 and extra < 40:
+        # Keep going until the window credits both miners: a chain share found early lists
+        # only the fruits before it, which may all be one miner's.  Then one more share
+        # (every regtest share is a block) pays from that window.
+        credited = lambda: {c["address"] for c in n0.getsharecredits()["credits"]}
+        while (self.sc(n0)["chainshares"] < 1 or not {addr[0], addr[1]} <= credited()) and extra < 80:
             i = extra % 2
             result, error = miners[i].mine_one()
             assert_equal(error, None)
@@ -227,6 +231,11 @@ class ShareChainTest(FreicoinTestFramework):
             extra += 1
             self.wait_until(lambda: self.sc(self.nodes[i])["fruits"] >= mined, timeout=30)
             self.wait_same_tip(n0, n1)
+        i = extra % 2
+        assert_equal(miners[i].mine_one()[1], None)
+        mined += 1
+        self.wait_until(lambda: self.sc(self.nodes[i])["fruits"] >= mined, timeout=30)
+        self.wait_same_tip(n0, n1)
         for m in miners:
             m.close()
 
