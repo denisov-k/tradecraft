@@ -1150,6 +1150,9 @@ public:
     void SetNetworkActive(bool active);
     void OpenNetworkConnection(const CAddress& addrConnect, bool fCountFailure, CSemaphoreGrant&& grant_outbound, const char* strDest, ConnectionType conn_type, bool use_v2transport) EXCLUSIVE_LOCKS_REQUIRED(!m_unused_i2p_sessions_mutex);
     bool CheckIncomingNonce(uint64_t nonce);
+    /** The -addnode name of our own outbound manual connection that used this local nonce:
+     *  an added node that turned out to be this very node (a seed list naming the seed). */
+    std::optional<std::string> ManualConnWithNonce(uint64_t nonce);
     void ASMapHealthCheck();
 
     // alias for thread safety annotations only, not defined

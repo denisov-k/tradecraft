@@ -18,6 +18,7 @@ from test_framework.key import ECKey
 from test_framework.test_framework import FreicoinTestFramework
 from test_framework.wallet_util import bytes_to_wif
 from test_framework.util import (
+    p2p_port,
     assert_equal,
     assert_greater_than_or_equal,
     stratum_port,
@@ -373,6 +374,11 @@ class ShareChainTest(FreicoinTestFramework):
         self.restart_node(2, extra_args=[])
         assert not int(n2.getnetworkinfo()["localservices"], 16) & NODE_SHARECHAIN
         assert_equal(self.sc(n2)["enabled"], False)
+
+        self.log.info("an added node that is this node is dropped after the first self-connection")
+        self_addr = "127.0.0.1:%d" % p2p_port(2)
+        self.restart_node(2, extra_args=["-addnode=" + self_addr])
+        self.wait_until(lambda: n2.getaddednodeinfo() == [], timeout=120)
 
 
 if __name__ == "__main__":

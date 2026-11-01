@@ -3904,6 +3904,13 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         if (pfrom.IsInboundConn() && !m_connman.CheckIncomingNonce(nNonce))
         {
             LogPrintf("connected to self at %s, disconnecting\n", pfrom.addr.ToStringAddrPort());
+            // An added node that is this node (e.g. a share chain seed list naming the seed it
+            // runs on) would be retried, and logged, forever: stop connecting to it.
+            if (const std::optional<std::string> self_name = m_connman.ManualConnWithNonce(nNonce)) {
+                if (m_connman.RemoveAddedNode(*self_name)) {
+                    LogPrintf("added node %s is this node; no longer connecting to it\n", *self_name);
+                }
+            }
             pfrom.fDisconnect = true;
             return;
         }
