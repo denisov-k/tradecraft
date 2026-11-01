@@ -41,6 +41,8 @@ def main():
     ap.add_argument("--quote-only", action="store_true", help="print the quote and stop")
     ap.add_argument("--no-lightning", action="store_true", help="regtest trust mode: hand the preimage to the maker")
     ap.add_argument("--min-sats", type=int, default=1, help="do not sell below this quote")
+    ap.add_argument("--max-sats", type=int, default=None, help="sell only as much credit as this many sats buy (asked by Vintage Hash)")
+    ap.add_argument("--units", type=int, default=None, help="sell only this many units of work (difficulty-1 shares)")
     ap.add_argument("--timeout", type=int, default=1800, help="seconds to wait for the payment")
     args = ap.parse_args()
 
@@ -48,6 +50,22 @@ def main():
     quote = http_json(f"{args.maker}/quote?address={args.address}")
     sats = quote["sats"]
     print(f"quote: {sats} sats for {quote['fruits']} fruits ({quote['work'] / WORK_UNIT:.3f} units) up to height {quote['uptoheight']}, lock {quote['expiry']} chain shares")
+    # Part of the credit: the transfer moves a whole number of units (newest first), priced at
+    # the quote's rate, rounded down so the maker's own price check passes.
+    units = 0  # 0: everything up to the quoted height
+    total_units = quote["work"] / WORK_UNIT
+    if args.max_sats is not None or args.units is not None:
+        if total_units <= 0 or sats <= 0:
+            sys.exit("nothing to sell")
+        rate = sats / total_units
+        units = args.units if args.units is not None else int(args.max_sats / rate)
+        units = min(units, int(total_units))
+        if units <= 0:
+            sys.exit(f"{args.max_sats} sats do not buy a whole unit at {rate:.3g} sats a unit")
+        sats = int(units * rate)
+        if args.max_sats is not None:
+            sats = min(sats, args.max_sats)
+        print(f"selling {units} of {total_units:.0f} units for {sats} sats")
     if sats < max(args.min_sats, quote.get("minsats", 0)):
         sys.exit("not worth selling yet")
     if args.quote_only:
@@ -72,7 +90,7 @@ def main():
         invoice = ln.add_invoice(sats, preimage.hex(), f"share credits to {quote['address'][:12]}", args.timeout)
     else:
         sys.exit("say how to get paid: --lnaddress, --invoice, --lncli or --no-lightning")
-    txid = rpc("transfershares", args.wif, quote["address"], 0, quote["uptoheight"], 0, hashlock, quote["expiry"])
+    txid = rpc("transfershares", args.wif, quote["address"], units, quote["uptoheight"], 0, hashlock, quote["expiry"])
     print(f"transfer {txid} published, locked for {quote['address']}")
 
     offer = {"txid": txid}
@@ -84,7 +102,8 @@ def main():
     print("offer sent; waiting for the payment")
 
     def owned():
-        return sum(c["fruits"] for c in rpc("getsharecredits")["credits"] if c["address"] == args.address)
+        # work, not fruits: a partial sale may split a bucket without moving a whole fruit
+        return sum(c["work"] for c in rpc("getsharecredits")["credits"] if c["address"] == args.address)
 
     before = owned()
     seen_pending = False

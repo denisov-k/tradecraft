@@ -41,7 +41,7 @@ constexpr size_t MAX_TXPOOL = 1000;
 } // namespace
 
 void SetupShareChainParamsOptions(ArgsManager& argsman) {
-    argsman.AddArg("-sharechain=<name>", "Use the share chain <name> (default: main). Allowed values: solo, main or regtest", ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
+    argsman.AddArg("-sharechain=<name>", "Run the share chain <name>: main, regtest, or solo for none. On by default (main) with -stratum; set it without -stratum for a relay-only share chain node, which follows, relays and serves the share chain RPCs", ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
     argsman.AddArg("-sharechainseeds", "Connect to the known nodes of the share chain, as with -addnode (default: 1)", ArgsManager::ALLOW_ANY, OptionsCategory::STRATUM);
 }
 
@@ -61,7 +61,7 @@ struct MainShareChainParams : public ShareChainParams {
         m_share_bits = 0x1b068db2;   // difficulty 10000: ~43 TH for 10 s shares; also the easiest target allowed
         m_retarget = true;
         m_share_interval = 10;
-        m_seeds = {"freicoin.ru:8640"}; // the share chain seed of freicoin.ru
+        m_seeds = {"freicoin.ru:8640", "seed.vintagehash.com:8639"}; // freicoin.ru; Vintage Hash's tern.vintagehash.com node
     }
 };
 
@@ -946,6 +946,9 @@ void ShareChainstateManager::PruneTxPool()
 {
     const std::shared_ptr<ShareIndex> tip = ActiveTip();
     if (!tip) { m_txpool.clear(); return; }
+    // The ledger is a walk over the whole window: not for an empty pool, which is every
+    // new tip while sharechain.dat loads (that made loading quadratic in the chain).
+    if (m_txpool.empty()) return;
     const uint32_t height = tip->share.height + 1;
     ShareLedger own = WindowAt(tip.get(), WindowBits(tip->share)).ledger;
     own.Expire(height);
@@ -1083,7 +1086,8 @@ bool ShareChainstateManager::AcceptChainShare(const Share& share, const MmrAccum
     const std::shared_ptr<ShareIndex> tip = ActiveTip();
     if (!tip || GetVerifiedChainWork(*index) > GetVerifiedChainWork(*tip)) {
         SetActiveTip(index);
-        Prune();
+        // Prune walks the window back from the tip; loading our own file prunes once at the end.
+        if (!m_loading_own_file) Prune();
         PruneTxPool();
     }
     return true;

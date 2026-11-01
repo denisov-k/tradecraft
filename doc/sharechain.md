@@ -338,7 +338,8 @@ blocks: a found Freicoin block does not reset it.
 
 ## 10. Node integration (freicoind)
 
-- **Enable**: `-sharechain=main|regtest` (`solo` = skeleton default, no chain). Without
+- **Enable**: `-stratum` turns the share chain on (`main` unless `-sharechain` names another), or
+  `-sharechain=main|regtest` alone (`solo` = none; a node with neither runs no share chain). Without
   `-stratum` the node relays and validates the share chain only (a seed or a storefront
   backend); with it, it also builds templates for miners. Payout address
   `-defaultshareaddress` (defaults to `-defaultminingaddress`; must be a witness address) or
@@ -366,10 +367,11 @@ blocks: a found Freicoin block does not reset it.
   a merge-mined block earn no share (the first stage already did).
 - **Work refresh**: when the share chain tip changes (local or relayed chain share) every
   connected miner gets a new job, so fruits hang from the newest anchor.
-- **P2P**: service bit `NODE_SHARECHAIN` (1 << 12), set when the share chain is enabled.
+- **P2P**: service bit `NODE_SHARECHAIN` (1 << 12), set exactly when the share chain runs,
+  relay-only nodes included (peers relay shares only to nodes with the bit).
   Most Freicoin nodes do not run the share chain, so the usual peer search rarely finds one:
   a node with the share chain on also connects to the chain's known nodes as with `-addnode`
-  (`freicoin.ru:8640` on main; `-sharechainseeds=0` turns it off). DNS seeds that filter by
+  (`freicoin.ru:8640` and `seed.vintagehash.com:8639` on main; `-sharechainseeds=0` turns it off). DNS seeds that filter by
   service bit would replace the list.
   Messages: `share` (one `ShareMessage`), `getshares` (hashes), `getshrchain` (locator of up to
   64 chain-share hashes, newest first), `shares` (batch of up to 500 `ShareMessage`s, oldest

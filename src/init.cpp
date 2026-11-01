@@ -158,6 +158,16 @@ static constexpr bool DEFAULT_I2P_ACCEPT_INCOMING{true};
 static constexpr bool DEFAULT_STOPAFTERBLOCKIMPORT{false};
 static constexpr bool DEFAULT_BITCOINMODE{false};
 
+/** Whether this node runs a share chain: with the stratum server (miners need it), or when
+ *  -sharechain names one (a relay-only node: a seed, an explorer, a storefront backend).  A
+ *  plain node runs none, and the NODE_SHARECHAIN service bit follows exactly this. */
+static bool ShareChainWanted(const ArgsManager& args)
+{
+    const bool wanted = args.GetBoolArg("-stratum", DEFAULT_STRATUM_ENABLE)
+                        || (args.IsArgSet("-sharechain") && !args.IsArgNegated("-sharechain"));
+    return wanted && args.GetShareChainTypeString() != "solo";
+}
+
 #ifdef WIN32
 // Win32 LevelDB doesn't use filedescriptors, and the ones used for
 // accessing block files don't count towards the fd_set size limit
@@ -756,7 +766,7 @@ static bool AppInitServers(NodeContext& node)
     }
     // The share chain runs with or without a stratum server: a relay-only node
     // (explorer, seed) follows and passes on shares and serves the share RPCs.
-    if (!InitShareChain(node)) {
+    if (ShareChainWanted(args) && !InitShareChain(node)) {
         return false;
     }
     if (args.GetBoolArg("-stratum", DEFAULT_STRATUM_ENABLE) && !InitStratumServer(node)) {
@@ -987,8 +997,10 @@ bool AppInitParameterInteraction(const ArgsManager& args)
     if (args.GetBoolArg("-v2transport", DEFAULT_V2_TRANSPORT)) {
         nLocalServices = ServiceFlags(nLocalServices | NODE_P2P_V2);
     }
-    // Signal NODE_SHARECHAIN when the stratum server (and with it the share chain) is on.
-    if (args.GetBoolArg("-stratum", DEFAULT_STRATUM_ENABLE)) {
+    // Signal NODE_SHARECHAIN whenever the share chain runs, relay-only nodes included: peers
+    // relay shares only to nodes with the bit (found by Vintage Hash on a relay-only seed
+    // that synced the history and then never heard of a new share).
+    if (ShareChainWanted(args)) {
         nLocalServices = ServiceFlags(nLocalServices | NODE_SHARECHAIN);
     }
 
