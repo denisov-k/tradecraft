@@ -15,6 +15,14 @@ Sellers talk to it over HTTP:
                                      "expiry": e, "address": <maker address>}
   POST /offer {"txid": ..., "invoice": ...}        (lightning)
   POST /offer {"txid": ..., "preimage": ...}       (--no-lightning, regtest trust mode)
+  GET  /offers                   -> the price and the completed purchases (a public feed)
+
+and a storefront page (a wallet that signs in the browser; no key ever reaches us) uses:
+  GET  /quotes?addresses=a,b,... -> {address: quote} for those with credit
+  POST /prepare {"address", "pubkey", "lnaddress" | "invoice", "maxsats"?}
+                                 -> the unsigned locked transfer and the 32 bytes to sign
+  POST /submit  {"hex", "signature", "invoice"}   -> {"txid"}: relayed, and our offer
+  GET  /status?txid=...          -> waiting | locked | paid | unknown
 
 The price is the only thing the maker decides; everything else is checked against the chain:
 the transfer must be pending, to our address, lock at least what was quoted, and have enough
@@ -26,10 +34,10 @@ import os
 import sys
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from common import WORK_UNIT, LNbits, Lncli, PaymentInFlight, Rpc, sha256_hex
+from common import WORK_UNIT, LNbits, Lncli, PaymentInFlight, Rpc, bolt11_payment_hash, lnaddress_invoice, sha256_hex
 
 
 class Maker:
@@ -84,6 +92,78 @@ class Maker:
     def price(self, work):
         return int(work / WORK_UNIT * self.sats_per_unit)
 
+    # ---- storefront: the page signs, we build, relay and pay ---------------------------
+    def quotes(self, addresses):
+        info = self.rpc("getsharechaininfo")
+        credits = {c["address"]: c for c in self.rpc("getsharecredits")["credits"]}
+        out = {}
+        for a in addresses:
+            c = credits.get(a)
+            if c and c["work"] > 0:
+                out[a] = {"sats": self.price(c["work"]), "work": c["work"], "fruits": c["fruits"],
+                          "uptoheight": info["height"], "expiry": self.expiry, "minsats": self.min_sats}
+        return out
+
+    def prepare(self, req):
+        address, pubkey = req["address"], req["pubkey"]
+        q = self.quotes([address]).get(address)
+        if not q:
+            raise ValueError("this address has no credit in the window")
+        total_units = q["work"] / WORK_UNIT
+        units, sats = 0, q["sats"]  # 0: everything up to the quoted height
+        cap = min(int(req.get("maxsats") or 0) or self.max_sats, self.max_sats)
+        if cap < sats:  # part of the credit, newest first, at the same rate
+            units = int(cap / self.sats_per_unit)
+            if units <= 0:
+                raise ValueError(f"{cap} sats do not buy a whole unit")
+            sats = min(int(units * self.sats_per_unit), cap)
+        if sats < max(1, self.min_sats):
+            raise ValueError(f"worth {sats} sats, below our minimum of {self.min_sats}")
+        if self.lightning is None:
+            invoice, hashlock = None, req["hashlock"]
+        else:
+            invoice = req.get("invoice") or lnaddress_invoice(req["lnaddress"], sats, "share credits")
+            got, hashlock = self.lightning.decode(invoice)
+            if got != sats:
+                raise ValueError(f"the invoice is for {got} sats, the sale for {sats}")
+        r = self.rpc("createsharetransfer", pubkey, self.address, units, q["uptoheight"], 0, hashlock, self.expiry)
+        if r["from"] != address:
+            raise ValueError("that public key is not this address's")
+        return {"hex": r["hex"], "sighash": r["sighash"], "from": r["from"], "sats": sats,
+                "units": units or total_units, "invoice": invoice, "hashlock": hashlock}
+
+    def submit(self, req):
+        signed = self.rpc("completesharetx", req["hex"], req["signature"])
+        d = self.rpc("decodesharetx", signed["hex"])
+        if d.get("type") != "transfer" or d.get("to") != self.address or not d.get("hashlock"):
+            raise ValueError("not a hash-locked transfer to us")
+        if self.lightning is None:
+            offer = {"preimage": req["preimage"]}
+            if sha256_hex(bytes.fromhex(req["preimage"])) != d["hashlock"]:
+                raise ValueError("preimage does not match")
+        else:
+            offer = {"invoice": req["invoice"]}
+            if bolt11_payment_hash(req["invoice"]) != d["hashlock"]:
+                raise ValueError("the invoice is not for this transfer's hashlock")
+        txid = self.rpc("sendsharetx", signed["hex"])
+        with self.lock:
+            self.offers[txid] = offer
+        print(f"storefront offer {txid[:16]} from {d['from']}")
+        return {"txid": txid}
+
+    def status(self, txid):
+        if txid in self.done:
+            sale = next((s for s in reversed(self.sales) if s.get("transfer") == txid), None)
+            return {"state": "paid", "sale": sale}
+        lists = self.rpc("listsharetxs")
+        for p in lists["pending"]:
+            if p["txid"] == txid:
+                return {"state": "locked", "expiry": p["expiry"], "height": self.rpc("getsharechaininfo")["height"],
+                        "paying": bool(self.offers.get(txid, {}).get("paid_hash"))}
+        if any(t["txid"] == txid for t in lists["pool"]):
+            return {"state": "waiting"}
+        return {"state": "unknown"}
+
     # ---- the swap ------------------------------------------------------------------
     def pending(self):
         return {p["txid"]: p for p in self.rpc("listsharetxs")["pending"] if p["to"] == self.address}
@@ -105,6 +185,7 @@ class Maker:
             if sha256_hex(bytes.fromhex(preimage)) != p["hashlock"]:
                 return "preimage does not match the hashlock"
             print(f"[trust mode] would pay {worth} sats for {p['fruits']} fruits ({p['work'] / WORK_UNIT:.3f} units)")
+            offer["sale"] = {"transfer": txid, "seller": p["from"], "sats": worth, "units": p["work"] / WORK_UNIT, "fruits": p["fruits"]}
         else:
             sats, payment_hash = self.lightning.decode(offer["invoice"])
             if payment_hash != p["hashlock"]:
@@ -182,8 +263,17 @@ def serve(maker, listen):
 
         def do_GET(self):
             u = urlparse(self.path)
+            q = parse_qs(u.query)
             if u.path in ("/offers", "/offers.json"):
                 return self._reply(200, maker.feed())
+            try:
+                if u.path == "/quotes":
+                    addrs = [a for a in q.get("addresses", [""])[0].split(",") if a][:100]
+                    return self._reply(200, maker.quotes(addrs))
+                if u.path == "/status":
+                    return self._reply(200, maker.status(q.get("txid", [""])[0]))
+            except Exception as e:
+                return self._reply(500, {"error": str(e)})
             if u.path != "/quote":
                 return self._reply(404, {"error": "unknown"})
             seller = parse_qs(u.query).get("address", [""])[0]
@@ -193,6 +283,14 @@ def serve(maker, listen):
                 self._reply(500, {"error": str(e)})
 
         def do_POST(self):
+            if self.path in ("/prepare", "/submit"):
+                try:
+                    req = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", "0")), 65536)))
+                    return self._reply(200, maker.prepare(req) if self.path == "/prepare" else maker.submit(req))
+                except (KeyError, ValueError) as e:
+                    return self._reply(400, {"error": str(e)})
+                except Exception as e:
+                    return self._reply(500, {"error": str(e)})
             if self.path != "/offer":
                 return self._reply(404, {"error": "unknown"})
             try:
@@ -210,7 +308,7 @@ def serve(maker, listen):
             pass
 
     host, port = listen.rsplit(":", 1)
-    HTTPServer((host, int(port)), Handler).serve_forever()
+    ThreadingHTTPServer((host, int(port)), Handler).serve_forever()
 
 
 def main():

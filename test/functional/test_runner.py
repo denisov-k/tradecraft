@@ -319,6 +319,7 @@ BASE_SCRIPTS = [
     'mining_basic.py',
     'feature_sharechain.py',
     'feature_sharechain_frcswap.py',
+    'feature_sharechain_storefront.py',
     'p2p_mutated_blocks.py',
     'wallet_implicitsegwit.py --legacy-wallet',
     'rpc_named_arguments.py',

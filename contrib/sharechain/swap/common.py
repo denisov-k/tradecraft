@@ -8,6 +8,7 @@ regtest stands: the seller hands the preimage over directly.
 import base64
 import hashlib
 import json
+import re
 import os
 import subprocess
 import time
@@ -122,11 +123,16 @@ def bolt11_payment_hash(invoice: str) -> str:
 
 
 def lnaddress_invoice(address: str, sats: int, comment: str = "") -> str:
-    """Fetch an invoice for `sats` from a lightning address (LNURL-pay: user@domain)."""
-    name, _, domain = address.partition("@")
+    """Fetch an invoice for `sats` from a lightning address (LNURL-pay: user@domain).  The
+    address may come from a web page, so only public https names are fetched."""
+    name, _, domain = address.strip().lower().partition("@")
+    if not re.fullmatch(r"[a-z0-9._+-]{1,64}", name) or not re.fullmatch(r"(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}", domain):
+        raise ValueError(f"{address}: not a lightning address")
     meta = http_json(f"https://{domain}/.well-known/lnurlp/{name}")
     if meta.get("tag") != "payRequest":
         raise ValueError(f"{address}: not a pay request")
+    if not str(meta.get("callback", "")).startswith("https://"):
+        raise ValueError(f"{address}: the pay request's callback is not https")
     msat = sats * 1000
     if msat < meta.get("minSendable", 0) or msat > meta.get("maxSendable", 1 << 62):
         raise ValueError(f"{address}: {sats} sats outside {meta.get('minSendable', 0) // 1000}..{meta.get('maxSendable', 0) // 1000}")
