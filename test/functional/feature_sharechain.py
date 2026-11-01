@@ -354,6 +354,17 @@ class ShareChainTest(FreicoinTestFramework):
         assert_equal(stratum_authorize(stratum_port(2), "x"), (True, None))
         assert_equal(stratum_authorize(stratum_port(2), addr[0] + ".rig1"), (True, None))
 
+        self.log.info("a relay-only node (-sharechain, no stratum) signals NODE_SHARECHAIN; a plain node runs no share chain")
+        NODE_SHARECHAIN = 1 << 12
+        self.restart_node(2, extra_args=["-sharechain=regtest"])
+        assert int(n2.getnetworkinfo()["localservices"], 16) & NODE_SHARECHAIN
+        assert_equal(self.sc(n2)["enabled"], True)
+        self.connect_nodes(2, 0)
+        self.wait_same_tip(n0, n2, timeout=90)
+        self.restart_node(2, extra_args=[])
+        assert not int(n2.getnetworkinfo()["localservices"], 16) & NODE_SHARECHAIN
+        assert_equal(self.sc(n2)["enabled"], False)
+
 
 if __name__ == "__main__":
     ShareChainTest(__file__).main()

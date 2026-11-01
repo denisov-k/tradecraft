@@ -64,6 +64,12 @@ The WIF is the private key of the mining address (`-defaultshareaddress`). Keep 
 a plain single-key bech32 address (`fc1q…` of 20 bytes, the wallet's `getnewaddress "" bech32`):
 that is what the transfer signature covers. `newkey.py` makes one outside the wallet.
 
+## Selling part of the credit
+
+`sell.py` sells everything up to the quoted height by default. `--max-sats N` sells only as
+much as N sats buy at the quoted rate (for a wallet that takes at most N), `--units N` a set
+number of units of work; the newest credit goes first.
+
 ## Selling for FRC instead of sats
 
 `frchtlc.py` does the swap with an HTLC on the Freicoin chain (doc/sharechain-transfers.md
