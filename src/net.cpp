@@ -380,6 +380,15 @@ bool CConnman::CheckIncomingNonce(uint64_t nonce)
     return true;
 }
 
+std::optional<std::string> CConnman::ManualConnWithNonce(uint64_t nonce)
+{
+    LOCK(m_nodes_mutex);
+    for (const CNode* pnode : m_nodes) {
+        if (pnode->IsManualConn() && pnode->GetLocalNonce() == nonce) return pnode->m_addr_name;
+    }
+    return std::nullopt;
+}
+
 /** Get the bind address for a socket as CAddress */
 static CAddress GetBindAddress(const Sock& sock)
 {
