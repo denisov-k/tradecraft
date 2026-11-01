@@ -22,7 +22,7 @@ and a storefront page (a wallet that signs in the browser; no key ever reaches u
   POST /prepare {"address", "pubkey", "lnaddress" | "invoice", "maxsats"?}
                                  -> the unsigned locked transfer and the 32 bytes to sign
   POST /submit  {"hex", "signature", "invoice"}   -> {"txid"}: relayed, and our offer
-  GET  /status?txid=...          -> waiting | locked | paid | unknown
+  GET  /status?txid=...          -> waiting | locked | paid (we paid and sent the claim) | unknown
 
 The price is the only thing the maker decides; everything else is checked against the chain:
 the transfer must be pending, to our address, lock at least what was quoted, and have enough

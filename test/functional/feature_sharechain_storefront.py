@@ -119,7 +119,11 @@ class ShareChainStorefrontTest(FreicoinTestFramework):
             while self.http("/status?txid=" + txid)[1]["state"] != "paid":
                 assert time.time() < deadline, self.http("/status?txid=" + txid)
                 assert_equal(m.mine_one()[1], None)
-            assert owners()[maker_addr]["work"] > 0
+            # "paid" is the seller's moment (the maker has paid and sent its claim); the credit
+            # moves to the maker once a chain share carries the claim
+            while maker_addr not in owners():
+                assert time.time() < deadline, node.listsharetxs()
+                assert_equal(m.mine_one()[1], None)
             code, feed = self.http("/offers")
             assert_equal(feed["sales"][-1]["transfer"], txid)
             assert_equal(feed["sales"][-1]["seller"], seller)
