@@ -174,11 +174,11 @@ struct ShareChainRegtestSetup : public BasicTestingSetup {
 
     static uint256 BlockHash(int height) { return FakeHash(0x1000 + height); }
 
-    ShareChainstateManager::Options MakeOptions()
+    ShareChainstateManager::Options MakeOptions(const ShareChainParams* params = nullptr)
     {
         return ShareChainstateManager::Options{
             .chainparams = Params(),
-            .sharechainparams = ShareParams(),
+            .sharechainparams = params ? *params : ShareParams(),
             .adjusted_time_callback = [this]() { return NodeClock::time_point{std::chrono::seconds{m_now}}; },
             .block_height_callback = [this](const uint256& hash) -> std::optional<int> {
                 auto it = m_blocks.find(hash);
@@ -250,6 +250,24 @@ struct ShareChainRegtestSetup : public BasicTestingSetup {
     bool Chain(const Mined& m, std::string& reason) EXCLUSIVE_LOCKS_REQUIRED(::cs_main)
     {
         return m_man->AcceptChainShare(m.share, m.peaks, m.fruits, m.txs, reason);
+    }
+};
+
+/** Regtest share chain with the LWMA retarget of main: what pruning and trusted bases
+ *  meet on mainnet, where the share target moves. */
+struct RetargetRegtestParams : public ShareChainParams {
+    RetargetRegtestParams()
+    {
+        is_valid = true;
+        m_share_chain_type = ShareChainType::REGTEST;
+        m_share_bits = 0x207fffff;
+        m_chain_factor = 4;
+        m_recency = 10;
+        m_retarget = true;
+        m_share_interval = 10;
+        m_chain_id = ShareParams().ChainId();
+        m_window_shares = 48;
+        m_window_k = 1u << 20;
     }
 };
 
@@ -518,6 +536,81 @@ BOOST_FIXTURE_TEST_CASE(sharechain_prune_sync_and_reload, ShareChainRegtestSetup
         BOOST_CHECK_EQUAL(reloaded.BaseHeight(), base_height);
         BOOST_CHECK_EQUAL(reloaded.ActiveChainstate().chain_shares.size(), chain_shares);
         BOOST_CHECK_EQUAL(reloaded.ActiveChainstate().fruits.size(), fruits);
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(sharechain_retarget_across_a_trusted_base, ShareChainRegtestSetup)
+{
+    // On mainnet the share target retargets (LWMA over 60 chain shares).  Once the window
+    // fills and the chain is pruned, a node that reloads its dump or syncs from a peer
+    // starts from a trusted base with no history below it: the target of the shares just
+    // above the base cannot be recomputed and must not be held against them (2026-11-03:
+    // every restarted mainnet node stopped at its base, share-bad-bits).
+    static const RetargetRegtestParams rparams;
+    m_man = std::make_unique<ShareChainstateManager>(MakeOptions(&rparams));
+    std::string reason;
+    const int kChainShares = 140;
+    {
+        LOCK(::cs_main);
+        m_man->Initialize();
+        // A few fast chain shares move the target off the chain's easiest one; then one per
+        // target interval (4 shares x 10 s) holds it there.
+        uint32_t t = static_cast<uint32_t>(m_now);
+        for (int i = 0; i < kChainShares; ++i) {
+            t += i < 8 ? 20 : 40;
+            const Mined f = Mine(i % 2 ? MINER_A : MINER_B, Kind::FRUIT, 100, t);
+            BOOST_REQUIRE_MESSAGE(Fruit(f, reason), reason);
+            const Mined c = Mine(i % 2 ? MINER_B : MINER_A, Kind::CHAIN, 100, t + 5);
+            BOOST_REQUIRE_MESSAGE(Chain(c, reason), reason);
+        }
+        BOOST_CHECK_EQUAL(m_man->ActiveHeight(), kChainShares - 1);
+        BOOST_CHECK_GT(m_man->BaseHeight(), 0);
+        // the test means something only if the target moved away from the easiest one
+        BOOST_CHECK(m_man->ActiveTip()->share.bits != rparams.ShareBits());
+    }
+    uint256 tip;
+    size_t chain_shares = 0;
+    std::vector<ShareMessage> batch;
+    {
+        LOCK(::cs_main);
+        tip = m_man->ActiveTip()->GetHash();
+        chain_shares = m_man->ActiveChainstate().chain_shares.size();
+        batch = m_man->GetShareRange({}, 500);
+    }
+    // A fresh node syncs the pruned chain: its base is the first chain share it gets.
+    {
+        ShareChainstateManager peer(MakeOptions(&rparams));
+        LOCK(::cs_main);
+        peer.Initialize();
+        size_t invalid = 0;
+        for (const ShareMessage& m : batch) {
+            std::vector<uint256> deps;
+            if (peer.ProcessShareMessage(m, deps, reason, /*live=*/false, /*allow_base=*/true) == ShareAccept::INVALID) {
+                ++invalid;
+                BOOST_TEST_MESSAGE("invalid at height " + std::to_string(m.share.height) + ": " + reason);
+            }
+        }
+        BOOST_CHECK_EQUAL(invalid, 0U);
+        BOOST_REQUIRE(peer.ActiveTip());
+        BOOST_CHECK(peer.ActiveTip()->GetHash() == tip);
+        BOOST_CHECK_EQUAL(peer.ActiveChainstate().chain_shares.size(), chain_shares);
+        // and it builds on the tip with the target the full chain asks for
+        BOOST_CHECK_EQUAL(peer.RequiredShareBits(peer.ActiveTip().get()), m_man->RequiredShareBits(m_man->ActiveTip().get()));
+    }
+    // The pruned dump reloads into the same chain.
+    const fs::path path = m_path_root / "sharechain-retarget.dat";
+    {
+        LOCK(::cs_main);
+        BOOST_REQUIRE(m_man->DumpToFile(path));
+    }
+    {
+        ShareChainstateManager reloaded(MakeOptions(&rparams));
+        LOCK(::cs_main);
+        reloaded.Initialize();
+        BOOST_REQUIRE(reloaded.LoadFromFile(path));
+        BOOST_REQUIRE(reloaded.ActiveTip());
+        BOOST_CHECK(reloaded.ActiveTip()->GetHash() == tip);
+        BOOST_CHECK_EQUAL(reloaded.ActiveChainstate().chain_shares.size(), chain_shares);
     }
 }
 
