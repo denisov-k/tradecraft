@@ -181,6 +181,20 @@ UniValue SendMoney(CWallet& wallet, const CCoinControl &coin_control, std::vecto
         throw JSONRPCError(RPC_WALLET_ERROR, "Error: Private keys are disabled for this wallet");
     }
 
+    // In scrip a payment carries the Freicoin that is worth exactly its amount at
+    // the reference height of the transaction.
+    if (wallet.m_scrip) {
+        if (!refheight) {
+            const auto chain_height = wallet.chain().getHeight();
+            if (!chain_height) throw JSONRPCError(RPC_WALLET_ERROR, "Unable to determine the current chain height");
+            refheight = static_cast<uint32_t>(*chain_height + 1);
+        }
+        for (CRecipient& recipient : recipients) {
+            recipient.nAmount = FreicoinForScrip(recipient.nAmount, *refheight);
+            if (!MoneyRange(recipient.nAmount)) throw JSONRPCError(RPC_TYPE_ERROR, "Amount out of range");
+        }
+    }
+
     // Shuffle recipient list
     std::shuffle(recipients.begin(), recipients.end(), FastRandomContext());
 
@@ -862,6 +876,7 @@ RPCHelpMan fundrawtransaction()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
+    EnsureNativeAmounts(*pwallet, "fundrawtransaction");
 
     // parse hex string from parameter
     CMutableTransaction tx;
@@ -1094,6 +1109,7 @@ static RPCHelpMan bumpfee_helper(std::string method_name)
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
+    EnsureNativeAmounts(*pwallet, method_name);
 
     if (pwallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) && !pwallet->IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER) && !want_pst) {
         throw JSONRPCError(RPC_WALLET_ERROR, "bumpfee is not available with wallets that have private keys disabled. Use pstbumpfee instead.");
@@ -1318,6 +1334,7 @@ RPCHelpMan send()
         {
             std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
             if (!pwallet) return UniValue::VNULL;
+            EnsureNativeAmounts(*pwallet, "send");
 
             UniValue options{request.params[4].isNull() ? UniValue::VOBJ : request.params[4]};
             InterpretFeeEstimationInstructions(/*conf_target=*/request.params[1], /*estimate_mode=*/request.params[2], /*fee_rate=*/request.params[3], options);
@@ -1438,6 +1455,7 @@ RPCHelpMan sendall()
         {
             std::shared_ptr<CWallet> const pwallet{GetWalletForJSONRPCRequest(request)};
             if (!pwallet) return UniValue::VNULL;
+            EnsureNativeAmounts(*pwallet, "sendall");
             // Make sure the results are valid at least up to the most recent block
             // the user could have gotten from another RPC command prior to now
             pwallet->BlockUntilSyncedToCurrentChain();
@@ -1790,6 +1808,7 @@ RPCHelpMan walletcreatefundedpst()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
+    EnsureNativeAmounts(*pwallet, "walletcreatefundedpst");
 
     CWallet& wallet{*pwallet};
     // Make sure the results are valid at least up to the most recent block

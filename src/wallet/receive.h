@@ -68,7 +68,17 @@ struct Balance {
     CAmount m_watchonly_untrusted_pending{0};
     CAmount m_watchonly_immature{0};
 };
-Balance GetBalance(const CWallet& wallet, int min_depth = 0, bool avoid_reuse = true);
+/** The scrip value of a wallet amount: the outputs of one transaction are valued
+ *  one by one at its reference height, so an output's value never changes. */
+CAmount OutputGetScrip(const CTxOut& txout, uint32_t refheight);
+/** Scrip credited by wtx's outputs matching filter (unspent ones only if asked). */
+CAmount TxGetScripCredit(const CWallet& wallet, const CWalletTx& wtx, const isminefilter& filter, bool unspent) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
+/** Scrip debited by tx's inputs matching filter, each at its own reference height. */
+CAmount TxGetScripDebit(const CWallet& wallet, const CTransaction& tx, const isminefilter& filter) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
+/** The fee of a transaction the wallet funded, in scrip: inputs less outputs, so
+ *  the rounding of every conversion lands in it. */
+CAmount TxGetScripFee(const CWallet& wallet, const CTransaction& tx) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
+Balance GetBalance(const CWallet& wallet, int min_depth = 0, bool avoid_reuse = true, bool scrip = false);
 
 std::map<CTxDestination, CAmount> GetAddressBalances(const CWallet& wallet);
 std::set<std::set<CTxDestination>> GetAddressGroupings(const CWallet& wallet) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);

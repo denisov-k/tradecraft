@@ -191,6 +191,7 @@ RPCHelpMan listaddressgroupings()
 {
     const std::shared_ptr<const CWallet> pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
+    EnsureNativeAmounts(*pwallet, "listaddressgroupings");
 
     // Make sure the results are valid at least up to the most recent block
     // the user could have gotten from another RPC command prior to now

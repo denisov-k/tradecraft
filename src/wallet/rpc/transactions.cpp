@@ -137,7 +137,7 @@ static UniValue ListReceived(const CWallet& wallet, const UniValue& params, cons
                 continue;
 
             tallyitem& item = mapTally[address];
-            item.nAmount += txout.GetReferenceValue();
+            item.nAmount += wallet.m_scrip ? OutputGetScrip(txout, wtx.tx->lock_height) : txout.GetReferenceValue();
             item.nConf = std::min(item.nConf, nDepth);
             item.txids.push_back(wtx.GetHash());
             if (mine & ISMINE_WATCH_ONLY)
@@ -341,6 +341,13 @@ static void ListTransactions(const CWallet& wallet, const CWalletTx& wtx, int nM
     std::list<COutputEntry> listSent;
 
     CachedTxGetAmounts(wallet, wtx, listReceived, listSent, nFee, demurrage, filter_ismine, include_change);
+    // In scrip an output keeps the value it had at the reference height, and there
+    // is no demurrage to report.
+    const auto amount = [&](CAmount value) { return wallet.m_scrip ? FreicoinToScrip(value, wtx.tx->lock_height) : value; };
+    if (wallet.m_scrip) {
+        if (CachedTxGetDebit(wallet, wtx, filter_ismine) > 0) nFee = TxGetScripFee(wallet, *wtx.tx);
+        demurrage = 0;
+    }
 
     bool involvesWatchonly = CachedTxIsFromMe(wallet, wtx, ISMINE_WATCH_ONLY);
 
@@ -355,7 +362,7 @@ static void ListTransactions(const CWallet& wallet, const CWalletTx& wtx, int nM
             }
             MaybePushAddress(entry, s.destination);
             entry.pushKV("category", "send");
-            entry.pushKV("amount", ValueFromAmount(-s.amount));
+            entry.pushKV("amount", ValueFromAmount(-amount(s.amount)));
             const auto* address_book_entry = wallet.FindAddressBookEntry(s.destination);
             if (address_book_entry) {
                 entry.pushKV("label", address_book_entry->GetLabel());
@@ -402,7 +409,7 @@ static void ListTransactions(const CWallet& wallet, const CWalletTx& wtx, int nM
             {
                 entry.pushKV("category", "receive");
             }
-            entry.pushKV("amount", ValueFromAmount(r.amount));
+            entry.pushKV("amount", ValueFromAmount(amount(r.amount)));
             if (address_book_entry) {
                 entry.pushKV("label", label);
             }
@@ -809,6 +816,13 @@ RPCHelpMan gettransaction()
     CAmount value_in = 0, demurrage = 0;
     pwallet->GetInputSplit(wtx, value_in, demurrage);
     CAmount nFee = (CachedTxIsFromMe(*pwallet, wtx, filter) ? wtx.tx->GetValueOut() - value_in : 0);
+    if (pwallet->m_scrip) {
+        nCredit = pwallet->IsTxImmatureCoinBase(wtx) ? 0 : TxGetScripCredit(*pwallet, wtx, filter, /*unspent=*/false);
+        nDebit = TxGetScripDebit(*pwallet, *wtx.tx, filter);
+        nNet = nCredit - nDebit;
+        nFee = CachedTxIsFromMe(*pwallet, wtx, filter) ? -TxGetScripFee(*pwallet, *wtx.tx) : 0;
+        demurrage = 0;
+    }
 
     entry.pushKV("amount", ValueFromAmount(nNet - nFee));
     entry.pushKV("refheight", (uint64_t)wtx.tx->lock_height);

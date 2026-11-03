@@ -112,6 +112,13 @@ void EnsureWalletIsUnlocked(const CWallet& wallet)
     }
 }
 
+void EnsureNativeAmounts(const CWallet& wallet, const std::string& method)
+{
+    if (wallet.m_scrip) {
+        throw JSONRPCError(RPC_WALLET_ERROR, method + " does not express amounts in scrip; restart without -scrip to use it");
+    }
+}
+
 WalletContext& EnsureWalletContext(const std::any& context)
 {
     auto wallet_context = util::AnyPtr<WalletContext>(context);

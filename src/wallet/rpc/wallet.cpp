@@ -104,7 +104,7 @@ static RPCHelpMan getwalletinfo()
     UniValue obj(UniValue::VOBJ);
 
     size_t kpExternalSize = pwallet->KeypoolCountExternalKeys();
-    const auto bal = GetBalance(*pwallet);
+    const auto bal = GetBalance(*pwallet, 0, true, pwallet->m_scrip);
     obj.pushKV("walletname", pwallet->GetName());
     obj.pushKV("walletversion", pwallet->GetVersion());
     obj.pushKV("format", pwallet->GetDatabase().Format());
@@ -679,6 +679,7 @@ RPCHelpMan simulaterawtransaction()
 {
     const std::shared_ptr<const CWallet> rpc_wallet = GetWalletForJSONRPCRequest(request);
     if (!rpc_wallet) return UniValue::VNULL;
+    EnsureNativeAmounts(*rpc_wallet, "simulaterawtransaction");
     const CWallet& wallet = *rpc_wallet;
 
     LOCK(wallet.cs_wallet);

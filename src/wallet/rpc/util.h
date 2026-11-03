@@ -51,6 +51,8 @@ std::shared_ptr<CWallet> GetWalletForJSONRPCRequest(const JSONRPCRequest& reques
 bool GetWalletNameFromJSONRPCRequest(const JSONRPCRequest& request, std::string& wallet_name);
 
 void EnsureWalletIsUnlocked(const CWallet&);
+//! Refuse an RPC that cannot express its amounts in scrip when -scrip is set.
+void EnsureNativeAmounts(const CWallet& wallet, const std::string& method);
 WalletContext& EnsureWalletContext(const std::any& context);
 LegacyScriptPubKeyMan& EnsureLegacyScriptPubKeyMan(CWallet& wallet, bool also_create = false);
 const LegacyScriptPubKeyMan& EnsureConstLegacyScriptPubKeyMan(const CWallet& wallet);

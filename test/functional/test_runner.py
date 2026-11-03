@@ -168,6 +168,8 @@ BASE_SCRIPTS = [
     'rpc_txoutproof.py',
     'wallet_listreceivedby.py --legacy-wallet',
     'wallet_listreceivedby.py --descriptors',
+    'wallet_scrip.py --legacy-wallet',
+    'wallet_scrip.py --descriptors',
     'wallet_abandonconflict.py --legacy-wallet --bitcoin-mode',
     'wallet_abandonconflict.py --descriptors --bitcoin-mode',
     'feature_reindex.py',

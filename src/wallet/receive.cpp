@@ -303,7 +303,53 @@ bool CachedTxIsTrusted(const CWallet& wallet, const CWalletTx& wtx)
     return CachedTxIsTrusted(wallet, wtx, trusted_parents);
 }
 
-Balance GetBalance(const CWallet& wallet, const int min_depth, bool avoid_reuse)
+CAmount OutputGetScrip(const CTxOut& txout, uint32_t refheight)
+{
+    return FreicoinToScrip(txout.GetReferenceValue(), refheight);
+}
+
+CAmount TxGetScripCredit(const CWallet& wallet, const CWalletTx& wtx, const isminefilter& filter, bool unspent)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    const bool allow_used_addresses = (filter & ISMINE_USED) || !wallet.IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE);
+    CAmount credit = 0;
+    for (unsigned int i = 0; i < wtx.tx->vout.size(); i++) {
+        const CTxOut& txout = wtx.tx->vout[i];
+        if (unspent && (wallet.IsSpent(COutPoint(wtx.GetHash(), i)) || (!allow_used_addresses && wallet.IsSpentKey(txout.scriptPubKey)))) {
+            continue;
+        }
+        if (OutputGetCredit(wallet, txout, filter)) {
+            credit += OutputGetScrip(txout, wtx.tx->lock_height);
+        }
+    }
+    return credit;
+}
+
+CAmount TxGetScripDebit(const CWallet& wallet, const CTransaction& tx, const isminefilter& filter)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    CAmount debit = 0;
+    for (const CTxIn& txin : tx.vin) {
+        const auto it = wallet.mapWallet.find(txin.prevout.hash);
+        if (it == wallet.mapWallet.end() || txin.prevout.n >= it->second.tx->vout.size()) continue;
+        const CTxOut& prev = it->second.tx->vout[txin.prevout.n];
+        if (wallet.IsMine(prev) & filter) {
+            debit += OutputGetScrip(prev, it->second.tx->lock_height);
+        }
+    }
+    return debit;
+}
+
+CAmount TxGetScripFee(const CWallet& wallet, const CTransaction& tx)
+{
+    CAmount out = 0;
+    for (const CTxOut& txout : tx.vout) {
+        out += OutputGetScrip(txout, tx.lock_height);
+    }
+    return TxGetScripDebit(wallet, tx, ISMINE_ALL) - out;
+}
+
+Balance GetBalance(const CWallet& wallet, const int min_depth, bool avoid_reuse, bool scrip)
 {
     Balance ret;
     isminefilter reuse_filter = avoid_reuse ? ISMINE_NO : ISMINE_USED;
@@ -320,8 +366,18 @@ Balance GetBalance(const CWallet& wallet, const int min_depth, bool avoid_reuse)
             const CWalletTx& wtx = entry.second;
             const bool is_trusted{CachedTxIsTrusted(wallet, wtx, trusted_parents)};
             const int tx_depth{wallet.GetTxDepthInMainChain(wtx)};
-            const CAmount tx_credit_mine{GetTimeAdjustedValue(CachedTxGetAvailableCredit(wallet, wtx, ISMINE_SPENDABLE | reuse_filter), next_height - wtx.tx->lock_height)};
-            const CAmount tx_credit_watchonly{GetTimeAdjustedValue(CachedTxGetAvailableCredit(wallet, wtx, ISMINE_WATCH_ONLY | reuse_filter), next_height - wtx.tx->lock_height)};
+            // Native amounts are present values at the next block; scrip ones do not move.
+            const bool immature{wallet.IsTxImmatureCoinBase(wtx)};
+            const auto available = [&](const isminefilter& filter) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet) {
+                if (scrip) return immature ? 0 : TxGetScripCredit(wallet, wtx, filter, /*unspent=*/true);
+                return GetTimeAdjustedValue(CachedTxGetAvailableCredit(wallet, wtx, filter), next_height - wtx.tx->lock_height);
+            };
+            const auto immature_credit = [&](const isminefilter& filter) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet) {
+                if (scrip) return immature && wtx.isConfirmed() ? TxGetScripCredit(wallet, wtx, filter, /*unspent=*/false) : 0;
+                return GetTimeAdjustedValue(CachedTxGetImmatureCredit(wallet, wtx, filter), next_height - wtx.tx->lock_height);
+            };
+            const CAmount tx_credit_mine{available(ISMINE_SPENDABLE | reuse_filter)};
+            const CAmount tx_credit_watchonly{available(ISMINE_WATCH_ONLY | reuse_filter)};
             if (is_trusted && tx_depth >= min_depth) {
                 ret.m_mine_trusted += tx_credit_mine;
                 ret.m_watchonly_trusted += tx_credit_watchonly;
@@ -330,8 +386,8 @@ Balance GetBalance(const CWallet& wallet, const int min_depth, bool avoid_reuse)
                 ret.m_mine_untrusted_pending += tx_credit_mine;
                 ret.m_watchonly_untrusted_pending += tx_credit_watchonly;
             }
-            ret.m_mine_immature += GetTimeAdjustedValue(CachedTxGetImmatureCredit(wallet, wtx, ISMINE_SPENDABLE), next_height - wtx.tx->lock_height);
-            ret.m_watchonly_immature += GetTimeAdjustedValue(CachedTxGetImmatureCredit(wallet, wtx, ISMINE_WATCH_ONLY), next_height - wtx.tx->lock_height);
+            ret.m_mine_immature += immature_credit(ISMINE_SPENDABLE);
+            ret.m_watchonly_immature += immature_credit(ISMINE_WATCH_ONLY);
         }
     }
     return ret;

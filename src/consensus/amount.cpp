@@ -431,4 +431,27 @@ CAmount ScripToFreicoin(const CAmount& epoch_value, uint32_t height)
     return GetTimeAdjustedValue(epoch_value, static_cast<int32_t>(height) - SCRIP_EPOCH);
 }
 
+CAmount FreicoinForScrip(const CAmount& scrip, uint32_t height)
+{
+    if (scrip <= 0) {
+        return 0;
+    }
+    // FreicoinToScrip is monotonic in the value, so bisect around the inverse
+    // conversion (which is off by the truncation of both directions).
+    const CAmount guess = ScripToFreicoin(scrip, height);
+    CAmount lo = std::max<CAmount>(0, guess - 1024), hi = std::min<CAmount>(MAX_MONEY, guess + 1024);
+    while (lo > 0 && FreicoinToScrip(lo, height) >= scrip) lo = std::max<CAmount>(0, 2 * lo - guess - 1);
+    while (hi < MAX_MONEY && FreicoinToScrip(hi, height) < scrip) hi = std::min<CAmount>(MAX_MONEY, 2 * hi - guess + 1);
+    if (FreicoinToScrip(hi, height) < scrip) {
+        return MAX_MONEY + 1; // not representable: out of MoneyRange
+    }
+    // invariant: FreicoinToScrip(lo) < scrip <= FreicoinToScrip(hi), or lo == 0
+    if (FreicoinToScrip(lo, height) >= scrip) return lo;
+    while (hi - lo > 1) {
+        const CAmount mid = lo + (hi - lo) / 2;
+        if (FreicoinToScrip(mid, height) >= scrip) hi = mid; else lo = mid;
+    }
+    return hi;
+}
+
 // End of File

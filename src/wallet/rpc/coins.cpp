@@ -80,7 +80,7 @@ static CAmount GetReceived(const CWallet& wallet, const UniValue& params, bool b
 
         for (const CTxOut& txout : wtx.tx->vout) {
             if (output_scripts.count(txout.scriptPubKey) > 0) {
-                amount += txout.GetReferenceValue();
+                amount += wallet.m_scrip ? OutputGetScrip(txout, wtx.tx->lock_height) : txout.GetReferenceValue();
             }
         }
     }
@@ -216,7 +216,7 @@ RPCHelpMan getbalance()
 
     bool avoid_reuse = GetAvoidReuseFlag(*pwallet, request.params[3]);
 
-    const auto bal = GetBalance(*pwallet, min_depth, avoid_reuse);
+    const auto bal = GetBalance(*pwallet, min_depth, avoid_reuse, pwallet->m_scrip);
 
     return ValueFromAmount(bal.m_mine_trusted + (include_watchonly ? bal.m_watchonly_trusted : 0));
 },
@@ -241,7 +241,7 @@ RPCHelpMan getunconfirmedbalance()
 
     LOCK(pwallet->cs_wallet);
 
-    return ValueFromAmount(GetBalance(*pwallet).m_mine_untrusted_pending);
+    return ValueFromAmount(GetBalance(*pwallet, 0, true, pwallet->m_scrip).m_mine_untrusted_pending);
 },
     };
 }
@@ -475,7 +475,7 @@ RPCHelpMan getbalances()
 
     LOCK(wallet.cs_wallet);
 
-    const auto bal = GetBalance(wallet);
+    const auto bal = GetBalance(wallet, 0, true, wallet.m_scrip);
     UniValue balances{UniValue::VOBJ};
     {
         UniValue balances_mine{UniValue::VOBJ};
@@ -485,7 +485,7 @@ RPCHelpMan getbalances()
         if (wallet.IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE)) {
             // If the AVOID_REUSE flag is set, bal has been set to just the un-reused address balance. Get
             // the total balance, and then subtract bal to get the reused address balance.
-            const auto full_bal = GetBalance(wallet, 0, false);
+            const auto full_bal = GetBalance(wallet, 0, false, wallet.m_scrip);
             balances_mine.pushKV("used", ValueFromAmount(full_bal.m_mine_trusted + full_bal.m_mine_untrusted_pending - bal.m_mine_trusted - bal.m_mine_untrusted_pending));
         }
         balances.pushKV("mine", std::move(balances_mine));
@@ -634,6 +634,9 @@ RPCHelpMan listunspent()
             },
             true, true);
 
+        if (pwallet->m_scrip && (options.exists("minimumAmount") || options.exists("maximumAmount") || options.exists("minimumSumAmount"))) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Amount filters are not available with -scrip");
+        }
         if (options.exists("minimumAmount"))
             filter_coins.min_amount = AmountFromValue(options["minimumAmount"]);
 
@@ -740,8 +743,15 @@ RPCHelpMan listunspent()
         }
 
         entry.pushKV("scriptPubKey", HexStr(scriptPubKey));
-        entry.pushKV("value", ValueFromAmount(out.txout.GetReferenceValue()));
-        entry.pushKV("amount", ValueFromAmount(out.adjusted));
+        if (pwallet->m_scrip) {
+            // in scrip the value at the reference height is the value now
+            const CAmount scrip = OutputGetScrip(out.txout, out.refheight);
+            entry.pushKV("value", ValueFromAmount(scrip));
+            entry.pushKV("amount", ValueFromAmount(scrip));
+        } else {
+            entry.pushKV("value", ValueFromAmount(out.txout.GetReferenceValue()));
+            entry.pushKV("amount", ValueFromAmount(out.adjusted));
+        }
         entry.pushKV("refheight", (uint64_t)out.refheight);
         entry.pushKV("confirmations", out.depth);
         if (!out.depth) {
