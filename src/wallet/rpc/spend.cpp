@@ -1109,7 +1109,7 @@ static RPCHelpMan bumpfee_helper(std::string method_name)
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
-    EnsureNativeAmounts(*pwallet, method_name);
+    EnsureNativeAmounts(*pwallet, request.strMethod);
 
     if (pwallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) && !pwallet->IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER) && !want_pst) {
         throw JSONRPCError(RPC_WALLET_ERROR, "bumpfee is not available with wallets that have private keys disabled. Use pstbumpfee instead.");
