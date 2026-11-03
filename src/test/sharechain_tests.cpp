@@ -614,6 +614,70 @@ BOOST_FIXTURE_TEST_CASE(sharechain_retarget_across_a_trusted_base, ShareChainReg
     }
 }
 
+BOOST_FIXTURE_TEST_CASE(sharechain_window_over_fruits_below_a_base, ShareChainRegtestSetup)
+{
+    // A node that syncs from peers starts at a trusted base.  The chain shares just above
+    // it list fruits anchored below it, which the node never gets.  A window that ends
+    // just above the base (not at it) must still count as reaching it: the credits it
+    // would pay are incomplete (2026-11-03: a fresh mainnet node stuck at base + 4320).
+    static const RetargetRegtestParams rparams;
+    m_man = std::make_unique<ShareChainstateManager>(MakeOptions(&rparams));
+    std::string reason;
+    const int kChainShares = 120;
+    const size_t kLag = 4; // chain share h lists the fruit anchored at h - kLag
+    uint32_t t = static_cast<uint32_t>(m_now);
+    std::vector<uint256> pending;
+    auto step = [&](int i) EXCLUSIVE_LOCKS_REQUIRED(::cs_main) {
+        t += 40;
+        const Mined f = Mine(i % 3 ? MINER_A : MINER_B, Kind::FRUIT, 100, t);
+        BOOST_REQUIRE_MESSAGE(Fruit(f, reason), reason);
+        pending.push_back(f.share.GetHash());
+        std::vector<uint256> list;
+        if (pending.size() >= kLag) list.push_back(pending[pending.size() - kLag]);
+        const Mined c = Mine(i % 2 ? MINER_B : MINER_A, Kind::CHAIN, 100, t + 5, 0x207fffff, nullptr, list);
+        BOOST_REQUIRE_MESSAGE(Chain(c, reason), reason);
+        return c;
+    };
+    std::vector<ShareMessage> batch;
+    int tip_height = 0;
+    {
+        LOCK(::cs_main);
+        m_man->Initialize();
+        for (int i = 0; i < kChainShares; ++i) step(i);
+        tip_height = m_man->ActiveHeight();
+        batch = m_man->GetShareRange({}, 1000);
+    }
+    // The peer gets the chain from the height where the window of the next share ends
+    // one chain share above the base: base = tip - window_shares.
+    const int base_height = tip_height - static_cast<int>(rparams.WindowShares());
+    ShareChainstateManager peer(MakeOptions(&rparams));
+    auto feed = [&](const ShareMessage& m) EXCLUSIVE_LOCKS_REQUIRED(::cs_main) {
+        std::vector<uint256> deps;
+        return peer.ProcessShareMessage(m, deps, reason, /*live=*/false, /*allow_base=*/true);
+    };
+    {
+        LOCK(::cs_main);
+        peer.Initialize();
+        for (const ShareMessage& m : batch) {
+            if (m.has_body ? static_cast<int>(m.share.height) < base_height : static_cast<int>(m.share.height) <= base_height) continue;
+            BOOST_CHECK_MESSAGE(feed(m) != ShareAccept::INVALID, "height " + std::to_string(m.share.height) + ": " + reason);
+        }
+        BOOST_REQUIRE(peer.ActiveTip());
+        BOOST_CHECK_EQUAL(peer.BaseHeight(), base_height);
+        BOOST_CHECK(peer.ActiveTip()->GetHash() == m_man->ActiveTip()->GetHash());
+    }
+    // The chain goes on past base + recency; the peer follows every chain share.
+    for (int i = kChainShares; i < kChainShares + static_cast<int>(rparams.Recency()) + 8; ++i) {
+        LOCK(::cs_main);
+        const Mined c = step(i);
+        std::vector<ShareMessage> next = m_man->GetShareRange({peer.ActiveTip()->GetHash()}, 100);
+        for (const ShareMessage& m : next) {
+            BOOST_CHECK_MESSAGE(feed(m) != ShareAccept::INVALID, "height " + std::to_string(m.share.height) + ": " + reason);
+        }
+        BOOST_CHECK(peer.ActiveTip()->GetHash() == c.share.GetHash());
+    }
+}
+
 BOOST_FIXTURE_TEST_CASE(sharechain_verified_work_beats_claimed_work, ShareChainRegtestSetup)
 {
     // Two forks from the same base compare by work above the base; a fork whose base
