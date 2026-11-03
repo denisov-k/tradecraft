@@ -678,6 +678,78 @@ BOOST_FIXTURE_TEST_CASE(sharechain_window_over_fruits_below_a_base, ShareChainRe
     }
 }
 
+BOOST_FIXTURE_TEST_CASE(sharechain_reload_ignores_old_fork_orphans, ShareChainRegtestSetup)
+{
+    // Shares of an old fork that a peer still relays wait in the orphan pool (their
+    // anchors are long pruned) and are dumped with it.  On reload the base must be where
+    // the saved chain begins, not the lowest chain share in the file (2026-11-03: two
+    // mainnet nodes reloaded onto last night's fork, its lowest share as the base).
+    static const RetargetRegtestParams rparams;
+    m_man = std::make_unique<ShareChainstateManager>(MakeOptions(&rparams));
+    std::string reason;
+    uint32_t t = static_cast<uint32_t>(m_now);
+    auto chain = [&](const WitnessUnknown& miner) EXCLUSIVE_LOCKS_REQUIRED(::cs_main) {
+        t += 40;
+        const Mined c = Mine(miner, Kind::CHAIN, 100, t);
+        BOOST_REQUIRE_MESSAGE(Chain(c, reason), reason);
+        return c;
+    };
+    std::vector<ShareMessage> fork;
+    {
+        LOCK(::cs_main);
+        m_man->Initialize();
+        for (int i = 0; i < 40; ++i) chain(i % 2 ? MINER_A : MINER_B);
+        // A fork from height 40, mined on a copy of the chain.
+        std::unique_ptr<ShareChainstateManager> alt = std::make_unique<ShareChainstateManager>(MakeOptions(&rparams));
+        alt->Initialize();
+        for (const ShareMessage& m : m_man->GetShareRange({}, 1000)) {
+            std::vector<uint256> deps;
+            BOOST_REQUIRE(alt->ProcessShareMessage(m, deps, reason, /*live=*/false) == ShareAccept::ACCEPTED);
+        }
+        std::swap(m_man, alt);
+        for (int i = 0; i < 12; ++i) {
+            t += 7;
+            const Mined c = chain(MINER_B);
+            ShareMessage m;
+            m.share = c.share;
+            m.has_body = true;
+            m.body.peaks = c.peaks;
+            m.body.fruits = c.fruits;
+            m.body.txs = c.txs;
+            fork.push_back(std::move(m));
+        }
+        std::swap(m_man, alt);
+        // The main chain goes on until it is pruned above the whole fork.
+        for (int i = 40; i < 200; ++i) chain(i % 2 ? MINER_A : MINER_B);
+        BOOST_REQUIRE_GT(m_man->BaseHeight(), static_cast<int>(fork.back().share.height));
+        // A peer relays the fork minus its first two shares: their anchors are unknown.
+        for (size_t i = 2; i < fork.size(); ++i) {
+            std::vector<uint256> deps;
+            BOOST_CHECK(m_man->ProcessShareMessage(fork[i], deps, reason, /*live=*/false) != ShareAccept::ACCEPTED);
+            m_man->AddOrphan(fork[i]);
+        }
+    }
+    uint256 tip;
+    int base = 0;
+    size_t chain_shares = 0;
+    const fs::path path = m_path_root / "sharechain-forkorphans.dat";
+    {
+        LOCK(::cs_main);
+        tip = m_man->ActiveTip()->GetHash();
+        base = m_man->BaseHeight();
+        chain_shares = m_man->ActiveChainstate().chain_shares.size();
+        BOOST_REQUIRE(m_man->DumpToFile(path));
+    }
+    ShareChainstateManager reloaded(MakeOptions(&rparams));
+    LOCK(::cs_main);
+    reloaded.Initialize();
+    BOOST_REQUIRE(reloaded.LoadFromFile(path));
+    BOOST_REQUIRE(reloaded.ActiveTip());
+    BOOST_CHECK(reloaded.ActiveTip()->GetHash() == tip);
+    BOOST_CHECK_EQUAL(reloaded.BaseHeight(), base);
+    BOOST_CHECK_EQUAL(reloaded.ActiveChainstate().chain_shares.size(), chain_shares);
+}
+
 BOOST_FIXTURE_TEST_CASE(sharechain_verified_work_beats_claimed_work, ShareChainRegtestSetup)
 {
     // Two forks from the same base compare by work above the base; a fork whose base
