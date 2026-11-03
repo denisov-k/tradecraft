@@ -679,8 +679,10 @@ bool ShareChainstateManager::CheckLinkage(const Share& share, const ShareIndex**
 
 namespace {
 /** Whether the PPLNS window walked back from `anchor` runs into a trusted base
- *  (a chain share whose own anchor was never seen) before it is full: the
- *  credits below are history this node does not have. */
+ *  (a chain share whose own anchor was never seen) before it is full, or into
+ *  the chain shares just above one, whose listed fruits may be anchored below the
+ *  base and so were never seen either: the credits are history this node does
+ *  not have. */
 bool WindowReachesBase(const ShareIndex* anchor, const arith_uint256& window, size_t window_shares, const FruitLookup& lookup)
 {
     arith_uint256 acc = 0;
@@ -688,7 +690,11 @@ bool WindowReachesBase(const ShareIndex* anchor, const arith_uint256& window, si
     for (const ShareIndex* cur = anchor; cur && acc < window && walked < window_shares; cur = cur->prev_share.get(), ++walked) {
         for (const uint256& f : cur->fruits) {
             const std::optional<FruitInfo> info = lookup(f);
-            if (info) acc += GetShareWork(info->bits);
+            // A listed fruit is known everywhere but within recency of a trusted
+            // base (AcceptChainShare lets those through).  (Seen live: a node synced
+            // from a base got stuck R shares later, share-bad-payout.)
+            if (!info) return true;
+            acc += GetShareWork(info->bits);
         }
         if (acc < window && !cur->prev_share && !cur->share.anchor.IsNull()) {
             return true;
