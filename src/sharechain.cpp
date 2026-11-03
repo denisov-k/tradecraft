@@ -1541,11 +1541,11 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
         file >> saved_tip;
         file >> count;
         std::vector<ShareMessage> deferred_msgs;
-        std::set<uint256> in_file;
+        std::map<uint256, uint256> in_file; // chain share -> its anchor
         for (uint64_t i = 0; i < count; ++i) {
             ShareMessage m;
             file >> m;
-            if (m.has_body) in_file.insert(m.share.GetHash());
+            if (m.has_body) in_file.emplace(m.share.GetHash(), m.share.anchor);
             std::vector<uint256> missing;
             std::string reason;
             const ShareAccept r = ProcessShareMessage(m, missing, reason, /*live=*/false);
@@ -1575,10 +1575,22 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
                 // Nothing resolves: a pruned dump starts above its anchors. Our own
                 // file is trusted, so its lowest chain share becomes the base.
                 if (!ActiveChain().chain.empty()) break;
+                // The base is where the chain we saved begins: walk back from the saved
+                // tip through the file.  Only without one, the lowest chain share.  (Seen
+                // live: old fork shares from a peer sat in the dump below the pruned main
+                // chain; the lowest of them became the base and the main chain could not
+                // attach.)
+                uint256 root;
+                for (auto f = in_file.find(saved_tip); f != in_file.end(); f = in_file.find(f->second)) root = f->first;
                 auto lowest = still.end();
                 for (auto it = still.begin(); it != still.end(); ++it) {
-                    if (!it->has_body || in_file.count(it->share.anchor)) continue; // waits for something in the file
-                    if (lowest == still.end() || it->share.height < lowest->share.height) lowest = it;
+                    if (it->has_body && it->share.GetHash() == root) { lowest = it; break; }
+                }
+                if (lowest == still.end()) {
+                    for (auto it = still.begin(); it != still.end(); ++it) {
+                        if (!it->has_body || in_file.count(it->share.anchor)) continue; // waits for something in the file
+                        if (lowest == still.end() || it->share.height < lowest->share.height) lowest = it;
+                    }
                 }
                 if (lowest == still.end()) {
                     size_t shown = 0;
