@@ -660,7 +660,10 @@ bool ShareChainstateManager::CheckLinkage(const Share& share, const ShareIndex**
         reason = "share-bad-prev-root";
         return false;
     }
-    if (share.bits != RequiredShareBits(anchor)) {
+    // Just above a trusted base (a pruned dump, or a node that synced from one) the
+    // retarget lacks the chain shares below the base, so the bits cannot be checked
+    // there; like the payouts, they are history the node never had.
+    if (share.bits != RequiredShareBits(anchor) && !RetargetReachesBase(anchor)) {
         reason = "share-bad-bits";
         return false;
     }
@@ -1282,6 +1285,17 @@ std::optional<WitnessUnknown> WitnessUnknownFromDestination(const CTxDestination
 
 ShareChainstateManager* g_sharechainman = nullptr;
 
+bool ShareChainstateManager::RetargetReachesBase(const ShareIndex* anchor) const
+{
+    if (!Params().Retarget()) return false;
+    size_t n = 0;
+    for (const ShareIndex* cur = anchor; cur && n < LWMA_SHARES; cur = cur->prev_share.get(), ++n) {
+        // the first chain share we hold: a trusted base when it has an anchor of its own
+        if (!cur->prev_share) return !cur->share.anchor.IsNull();
+    }
+    return false;
+}
+
 uint32_t ShareChainstateManager::RequiredShareBits(const ShareIndex* anchor) const
 {
     const ShareChainParams& p = Params();
@@ -1289,7 +1303,7 @@ uint32_t ShareChainstateManager::RequiredShareBits(const ShareIndex* anchor) con
         return p.ShareBits();
     }
     // LWMA over the last N chain shares ending at the anchor (newest weighs most).
-    constexpr size_t N = 60;
+    constexpr size_t N = LWMA_SHARES;
     std::vector<const ShareIndex*> v;
     for (const ShareIndex* cur = anchor; cur && v.size() < N; cur = cur->prev_share.get()) {
         v.push_back(cur);

@@ -686,6 +686,11 @@ struct ShareChainstateManager {
     uint32_t WindowBitsFor(const uint256& prev, const CBlockHeader& header, uint32_t fallback) const;
     uint32_t WindowBits(const Share& share) const;
 
+    //! Whether the LWMA window ending at `anchor` runs into a trusted base (a pruned
+    //! chain), where the share target cannot be recomputed and is not checked.
+    bool RetargetReachesBase(const ShareIndex* anchor) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
+    //! Chain shares the share target retarget averages over.
+    static constexpr size_t LWMA_SHARES = 60;
     //! Share target a share hanging from `anchor` must meet: ShareBits(), or
     //! the LWMA retarget over the anchor's chain when Params().Retarget().
     uint32_t RequiredShareBits(const ShareIndex* anchor) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
