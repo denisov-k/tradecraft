@@ -690,6 +690,7 @@ BOOST_FIXTURE_TEST_CASE(sharechain_reload_ignores_old_fork_orphans, ShareChainRe
     uint32_t t = static_cast<uint32_t>(m_now);
     auto chain = [&](const WitnessUnknown& miner) EXCLUSIVE_LOCKS_REQUIRED(::cs_main) {
         t += 40;
+        m_now = t; // the clock follows the chain (shares far ahead of it are refused)
         const Mined c = Mine(miner, Kind::CHAIN, 100, t);
         BOOST_REQUIRE_MESSAGE(Chain(c, reason), reason);
         return c;
