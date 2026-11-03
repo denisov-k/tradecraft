@@ -1533,7 +1533,7 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
             else if (r == ShareAccept::MISSING) { deferred_msgs.push_back(m); ++deferred; }
             else {
                 ++rejected;
-                if (rejected <= 5) LogPrintf("Share chain: entry %d (%s, height %d) rejected at load: %s\n", i, m.has_body ? "chain share" : "fruit", m.share.height, reason);
+                if (rejected <= 20) LogPrintf("Share chain: entry %d (%s, height %d) rejected at load: %s\n", i, m.has_body ? "chain share" : "fruit", m.share.height, reason);
             }
         }
         // Entries whose dependencies came later in the file: retry until a pass
@@ -1546,7 +1546,10 @@ bool ShareChainstateManager::LoadFromFile(const fs::path& path)
                 const ShareAccept r = ProcessShareMessage(m, missing, reason, /*live=*/false);
                 if (r == ShareAccept::ACCEPTED || r == ShareAccept::DUPLICATE) { ++accepted; --deferred; }
                 else if (r == ShareAccept::MISSING) still.push_back(m);
-                else { ++rejected; --deferred; }
+                else {
+                    ++rejected; --deferred;
+                    if (rejected <= 20) LogPrintf("Share chain: %s %s (height %d) rejected at load (retry): %s\n", m.has_body ? "chain share" : "fruit", m.share.GetHash().ToString(), m.share.height, reason);
+                }
             }
             if (still.size() == deferred_msgs.size()) {
                 // Nothing resolves: a pruned dump starts above its anchors. Our own
