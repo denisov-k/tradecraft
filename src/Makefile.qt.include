@@ -189,6 +189,7 @@ QT_RES_ICONS = \
   qt/res/icons/freicoin.ico \
   qt/res/icons/freicoin_testnet.ico \
   qt/res/icons/freicoin.png \
+  qt/res/images/splash.png \
   qt/res/icons/chevron.png \
   qt/res/icons/clock1.png \
   qt/res/icons/clock2.png \

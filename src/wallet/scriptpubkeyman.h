@@ -696,6 +696,9 @@ public:
 
     bool SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors) const override;
     SigningResult SignMessage(const std::string& message, const PKHash& pkhash, std::string& str_sig) const override;
+    //! The private key whose P2WPK (pay-to-witness-pubkey) script is `script`, if this
+    //! descriptor holds it and the wallet is unlocked: used to sign share chain transfers.
+    bool GetKeyForScript(const CScript& script, CKey& key) const;
     std::optional<common::PSTError> FillPST(PartiallySignedTransaction& pst, const PrecomputedTransactionData& txdata, int sighash_type = SIGHASH_DEFAULT, bool sign = true, bool bip32derivs = false, int* n_signed = nullptr, bool finalize = true) const override;
 
     uint256 GetID() const override;

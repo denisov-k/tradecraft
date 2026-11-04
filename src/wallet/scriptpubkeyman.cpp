@@ -2555,6 +2555,21 @@ bool DescriptorScriptPubKeyMan::SignTransaction(CMutableTransaction& tx, const s
     return ::SignTransaction(tx, keys.get(), coins, sighash, input_errors);
 }
 
+bool DescriptorScriptPubKeyMan::GetKeyForScript(const CScript& script, CKey& key) const
+{
+    std::unique_ptr<FlatSigningProvider> keys = GetSigningProvider(script, true);
+    if (!keys) return false;
+    for (const auto& [id, k] : keys->keys) {
+        const CPubKey pub = k.GetPubKey();
+        if (!pub.IsCompressed()) continue;
+        if (GetScriptForDestination(WitnessV0ShortHash(0, pub)) == script) {
+            key = k;
+            return true;
+        }
+    }
+    return false;
+}
+
 SigningResult DescriptorScriptPubKeyMan::SignMessage(const std::string& message, const PKHash& pkhash, std::string& str_sig) const
 {
     std::unique_ptr<FlatSigningProvider> keys = GetSigningProvider(GetScriptForDestination(pkhash), true);

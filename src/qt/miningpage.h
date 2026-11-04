@@ -39,6 +39,7 @@ private:
     void refresh();
     void applyRefresh(const UniValue& info, const UniValue& credits, bool got_credits);
     void applyMode();
+    void sendFruit();
     Mode configuredMode() const;
     QString configuredAddress() const;
 
@@ -48,6 +49,7 @@ private:
     bool m_busy{false};
     int m_tick{0};
     bool m_have_credits{false};
+    bool m_force_credits{false}; //!< fetch the fruit again on the next refresh (after a send)
     UniValue m_last_credits;
 
     QLabel* m_status;
@@ -70,6 +72,7 @@ private:
     QGroupBox* m_fruit_box;
     QLabel* m_fruit_summary;
     QTableWidget* m_fruit;
+    QPushButton* m_send_fruit;
 };
 
 #endif // FREICOIN_QT_MININGPAGE_H
