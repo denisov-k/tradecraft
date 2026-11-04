@@ -124,6 +124,8 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "listunspent", 4, "atheight" },
     { "listunspent", 4, "include_immature_coinbase" },
     { "getblock", 1, "verbosity" },
+    { "convertscrip", 0, "amount" },
+    { "convertscrip", 2, "height" },
     { "getblock", 1, "verbose" },
     { "getblockheader", 1, "verbose" },
     { "getchaintxstats", 0, "nblocks" },

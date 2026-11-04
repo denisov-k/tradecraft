@@ -24,6 +24,7 @@
 #include <coins.h>
 #include <common/args.h>
 #include <consensus/amount.h>
+#include <consensus/assets.h>
 #include <consensus/params.h>
 #include <consensus/validation.h>
 #include <core_io.h>
@@ -1446,6 +1447,48 @@ UniValue DeploymentInfo(const CBlockIndex* blockindex, const ChainstateManager& 
     return softforks;
 }
 } // anon namespace
+
+static RPCHelpMan convertscrip()
+{
+    return RPCHelpMan{"convertscrip",
+        "\nConvert between freicoin and scrip, freicoin valued at the scrip epoch (the unit of\n"
+        "the scrip ledger), at a block height.  Both in kria.  A peg-in of a freicoin value\n"
+        "held at a height mints its scrip value; a peg-out of scrip pays its freicoin value\n"
+        "at the height of the block.\n",
+        {
+            {"amount", RPCArg::Type::NUM, RPCArg::Optional::NO, "The amount to convert, in kria"},
+            {"to", RPCArg::Type::STR, RPCArg::Default{"scrip"}, "\"scrip\" (from freicoin) or \"freicoin\" (from scrip)"},
+            {"height", RPCArg::Type::NUM, RPCArg::DefaultHint{"the next block"}, "The block height"},
+        },
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::NUM, "amount", "The converted amount, in kria"},
+            {RPCResult::Type::NUM, "height", "The height of the conversion"},
+            {RPCResult::Type::STR_HEX, "asset", "The asset id of scrip"},
+        }},
+        RPCExamples{HelpExampleCli("convertscrip", "100000000") + HelpExampleRpc("convertscrip", "100000000, \"freicoin\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const CAmount amount = request.params[0].getInt<int64_t>();
+    if (amount < 0 || amount > MAX_MONEY) throw JSONRPCError(RPC_TYPE_ERROR, "Amount out of range");
+    const std::string to = request.params[1].isNull() ? "scrip" : request.params[1].get_str();
+    if (to != "scrip" && to != "freicoin") throw JSONRPCError(RPC_INVALID_PARAMETER, "to must be \"scrip\" or \"freicoin\"");
+    int height;
+    if (request.params[2].isNull()) {
+        ChainstateManager& chainman = EnsureAnyChainman(request.context);
+        LOCK(cs_main);
+        height = chainman.ActiveChain().Height() + 1;
+    } else {
+        height = request.params[2].getInt<int>();
+        if (height < 0) throw JSONRPCError(RPC_INVALID_PARAMETER, "Negative height");
+    }
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("amount", to == "scrip" ? FreicoinToScrip(amount, height) : ScripToFreicoin(amount, height));
+    result.pushKV("height", height);
+    result.pushKV("asset", HexStr(ScripAssetId()));
+    return result;
+},
+    };
+}
 
 RPCHelpMan getdeploymentinfo()
 {
@@ -3055,6 +3098,7 @@ void RegisterBlockchainRPCCommands(CRPCTable& t)
         {"blockchain", &getdifficulty},
         {"blockchain", &getauxdifficulty},
         {"blockchain", &getdeploymentinfo},
+        {"blockchain", &convertscrip},
         {"blockchain", &gettxout},
         {"blockchain", &gettxoutsetinfo},
         {"blockchain", &pruneblockchain},

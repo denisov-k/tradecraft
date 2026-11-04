@@ -184,4 +184,82 @@ BOOST_AUTO_TEST_CASE(asset_claims_before_activation)
     BOOST_CHECK(f.Check({fee, forged}, {CTxOut(COIN / 2, WitnessScript())}, reason, /*asset_height=*/100));
 }
 
+BOOST_AUTO_TEST_CASE(scrip_ledger_transactions)
+{
+    Fixture f;
+    std::string reason;
+    const uint256 scrip = ScripAssetId();
+    const CTxOut pegin(10 * COIN, LedgerBase() << LedgerExtension(EXTENSION_PEGIN, 0));
+    CAmount amount = -1;
+    BOOST_CHECK(GetLedgerOutput(pegin, amount) == LedgerOutputType::PEGIN);
+    // a peg-in on any other program would not reach the pool
+    BOOST_CHECK(GetLedgerOutput(CTxOut(COIN, WitnessScript(LedgerExtension(EXTENSION_PEGIN, 0))), amount) == LedgerOutputType::MALFORMED);
+
+    // A peg-in mints at most its scrip value (the fixture's transactions have lock_height 0).
+    const COutPoint fund = f.Add(CTxOut(20 * COIN, WitnessScript()), 150);
+    const CAmount minted = FreicoinToScrip(10 * COIN, 0);
+    BOOST_CHECK(f.Check({fund}, {pegin, AssetOut(scrip, minted)}, reason));
+    BOOST_CHECK(!f.Check({fund}, {pegin, AssetOut(scrip, minted + 1)}, reason));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-asset-in-belowout");
+    // nobody issues scrip but the ledger
+    BOOST_CHECK(!f.Check({fund}, {AssetOut(scrip, 1)}, reason));
+
+    // A peg-out consumes scrip like an asset output, and holds no freicoin.
+    const COutPoint held = f.Add(AssetOut(scrip, 1000), 150);
+    const CTxOut pegout(0, WitnessScript(LedgerExtension(EXTENSION_PEGOUT, 600)));
+    BOOST_CHECK(GetLedgerOutput(pegout, amount) == LedgerOutputType::PEGOUT);
+    BOOST_CHECK_EQUAL(amount, 600);
+    BOOST_CHECK(f.Check({fund, held}, {pegout, AssetOut(scrip, 400)}, reason));
+    BOOST_CHECK(!f.Check({fund, held}, {pegout, AssetOut(scrip, 401)}, reason));
+    BOOST_CHECK(!f.Check({fund, held}, {CTxOut(1, pegout.scriptPubKey)}, reason));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-pegout-nonzero-value");
+
+    // Peg-outs are spent for good; the pool and peg-ins only by the block-final transaction.
+    const COutPoint paid = f.Add(pegout, 150);
+    BOOST_CHECK(!f.Check({fund, paid}, {}, reason));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-pegout-spend");
+    const COutPoint claimed = f.Add(pegin, 150);
+    BOOST_CHECK(!f.Check({fund, claimed}, {}, reason));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-ledger-spend");
+    CMutableTransaction final_tx;
+    final_tx.vin.emplace_back(claimed);
+    final_tx.vout.emplace_back(10 * COIN, LedgerBase() << LedgerExtension(EXTENSION_POOL, minted));
+    TxValidationState state;
+    BOOST_CHECK(Consensus::CheckTxAssets(CTransaction(final_tx), f.view, 100, state, /*block_final=*/true));
+    BOOST_CHECK(!Consensus::CheckTxAssets(CTransaction(final_tx), f.view, 100, state, /*block_final=*/false));
+    BOOST_CHECK_EQUAL(state.GetRejectReason(), "bad-txns-ledger-pool");
+}
+
+BOOST_AUTO_TEST_CASE(scrip_ledger_settlement)
+{
+    const int height = 1000;
+    BlockLedger ledger;
+    ledger.prior_value = 5 * COIN;
+    ledger.prior_scrip = FreicoinToScrip(5 * COIN, height);
+    const CScript dest = WitnessScript();
+    // two peg-outs: the first paid in full, the second capped by what is left
+    ledger.pegouts.emplace_back(dest, ledger.prior_scrip / 2);
+    ledger.pegouts.emplace_back(dest, ledger.prior_scrip);
+    const LedgerResult r = ComputeLedger(ledger, height);
+    BOOST_REQUIRE_EQUAL(r.payouts.size(), 2U);
+    BOOST_CHECK_EQUAL(r.payouts[0].second, ScripToFreicoin(ledger.prior_scrip / 2, height));
+    BOOST_CHECK_EQUAL(r.payouts[0].second + r.payouts[1].second, 5 * COIN);
+    BOOST_CHECK_EQUAL(r.pool_value, 0);
+    BOOST_CHECK_EQUAL(r.pool_scrip, ledger.prior_scrip - ledger.prior_scrip / 2 - ledger.prior_scrip);
+    // a peg-in adds its present value and its scrip
+    BlockLedger in;
+    CMutableTransaction tx;
+    tx.lock_height = height - 10;
+    tx.vout.emplace_back(COIN, LedgerBase() << LedgerExtension(EXTENSION_PEGIN, 0));
+    in.AddTransaction(CTransaction(tx), height);
+    BOOST_CHECK_EQUAL(in.pegins.size(), 1U);
+    BOOST_CHECK_EQUAL(in.pegin_value, GetTimeAdjustedValue(COIN, 10));
+    BOOST_CHECK_EQUAL(in.minted, FreicoinToScrip(COIN, height - 10));
+    const LedgerResult r2 = ComputeLedger(in, height);
+    BOOST_CHECK_EQUAL(r2.pool_value, in.pegin_value);
+    BOOST_CHECK_EQUAL(r2.pool_scrip, in.minted);
+    // the pool covers its scrip: the peg-in's rounding stays with it
+    BOOST_CHECK_GE(r2.pool_value + 1, ScripToFreicoin(r2.pool_scrip, height));
+}
+
 BOOST_AUTO_TEST_SUITE_END()

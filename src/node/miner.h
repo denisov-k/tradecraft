@@ -209,6 +209,9 @@ private:
     // block-final transaction logic
     /** Create the block-final transaction, before any other transactions have been added */
     void initFinalTx(const BlockFinalTxEntry& final_tx);
+    /** Settle the scrip ledger of the selected transactions: the block-final transaction
+     *  claims the peg-ins and carries the pool; returns the payouts the coinbase owes. */
+    std::vector<std::pair<CScript, CAmount>> settleLedger();
 
     // Methods for how to add transactions to a block.
     /** Add transactions based on feerate including unconfirmed ancestors

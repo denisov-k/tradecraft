@@ -2772,6 +2772,16 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     const bool enforce_assets = DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_ASSETS);
     const int asset_height = enforce_assets ? m_chainman.m_versionbitscache.StateSinceHeight(pindex->pprev, params.GetConsensus(), Consensus::DEPLOYMENT_ASSETS) : 0;
 
+    // The scrip ledger of the block, starting from the pool in the prior
+    // block-final transaction.
+    BlockLedger ledger;
+    if (enforce_assets) {
+        const BlockFinalTxEntry prior_final = view.GetFinalTx();
+        for (uint32_t n = 0; n < prior_final.size; ++n) {
+            ledger.AddPriorOutput(view.AccessCoin(COutPoint(prior_final.hash, n)), pindex->nHeight);
+        }
+    }
+
     std::vector<int> prevheights;
     CAmount nFees = 0;
     int nInputs = 0;
@@ -2784,13 +2794,15 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         nInputs += tx.vin.size();
 
         if (enforce_assets) {
+            const bool is_final_tx = enforce_block_final && i + 1 == block.vtx.size() && i > 0;
             TxValidationState tx_state;
-            if (!Consensus::CheckTxAssets(tx, view, asset_height, tx_state)) {
+            if (!Consensus::CheckTxAssets(tx, view, asset_height, tx_state, is_final_tx)) {
                 state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
                             tx_state.GetRejectReason(), tx_state.GetDebugMessage());
                 LogError("%s: Consensus::CheckTxAssets: %s, %s\n", __func__, tx.GetHash().ToString(), state.ToString());
                 return false;
             }
+            if (!tx.IsCoinBase() && !is_final_tx) ledger.AddTransaction(tx, pindex->nHeight);
         }
 
         if (!tx.IsCoinBase())
@@ -2867,6 +2879,11 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     if (static_cast<int64_t>(block.vtx[0]->lock_height) != static_cast<int64_t>(pindex->nHeight)) {
         LogPrintf("ERROR: coinbase lock_height != block height (%d != %d)\n", block.vtx[0]->lock_height, pindex->nHeight);
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-lock-height");
+    }
+
+    if (enforce_assets && !Consensus::CheckBlockLedger(block, ledger, pindex->nHeight, enforce_block_final, state)) {
+        LogError("%s: Consensus::CheckBlockLedger: %s\n", __func__, state.ToString());
+        return false;
     }
 
     CAmount blockReward = nFees + GetBlockSubsidy(pindex->nHeight, params.GetConsensus());
