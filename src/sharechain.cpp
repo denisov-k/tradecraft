@@ -218,14 +218,23 @@ void SetAuxShareWitness(Share& share, const AuxProofOfWork& aux_pow)
 
 arith_uint256 GetShareWork(uint32_t bits)
 {
+    // The division is a 256-step loop and the window walks call this once per
+    // fruit, over a handful of distinct targets: remember the answers.  Per
+    // thread, so no lock; the map stays small (it is cleared if it ever fills).
+    thread_local std::map<uint32_t, arith_uint256> memo;
+    auto it = memo.find(bits);
+    if (it != memo.end()) return it->second;
+    arith_uint256 work = 0;
     arith_uint256 target;
     bool negative = false, overflow = false;
     target.SetCompact(bits, &negative, &overflow);
-    if (negative || overflow || target == 0) {
-        return 0;
+    if (!(negative || overflow || target == 0)) {
+        // 2**256 / (target+1) == ~target / (target+1) + 1, see GetBlockProof.
+        work = (~target / (target + 1)) + 1;
     }
-    // 2**256 / (target+1) == ~target / (target+1) + 1, see GetBlockProof.
-    return (~target / (target + 1)) + 1;
+    if (memo.size() >= 4096) memo.clear();
+    memo.emplace(bits, work);
+    return work;
 }
 
 std::string ShareAddressString(const WitnessUnknown& miner)
@@ -401,6 +410,37 @@ void ShareLedger::Credits(std::map<WitnessUnknown, arith_uint256>& credits, std:
     }
 }
 
+const std::vector<ShareIndex::ListedFruit>* ResolveListed(const ShareIndex& cs, const FruitLookup& lookup)
+{
+    if (cs.listed) return &*cs.listed;
+    std::vector<ShareIndex::ListedFruit> listed;
+    listed.reserve(cs.fruits.size());
+    arith_uint256 work = 0;
+    for (const uint256& f : cs.fruits) {
+        const std::optional<FruitInfo> info = lookup(f);
+        if (!info) return nullptr;
+        listed.push_back({info->miner, GetShareWork(info->bits)});
+        work += listed.back().work;
+    }
+    cs.listed = std::move(listed);
+    cs.listed_work = work;
+    return &*cs.listed;
+}
+
+namespace {
+//! Work of the fruits `cs` lists (unknown ones count nothing), from the cache where it is filled.
+arith_uint256 ListedWork(const ShareIndex& cs, const FruitLookup& lookup)
+{
+    if (ResolveListed(cs, lookup)) return cs.listed_work;
+    arith_uint256 acc = 0;
+    for (const uint256& f : cs.fruits) {
+        const std::optional<FruitInfo> info = lookup(f);
+        if (info) acc += GetShareWork(info->bits);
+    }
+    return acc;
+}
+} // namespace
+
 WindowCredits ComputeWindowCredits(const ShareIndex* anchor, const arith_uint256& window_work, size_t window_shares, const FruitLookup& lookup)
 {
     WindowCredits out;
@@ -409,10 +449,7 @@ WindowCredits ComputeWindowCredits(const ShareIndex* anchor, const arith_uint256
     arith_uint256 acc = 0;
     for (const ShareIndex* cur = anchor; cur && acc < window_work && chain.size() < window_shares; cur = cur->prev_share.get()) {
         chain.push_back(cur);
-        for (const uint256& fruit : cur->fruits) {
-            const std::optional<FruitInfo> info = lookup(fruit);
-            if (info) acc += GetShareWork(info->bits);
-        }
+        acc += ListedWork(*cur, lookup);
     }
     std::reverse(chain.begin(), chain.end());
     // Forward: mint the listed fruits, apply the transactions.  Every transaction
@@ -421,9 +458,13 @@ WindowCredits ComputeWindowCredits(const ShareIndex* anchor, const arith_uint256
     std::string reason;
     for (const ShareIndex* cs : chain) {
         const uint32_t h = cs->share.height;
-        for (const uint256& fruit : cs->fruits) {
-            const std::optional<FruitInfo> info = lookup(fruit);
-            if (info) out.ledger.Mint(info->miner, h, GetShareWork(info->bits));
+        if (const auto* listed = ResolveListed(*cs, lookup)) {
+            for (const ShareIndex::ListedFruit& f : *listed) out.ledger.Mint(f.miner, h, f.work);
+        } else {
+            for (const uint256& fruit : cs->fruits) {
+                const std::optional<FruitInfo> info = lookup(fruit);
+                if (info) out.ledger.Mint(info->miner, h, GetShareWork(info->bits));
+            }
         }
         out.ledger.Expire(h);
         for (const ShareTx& tx : cs->txs) out.ledger.Apply(tx, h, 0, /*strict=*/false, reason);
@@ -688,14 +729,11 @@ bool WindowReachesBase(const ShareIndex* anchor, const arith_uint256& window, si
     arith_uint256 acc = 0;
     size_t walked = 0;
     for (const ShareIndex* cur = anchor; cur && acc < window && walked < window_shares; cur = cur->prev_share.get(), ++walked) {
-        for (const uint256& f : cur->fruits) {
-            const std::optional<FruitInfo> info = lookup(f);
-            // A listed fruit is known everywhere but within recency of a trusted
-            // base (AcceptChainShare lets those through).  (Seen live: a node synced
-            // from a base got stuck R shares later, share-bad-payout.)
-            if (!info) return true;
-            acc += GetShareWork(info->bits);
-        }
+        // A listed fruit is known everywhere but within recency of a trusted
+        // base (AcceptChainShare lets those through).  (Seen live: a node synced
+        // from a base got stuck R shares later, share-bad-payout.)
+        if (!ResolveListed(*cur, lookup)) return true;
+        acc += cur->listed_work;
         if (acc < window && !cur->prev_share && !cur->share.anchor.IsNull()) {
             return true;
         }
@@ -717,32 +755,14 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
     // prune agree.  (Seen live: the template used the aux target and this check the
     // native nBits; with two payees every share failed share-bad-payout.)
     const arith_uint256 window = GetShareWork(WindowBits(share)) * Params().WindowK();
-    const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
-    // The window below a given chain share never changes (its fruits are fixed by
-    // the chain shares that listed them), so its credits are cached per anchor.
-    const uint256 anchor_hash = anchor ? anchor->GetHash() : uint256();
-    const uint256 window_key = ArithToUint256(window);
-    const PayoutWindowCache* cached = nullptr;
-    for (const PayoutWindowCache& c : m_payout_window_cache) {
-        if (c.anchor == anchor_hash && c.window == window_key) { cached = &c; break; }
-    }
-    if (!cached) {
-        PayoutWindowCache entry;
-        entry.anchor = anchor_hash;
-        entry.window = window_key;
-        entry.reaches_base = WindowReachesBase(anchor, window, Params().WindowShares(), lookup);
-        if (!entry.reaches_base) entry.credits = ComputeShareCredits(anchor, window, Params().WindowShares(), lookup);
-        if (m_payout_window_cache.size() >= 32) m_payout_window_cache.erase(m_payout_window_cache.begin());
-        m_payout_window_cache.push_back(std::move(entry));
-        cached = &m_payout_window_cache.back();
-    }
-    if (cached->reaches_base) {
+    const PayoutWindowCache& cached = CachedWindow(anchor, window);
+    if (cached.reaches_base) {
         // Below our trusted base: the share was built from credits we never saw, so
         // its split cannot be checked.  It is history; its own payout only matters
         // if it became a Freicoin block, which the block chain validated.
         return true;
     }
-    ShareCredits credits = cached->credits;
+    ShareCredits credits = cached.window_credits.credits;
     const auto payouts = ComputeSharePayouts(std::move(credits), total, share.miner, Params().Dust(), Params().MaxPayees());
     // The coinbase is exactly these payouts plus the commitment: rebuild it and
     // compare with the txid the proof of work covers.
@@ -921,8 +941,27 @@ ShareChainstateManager::TemplateState ShareChainstateManager::GetTemplateState(c
 WindowCredits ShareChainstateManager::WindowAt(const ShareIndex* anchor, uint32_t frc_bits) const
 {
     const arith_uint256 window = GetShareWork(frc_bits) * Params().WindowK();
+    return CachedWindow(anchor, window).window_credits;
+}
+
+const ShareChainstateManager::PayoutWindowCache& ShareChainstateManager::CachedWindow(const ShareIndex* anchor, const arith_uint256& window) const
+{
+    // The window below a given chain share never changes (its fruits are fixed by
+    // the chain shares that listed them), so it is computed once per anchor.
+    const uint256 anchor_hash = anchor ? anchor->GetHash() : uint256();
+    const uint256 window_key = ArithToUint256(window);
+    for (const PayoutWindowCache& c : m_payout_window_cache) {
+        if (c.anchor == anchor_hash && c.window == window_key) return c;
+    }
     const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
-    return ComputeWindowCredits(anchor, window, Params().WindowShares(), lookup);
+    PayoutWindowCache entry;
+    entry.anchor = anchor_hash;
+    entry.window = window_key;
+    entry.reaches_base = WindowReachesBase(anchor, window, Params().WindowShares(), lookup);
+    entry.window_credits = ComputeWindowCredits(anchor, window, Params().WindowShares(), lookup);
+    if (m_payout_window_cache.size() >= 32) m_payout_window_cache.erase(m_payout_window_cache.begin());
+    m_payout_window_cache.push_back(std::move(entry));
+    return m_payout_window_cache.back();
 }
 
 bool ShareChainstateManager::AddShareTx(const ShareTx& tx, std::string& reason)
@@ -1196,15 +1235,13 @@ void ShareChainstateManager::Prune()
     if (!tip) return;
     // Window floor: walk back the work the PPLNS window needs (sized like CheckPayouts does).
     const arith_uint256 window = GetShareWork(WindowBits(tip->share)) * Params().WindowK();
+    const FruitLookup lookup = [this](const uint256& h) { return LookupFruit(h); };
     arith_uint256 acc = 0;
     size_t walked = 0;
     int floor_height = static_cast<int>(tip->share.height);
     for (const ShareIndex* cur = tip.get(); cur; cur = cur->prev_share.get()) {
         floor_height = static_cast<int>(cur->share.height);
-        for (const uint256& f : cur->fruits) {
-            auto it = state.fruits.find(f);
-            if (it != state.fruits.end()) acc += GetShareWork(it->second.bits);
-        }
+        acc += ListedWork(*cur, lookup);
         if (acc >= window || ++walked >= Params().WindowShares()) break;
     }
     const int keep_from = std::max(0, floor_height - static_cast<int>(Params().Recency()) - 64);

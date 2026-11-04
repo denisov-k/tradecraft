@@ -504,8 +504,30 @@ struct ShareIndex {
     //! the base's own claim has not, so forks are compared by the difference.
     uint256 base_total_work;
 
+    //! What the window walks need of the listed fruits, resolved once: their
+    //! miners and work, and the work's sum.  Filled by ResolveListed() the
+    //! first time every listed fruit is known (near a trusted base some may
+    //! not be, and the walks then look them up as before).  A chain share's
+    //! fruit list never changes, and a fruit that is known stays known while
+    //! the chain share that lists it is kept (Prune keeps a listed fruit's
+    //! anchor along with it), so the cache never goes stale.  (A full PPLNS
+    //! window is ~27k fruits; without this every walk did a map lookup and a
+    //! 256-bit division per fruit, and a syncing node did several walks per
+    //! chain share under cs_main.)
+    struct ListedFruit {
+        WitnessUnknown miner;
+        arith_uint256 work;
+    };
+    mutable std::optional<std::vector<ListedFruit>> listed;
+    mutable arith_uint256 listed_work;
+
     uint256 GetHash() const { return share.GetHash(); }
 };
+
+/** The chain share's listed fruits as (miner, work), from its cache or, the
+ *  first time, from `lookup`; nullptr while any listed fruit is unknown (the
+ *  cache is then left empty). */
+const std::vector<ShareIndex::ListedFruit>* ResolveListed(const ShareIndex& cs, const FruitLookup& lookup);
 
 /** Work of the chain ending in `index` that this node has verified: from
  *  the base (exclusive of its claim) through `index` inclusive. */
@@ -756,9 +778,14 @@ private:
         uint256 anchor;
         uint256 window;
         bool reaches_base{false};
-        ShareCredits credits;
+        WindowCredits window_credits;
     };
     mutable std::vector<PayoutWindowCache> m_payout_window_cache;
+    //! The PPLNS window below `anchor` (immutable once the anchor is known),
+    //! computed once per (anchor, window size) and kept for the next 32
+    //! anchors: the payout check of every fruit on an anchor, the template
+    //! built on the tip and getsharecredits all read the same window.
+    const PayoutWindowCache& CachedWindow(const ShareIndex* anchor, const arith_uint256& window) const EXCLUSIVE_LOCKS_REQUIRED(GetMutex());
     //! Transactions waiting for a chain share to carry them.
     std::map<uint256, ShareTx> m_txpool;
     //! Drop pool transactions the current tip no longer accepts.
