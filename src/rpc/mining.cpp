@@ -1011,6 +1011,11 @@ static RPCHelpMan getblocktemplate()
             }
             finaltx_prevout.push_back(in);
         }
+        // A client that builds the block-final transaction or the coinbase itself must
+        // know to carry the pool and pay the peg-outs.
+        if ((pblocktemplate->ledger_pool || !pblocktemplate->ledger_payouts.empty()) && !setClientRules.count("assets")) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Support for 'assets' rule requires explicit client support: the template carries the scrip ledger");
+        }
         UniValue finaltx(UniValue::VOBJ);
         finaltx.pushKV("prevout", finaltx_prevout);
         if (pblocktemplate->ledger_pool) {

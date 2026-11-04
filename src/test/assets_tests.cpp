@@ -15,6 +15,7 @@
 #include <coins.h>
 #include <consensus/assets.h>
 #include <consensus/validation.h>
+#include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <script/script.h>
 #include <random.h>
@@ -311,6 +312,67 @@ BOOST_AUTO_TEST_CASE(scrip_ledger_properties)
         BOOST_CHECK_GE(r.pool_value, 0);
         BOOST_CHECK_EQUAL(r.pool_scrip, outstanding);
         BOOST_CHECK_GE(r.pool_value + slack, ScripToFreicoin(r.pool_scrip, height));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(scrip_ledger_block_rules)
+{
+    const int height = 500;
+    CMutableTransaction cb;
+    cb.vin.emplace_back(COutPoint());
+    cb.vout.emplace_back(50 * COIN, WitnessScript());
+    cb.lock_height = height;
+    CMutableTransaction fin;
+    fin.vin.emplace_back(COutPoint(Txid::FromUint256(uint256{1}), 0));
+    fin.vout.emplace_back(0, CScript() << OP_TRUE);
+    fin.lock_height = height;
+    const auto block_with = [&](const CMutableTransaction& final_tx) {
+        CBlock block;
+        block.vtx = {MakeTransactionRef(cb), MakeTransactionRef(final_tx)};
+        return block;
+    };
+    const auto pool_out = [](CAmount value, CAmount scrip) { return CTxOut(value, LedgerBase() << LedgerExtension(EXTENSION_POOL, scrip)); };
+    BlockValidationState state;
+
+    // an idle ledger: no pool may appear from nothing (it could record anything)
+    BlockLedger idle;
+    BOOST_CHECK(Consensus::CheckBlockLedger(block_with(fin), idle, height, true, state));
+    CMutableTransaction forged = fin;
+    forged.vout.insert(forged.vout.begin(), pool_out(COIN, -1));
+    BOOST_CHECK(!Consensus::CheckBlockLedger(block_with(forged), idle, height, true, state));
+    BOOST_CHECK_EQUAL(state.GetRejectReason(), "bad-blk-ledger-pool-count");
+
+    // an active ledger: the pool carried forward, valued at the block height
+    BlockLedger prior;
+    prior.prior_value = COIN;
+    prior.prior_scrip = FreicoinToScrip(COIN, height);
+    CMutableTransaction carried = fin;
+    carried.vout.insert(carried.vout.begin(), pool_out(COIN, prior.prior_scrip));
+    state = BlockValidationState();
+    BOOST_CHECK(Consensus::CheckBlockLedger(block_with(carried), prior, height, true, state));
+    carried.lock_height = height - 5;
+    BOOST_CHECK(!Consensus::CheckBlockLedger(block_with(carried), prior, height, true, state));
+    BOOST_CHECK_EQUAL(state.GetRejectReason(), "bad-blk-ledger-final-height");
+
+    // a pool made before activation is nobody's
+    BlockLedger early;
+    early.AddPriorOutput(Coin(pool_out(COIN, 5), 90, 90, false), height, /*asset_height=*/95);
+    BOOST_CHECK(!early.Active());
+    early.AddPriorOutput(Coin(pool_out(COIN, 5), 90, 90, false), height, /*asset_height=*/90);
+    BOOST_CHECK(early.Active());
+
+    // the block-final transaction holds no peg-in, peg-out or asset
+    Fixture f;
+    const COutPoint prev = f.Add(CTxOut(COIN, WitnessScript()), 150);
+    for (const CTxOut& out : {CTxOut(0, WitnessScript(LedgerExtension(EXTENSION_PEGOUT, 1))),
+                              CTxOut(COIN, LedgerBase() << LedgerExtension(EXTENSION_PEGIN, 0)),
+                              AssetOut(AssetIssuanceId(prev), 1)}) {
+        CMutableTransaction tx;
+        tx.vin.emplace_back(prev);
+        tx.vout = {out};
+        TxValidationState tx_state;
+        BOOST_CHECK(!Consensus::CheckTxAssets(CTransaction(tx), f.view, 100, tx_state, /*block_final=*/true));
+        BOOST_CHECK_EQUAL(tx_state.GetRejectReason(), "bad-txns-ledger-final-output");
     }
 }
 

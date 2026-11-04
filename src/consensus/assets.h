@@ -114,8 +114,8 @@ struct BlockLedger {
     std::vector<COutPoint> pegins;
     std::vector<std::pair<CScript, CAmount>> pegouts; //!< destination program, scrip
 
-    /** A prior block-final output: the pool, if it is one. */
-    void AddPriorOutput(const Coin& coin, int height);
+    /** A prior block-final output: the pool, if it is one (and was made since activation). */
+    void AddPriorOutput(const Coin& coin, int height, int asset_height);
     /** A transaction of the block (not the coinbase or the block-final one). */
     void AddTransaction(const CTransaction& tx, int height);
     bool Active() const { return prior_value || prior_scrip || !pegins.empty() || !pegouts.empty(); }

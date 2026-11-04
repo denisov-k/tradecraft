@@ -20,7 +20,7 @@ import struct
 
 from test_framework.messages import COIN, CTxOut
 from test_framework.test_framework import FreicoinTestFramework
-from test_framework.util import assert_equal, assert_greater_than
+from test_framework.util import assert_equal, assert_greater_than, assert_raises_rpc_error
 from test_framework.wallet import MiniWallet
 
 LEDGER_BASE = bytes([0x00, 0x02]) + b"FS"
@@ -138,7 +138,8 @@ class ScripLedgerTest(FreicoinTestFramework):
         height = self.node.getblockcount() + 1
         expected = sorted([self.node.convertscrip(part, "freicoin", height)["amount"],
                            self.node.convertscrip(minted - part, "freicoin", height)["amount"]])
-        tmpl = self.node.getblocktemplate({"rules": ["segwit", "finaltx", "auxpow"]})
+        assert_raises_rpc_error(-8, "Support for 'assets' rule", self.node.getblocktemplate, {"rules": ["segwit", "finaltx", "auxpow"]})
+        tmpl = self.node.getblocktemplate({"rules": ["segwit", "finaltx", "auxpow", "assets"]})
         assert_equal(sorted(p["amount"] for p in tmpl["coinbasepayouts"]), expected)
         assert_equal(struct.unpack("<q", bytes.fromhex(tmpl["finaltx"]["pool"]["scriptPubKey"])[6:])[0], minted2)
         block = self.node.getblock(self.generate(self.node, 1)[0], 2)

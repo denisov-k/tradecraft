@@ -200,7 +200,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     // The scrip ledger (consensus/assets.h): peg-ins into the pool, peg-outs to the coinbase.
     std::vector<std::pair<CScript, CAmount>> ledger_payouts;
     if (m_block_final_state == HAS_BLOCK_FINAL_TX && DeploymentActiveAfter(pindexPrev, m_chainstate.m_chainman, Consensus::DEPLOYMENT_ASSETS)) {
-        ledger_payouts = settleLedger();
+        ledger_payouts = settleLedger(pindexPrev);
     }
 
     const auto time_1{SteadyClock::now()};
@@ -447,10 +447,12 @@ void BlockAssembler::initFinalTx(const BlockFinalTxEntry& final_tx)
     nBlockWeight += GetTransactionWeight(*pblocktemplate->block.vtx.back());
 }
 
-std::vector<std::pair<CScript, CAmount>> BlockAssembler::settleLedger()
+std::vector<std::pair<CScript, CAmount>> BlockAssembler::settleLedger(const CBlockIndex* pindexPrev)
 {
+    ChainstateManager& chainman = m_chainstate.m_chainman;
+    const int asset_height = chainman.m_versionbitscache.StateSinceHeight(pindexPrev, chainman.GetConsensus(), Consensus::DEPLOYMENT_ASSETS);
     BlockLedger ledger;
-    for (const auto& [prevout, coin] : m_block_final_tx_coin_map) ledger.AddPriorOutput(coin, nHeight);
+    for (const auto& [prevout, coin] : m_block_final_tx_coin_map) ledger.AddPriorOutput(coin, nHeight, asset_height);
     // the selected transactions sit between the coinbase and the block-final transaction
     for (size_t i = 1; i + 1 < pblocktemplate->block.vtx.size(); ++i) ledger.AddTransaction(*pblocktemplate->block.vtx[i], nHeight);
     if (!ledger.Active()) return {};

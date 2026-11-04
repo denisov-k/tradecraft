@@ -24,7 +24,7 @@ from test_framework.util import (
     assert_raises_rpc_error,
 )
 
-RULES = {"rules": ["segwit", "finaltx", "auxpow"]}
+RULES = {"rules": ["segwit", "finaltx", "auxpow", "assets"]}
 
 
 class WalletScripLedgerTest(FreicoinTestFramework):

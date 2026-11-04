@@ -931,6 +931,16 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
             if (!Consensus::CheckTxAssets(tx, m_view, asset_height, state)) {
                 return false; // state filled in by CheckTxAssets
             }
+        } else {
+            // Not before activation: such a transaction would still wait in the
+            // mempool when the rules take effect, unchecked.
+            for (const CTxOut& txout : tx.vout) {
+                AssetAmount asset;
+                CAmount ledger_amount = 0;
+                if (GetAssetOutput(txout, asset) != AssetOutputType::NONE || GetLedgerOutput(txout, ledger_amount) != LedgerOutputType::NONE) {
+                    return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "extension-output-premature");
+                }
+            }
         }
     }
 
@@ -2778,7 +2788,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     if (enforce_assets) {
         const BlockFinalTxEntry prior_final = view.GetFinalTx();
         for (uint32_t n = 0; n < prior_final.size; ++n) {
-            ledger.AddPriorOutput(view.AccessCoin(COutPoint(prior_final.hash, n)), pindex->nHeight);
+            ledger.AddPriorOutput(view.AccessCoin(COutPoint(prior_final.hash, n)), pindex->nHeight, asset_height);
         }
     }
 

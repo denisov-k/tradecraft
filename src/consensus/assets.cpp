@@ -99,10 +99,11 @@ std::vector<unsigned char> LedgerExtension(unsigned char version, CAmount amount
     return ext;
 }
 
-void BlockLedger::AddPriorOutput(const Coin& coin, int height)
+void BlockLedger::AddPriorOutput(const Coin& coin, int height, int asset_height)
 {
     CAmount scrip = 0;
-    if (coin.IsSpent() || GetLedgerOutput(coin.out, scrip) != LedgerOutputType::POOL) return;
+    if (coin.IsSpent() || static_cast<int>(coin.nHeight) < asset_height) return;
+    if (GetLedgerOutput(coin.out, scrip) != LedgerOutputType::POOL) return;
     prior_value += coin.GetPresentValue(height);
     prior_scrip += scrip;
 }
@@ -144,11 +145,27 @@ LedgerResult ComputeLedger(const BlockLedger& ledger, int height)
 
 bool Consensus::CheckBlockLedger(const CBlock& block, const BlockLedger& ledger, int height, bool has_final_tx, BlockValidationState& state)
 {
-    if (!ledger.Active()) return true;
+    if (!ledger.Active()) {
+        // no pool may appear from nothing
+        if (has_final_tx) {
+            CAmount scrip = 0;
+            for (const CTxOut& txout : block.vtx.back()->vout) {
+                if (GetLedgerOutput(txout, scrip) == LedgerOutputType::POOL) {
+                    return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-ledger-pool-count");
+                }
+            }
+        }
+        return true;
+    }
     if (!has_final_tx) {
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-ledger-no-final-tx");
     }
     const CTransaction& final_tx = *block.vtx.back();
+    // The pool is valued at the block height: a lower reference height would let
+    // the block-final transaction forward its decay as a fee.
+    if (static_cast<int64_t>(final_tx.lock_height) != height) {
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-ledger-final-height");
+    }
     std::set<COutPoint> claimed;
     for (const CTxIn& txin : final_tx.vin) claimed.insert(txin.prevout);
     for (const COutPoint& pegin : ledger.pegins) {
@@ -208,6 +225,15 @@ bool Consensus::CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inp
         if (ledger == LedgerOutputType::POOL && !block_final) {
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-ledger-pool");
         }
+        if (ledger == LedgerOutputType::POOL && (ledger_amount < 0 || ledger_amount > MAX_MONEY)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-ledger-pool-amount");
+        }
+        // Every output of the block-final transaction is spent by the next one, so it
+        // may hold no peg-in, peg-out or asset: a peg-out there could never be spent
+        // and no block could follow.
+        if (block_final && ledger != LedgerOutputType::NONE && ledger != LedgerOutputType::POOL) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-ledger-final-output");
+        }
         if (ledger == LedgerOutputType::PEGIN) {
             if (txout.GetReferenceValue() <= 0 || ledger_amount != 0) {
                 return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-pegin-value");
@@ -232,6 +258,9 @@ bool Consensus::CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inp
         AssetAmount a;
         const AssetOutputType type = GetAssetOutput(txout, a);
         if (type == AssetOutputType::NONE) continue;
+        if (block_final) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-ledger-final-output");
+        }
         if (type == AssetOutputType::MALFORMED) {
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-malformed");
         }

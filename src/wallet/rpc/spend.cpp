@@ -1119,8 +1119,14 @@ RPCHelpMan fundrawtransaction()
             InterpretSubtractFeeFromOutputInstructions(options["subtractFeeFromOutputs"], dummy)
     );
     for (size_t i = 0; i < tx.vout.size(); ++i) {
+        // keep the extension: an asset, a peg-in or peg-out, or one not known yet
         AssetAmount asset;
-        if (GetAssetOutput(tx.vout[i], asset) == AssetOutputType::ASSET) recipients[i].asset = asset;
+        std::vector<unsigned char> ext;
+        if (GetAssetOutput(tx.vout[i], asset) == AssetOutputType::ASSET) {
+            recipients[i].asset = asset;
+        } else if (tx.vout[i].scriptPubKey.GetExtensionOutput(ext)) {
+            recipients[i].extension = ext;
+        }
     }
     CCoinControl coin_control;
     // Automatically select (additional) coins. Can be overridden by options.add_inputs.
