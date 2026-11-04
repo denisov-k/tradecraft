@@ -407,7 +407,6 @@ libfreicoin_node_a_SOURCES = \
   blockencodings.cpp \
   blockfilter.cpp \
   chain.cpp \
-  consensus/assets.cpp \
   consensus/tx_verify.cpp \
   dbwrapper.cpp \
   deploymentstatus.cpp \
@@ -700,6 +699,7 @@ libfreicoin_common_a_SOURCES = \
   chainparamsbase.cpp \
   chainparams.cpp \
   coins.cpp \
+  consensus/assets.cpp \
   common/args.cpp \
   common/bloom.cpp \
   common/config.cpp \
