@@ -48,7 +48,7 @@ class AssetsTest(FreicoinTestFramework):
 
     def asset_out(self, asset, amount, value=0, ext=None):
         ext = ext if ext is not None else bytes([0x01]) + asset + struct.pack("<q", amount)
-        return CTxOut(value, self.wallet.get_scriptPubKey() + bytes([len(ext)]) + ext)
+        return CTxOut(value, bytes(self.wallet.get_scriptPubKey()) + bytes([len(ext)]) + ext)
 
     def spend(self, utxos, outputs):
         """A transaction from the wallet's utxos (asset outputs included, OP_TRUE
