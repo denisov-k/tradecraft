@@ -164,6 +164,7 @@ FREICOIN_CORE_H = \
   consensus/consensus.h \
   consensus/merkleproof.h \
   consensus/tx_check.h \
+  consensus/assets.h \
   consensus/tx_verify.h \
   core_io.h \
   core_memusage.h \
@@ -406,6 +407,7 @@ libfreicoin_node_a_SOURCES = \
   blockencodings.cpp \
   blockfilter.cpp \
   chain.cpp \
+  consensus/assets.cpp \
   consensus/tx_verify.cpp \
   dbwrapper.cpp \
   deploymentstatus.cpp \
@@ -951,6 +953,7 @@ libfreicoinkernel_la_SOURCES = \
   compressor.cpp \
   consensus/merkle.cpp \
   consensus/merkleproof.cpp \
+  consensus/assets.cpp \
   consensus/tx_check.cpp \
   consensus/tx_verify.cpp \
   core_read.cpp \

@@ -256,6 +256,29 @@ bool CScript::IsPayToWitnessScriptHash() const
 // followed by a required data push between 2 and 75 bytes, an optional shard
 // prefix specifier, and another optional data push with the same 2- to 75-byte
 // constraint.
+bool CScript::GetExtensionOutput(std::vector<unsigned char>& ext) const
+{
+    if (!IsWitnessProgram()) {
+        return false;
+    }
+    // [version] [program push] [shard specifier] [extension push]; IsWitnessProgram
+    // checked the layout, so only skip the shard specifier if there is one.
+    size_t pos = 2 + (*this)[1];
+    if (pos < size()) {
+        const opcodetype op = static_cast<opcodetype>((*this)[pos]);
+        if (op == 0x01) {
+            pos += 2;
+        } else if (op == OP_1NEGATE || (op >= OP_1 && op <= OP_16)) {
+            pos += 1;
+        }
+    }
+    if (pos >= size()) {
+        return false;
+    }
+    ext.assign(begin() + pos + 1, end());
+    return true;
+}
+
 bool CScript::IsWitnessProgram(int* version, std::vector<unsigned char>* program) const
 {
     // Early-out based on the minimum and maximum sizes.

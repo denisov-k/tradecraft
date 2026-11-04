@@ -684,6 +684,9 @@ public:
     bool IsPayToScriptHash() const;
     bool IsPayToWitnessScriptHash() const;
     bool IsWitnessProgram(int *version = nullptr, std::vector<unsigned char> *program = nullptr) const;
+    /** The extension push that may end a witness program (after its program and
+     *  shard specifier): true and its contents if there is one. */
+    bool GetExtensionOutput(std::vector<unsigned char>& ext) const;
 
     /** Called by IsStandardTx and P2SH/BIP62 VerifyScript (which makes it consensus-critical). */
     bool IsPushOnly(const_iterator pc) const;

@@ -23,6 +23,7 @@
 #include <checkqueue.h>
 #include <clientversion.h>
 #include <consensus/amount.h>
+#include <consensus/assets.h>
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
 #include <consensus/tx_check.h>
@@ -919,6 +920,18 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     // The mempool holds txs for the next block, so pass height+1 to CheckTxInputs
     if (!Consensus::CheckTxInputs(tx, state, m_view, chainparams.GetConsensus(), /* per_input_adjustment = */ 0, m_active_chainstate.m_chain.Height() + 1, Consensus::NONE, ws.m_base_fees)) {
         return false; // state filled in by CheckTxInputs
+    }
+
+    // Asset rules as the next block will apply them.
+    {
+        const CBlockIndex* tip = m_active_chainstate.m_chain.Tip();
+        ChainstateManager& chainman = m_active_chainstate.m_chainman;
+        if (DeploymentActiveAfter(tip, chainman, Consensus::DEPLOYMENT_ASSETS)) {
+            const int asset_height = chainman.m_versionbitscache.StateSinceHeight(tip, chainman.GetConsensus(), Consensus::DEPLOYMENT_ASSETS);
+            if (!Consensus::CheckTxAssets(tx, m_view, asset_height, state)) {
+                return false; // state filled in by CheckTxAssets
+            }
+        }
     }
 
     if (m_pool.m_opts.require_standard && !AreInputsStandard(tx, m_view)) {
@@ -2755,6 +2768,10 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     CCheckQueueControl<CScriptCheck> control(fScriptChecks && parallel_script_checks ? &m_chainman.GetCheckQueue() : nullptr);
     std::vector<PrecomputedTransactionData> txsdata(block.vtx.size());
 
+    // Asset rules (consensus/assets.h), from the block the deployment activates in.
+    const bool enforce_assets = DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_ASSETS);
+    const int asset_height = enforce_assets ? m_chainman.m_versionbitscache.StateSinceHeight(pindex->pprev, params.GetConsensus(), Consensus::DEPLOYMENT_ASSETS) : 0;
+
     std::vector<int> prevheights;
     CAmount nFees = 0;
     int nInputs = 0;
@@ -2765,6 +2782,16 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         const CTransaction &tx = *(block.vtx[i]);
 
         nInputs += tx.vin.size();
+
+        if (enforce_assets) {
+            TxValidationState tx_state;
+            if (!Consensus::CheckTxAssets(tx, view, asset_height, tx_state)) {
+                state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
+                            tx_state.GetRejectReason(), tx_state.GetDebugMessage());
+                LogError("%s: Consensus::CheckTxAssets: %s, %s\n", __func__, tx.GetHash().ToString(), state.ToString());
+                return false;
+            }
+        }
 
         if (!tx.IsCoinBase())
         {

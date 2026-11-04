@@ -20,6 +20,7 @@
 
 #include <coins.h>
 #include <consensus/amount.h>
+#include <consensus/assets.h>
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
 #include <policy/feerate.h>
@@ -69,6 +70,13 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
     }
 
     return dustRelayFeeIn.GetFee(nSize);
+}
+
+/** An asset output holds no freicoin by rule, and is not dust for that. */
+static bool IsAssetOutput(const CTxOut& txout)
+{
+    AssetAmount amount;
+    return GetAssetOutput(txout, amount) == AssetOutputType::ASSET;
 }
 
 bool IsDust(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
@@ -150,7 +158,7 @@ bool IsStandardTx(const CTransaction& tx, const std::optional<unsigned>& max_dat
         else if ((whichType == TxoutType::MULTISIG) && (!permit_bare_multisig)) {
             reason = "bare-multisig";
             return false;
-        } else if (IsDust(txout, dust_relay_fee)) {
+        } else if (IsDust(txout, dust_relay_fee) && !IsAssetOutput(txout)) {
             reason = "dust";
             return false;
         }
