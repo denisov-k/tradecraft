@@ -122,6 +122,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].nTimeout = 1622592000; // June 2nd, 2021.
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].min_activation_height = 0; // No activation delay
 
+        // Not yet scheduled outside regtest.
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].bit = 4;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].min_activation_height = 0; // No activation delay
+
         consensus.nMinimumChainWork = uint256{"0000000000000000000000000000000000000000000003e328537a467ba2c7de"};
         consensus.defaultAssumeValid = uint256{"ea767ef6150a2fe2c1d3be59464db199adb14e9197e8277acf2db68fe9896eec"}; // 424780
 
@@ -329,6 +335,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].nTimeout = 1622592000; // June 2nd, 2021.
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].min_activation_height = 0; // No activation delay
 
+        // Not yet scheduled outside regtest.
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].bit = 4;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].min_activation_height = 0; // No activation delay
+
         consensus.nMinimumChainWork = uint256{"00000000000000000000000000000000000000000000001d134f91d559fc28fb"};
         consensus.defaultAssumeValid = uint256{"58c121907bf5f005acdddf38da413fcd2c9f7048163bcfa0310fa7bd067b7e44"}; // 25259
 
@@ -530,6 +542,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].nTimeout = 1783018800; // July 2, 2026
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].min_activation_height = 0; // No activation delay
 
+        // Not yet scheduled outside regtest.
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].bit = 4;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].min_activation_height = 0; // No activation delay
+
         // message start is defined as the first 4 bytes of the sha256d of the block script
         HashWriter h{};
         h << consensus.signet_challenge;
@@ -622,6 +640,11 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_AUXPOW].min_activation_height = 0; // No activation delay
+
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].bit = 4;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].min_activation_height = 0; // No activation delay
 
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};

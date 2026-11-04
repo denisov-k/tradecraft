@@ -554,6 +554,13 @@ public:
         const int height{WITH_LOCK(::cs_main, return chainman().ActiveChain().Height())};
         return height >= 0 ? std::optional{height} : std::nullopt;
     }
+    std::optional<int> deploymentActiveSince(Consensus::DeploymentPos pos) override
+    {
+        LOCK(::cs_main);
+        const CBlockIndex* tip = chainman().ActiveChain().Tip();
+        if (!tip || !DeploymentActiveAfter(tip, chainman(), pos)) return std::nullopt;
+        return chainman().m_versionbitscache.StateSinceHeight(tip, chainman().GetConsensus(), pos);
+    }
     uint256 getBlockHash(int height) override
     {
         LOCK(::cs_main);

@@ -51,6 +51,10 @@ struct CBlockTemplate
     std::vector<int64_t> vTxSigOpsCost;
     bool has_block_final_tx;
     std::map<COutPoint, Coin> block_final_tx_coin_map;
+    //! The scrip pool the block-final transaction must carry, if any
+    std::optional<CTxOut> ledger_pool;
+    //! The coinbase outputs the block's peg-outs require
+    std::vector<CTxOut> ledger_payouts;
 };
 
 // Container for tracking updates to ancestor feerate as we include (parent)
@@ -156,6 +160,8 @@ private:
 
     // Information on the current status of the block
     uint64_t nBlockWeight;
+    //! Weight reserved for the block-final transaction's part of the ledger (peg-in inputs, the pool)
+    uint64_t m_ledger_final_weight{0};
     uint64_t nBlockTx;
     uint64_t nBlockSigOpsCost;
     CAmount nFees;
@@ -209,6 +215,9 @@ private:
     // block-final transaction logic
     /** Create the block-final transaction, before any other transactions have been added */
     void initFinalTx(const BlockFinalTxEntry& final_tx);
+    /** Settle the scrip ledger of the selected transactions: the block-final transaction
+     *  claims the peg-ins and carries the pool; returns the payouts the coinbase owes. */
+    std::vector<std::pair<CScript, CAmount>> settleLedger(const CBlockIndex* pindexPrev);
 
     // Methods for how to add transactions to a block.
     /** Add transactions based on feerate including unconfirmed ancestors

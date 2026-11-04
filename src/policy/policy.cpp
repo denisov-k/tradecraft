@@ -20,6 +20,7 @@
 
 #include <coins.h>
 #include <consensus/amount.h>
+#include <consensus/assets.h>
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
 #include <policy/feerate.h>
@@ -69,6 +70,13 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
     }
 
     return dustRelayFeeIn.GetFee(nSize);
+}
+
+/** An asset output holds no freicoin by rule, and is not dust for that. */
+static bool IsAssetOutput(const CTxOut& txout)
+{
+    AssetAmount amount;
+    return GetAssetOutput(txout, amount) == AssetOutputType::ASSET;
 }
 
 bool IsDust(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
@@ -140,6 +148,11 @@ bool IsStandardTx(const CTransaction& tx, const std::optional<unsigned>& max_dat
     unsigned int nDataOut = 0;
     TxoutType whichType;
     for (const CTxOut& txout : tx.vout) {
+        CAmount ledger_amount = 0;
+        const LedgerOutputType ledger = GetLedgerOutput(txout, ledger_amount);
+        // a peg-in pays the pool's program; a peg-out holds no freicoin by rule
+        if (ledger == LedgerOutputType::PEGIN) continue;
+        if (ledger == LedgerOutputType::PEGOUT && ::IsStandard(txout.scriptPubKey, max_datacarrier_bytes, whichType)) continue;
         if (!::IsStandard(txout.scriptPubKey, max_datacarrier_bytes, whichType)) {
             reason = "scriptpubkey";
             return false;
@@ -150,7 +163,7 @@ bool IsStandardTx(const CTransaction& tx, const std::optional<unsigned>& max_dat
         else if ((whichType == TxoutType::MULTISIG) && (!permit_bare_multisig)) {
             reason = "bare-multisig";
             return false;
-        } else if (IsDust(txout, dust_relay_fee)) {
+        } else if (IsDust(txout, dust_relay_fee) && !IsAssetOutput(txout)) {
             reason = "dust";
             return false;
         }

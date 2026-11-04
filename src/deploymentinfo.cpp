@@ -31,6 +31,11 @@ const struct VBDeploymentInfo VersionBitsDeploymentInfo[Consensus::MAX_VERSION_B
     {
         /*.name =*/ "auxpow",
         /*.gbt_force =*/ false,
+    },
+    {
+        /*.name =*/ "assets",
+        // A miner need not understand assets to build a valid block.
+        /*.gbt_force =*/ true,
     }
 };
 

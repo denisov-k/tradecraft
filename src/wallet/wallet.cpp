@@ -1663,7 +1663,7 @@ isminetype CWallet::IsMine(const CScript& script) const
     AssertLockHeld(cs_wallet);
 
     // Search the cache so that IsMine is called only on the relevant SPKMs instead of on everything in m_spk_managers
-    const auto& it = m_cached_spks.find(script);
+    const auto& it = m_cached_spks.find(script.WithoutExtension());
     if (it != m_cached_spks.end()) {
         isminetype res = ISMINE_NO;
         for (const auto& spkm : it->second) {
@@ -3591,7 +3591,7 @@ std::set<ScriptPubKeyMan*> CWallet::GetScriptPubKeyMans(const CScript& script) c
     std::set<ScriptPubKeyMan*> spk_mans;
 
     // Search the cache for relevant SPKMs instead of iterating m_spk_managers
-    const auto& it = m_cached_spks.find(script);
+    const auto& it = m_cached_spks.find(script.WithoutExtension());
     if (it != m_cached_spks.end()) {
         spk_mans.insert(it->second.begin(), it->second.end());
     }
@@ -3622,7 +3622,7 @@ std::unique_ptr<SigningProvider> CWallet::GetSolvingProvider(const CScript& scri
 std::unique_ptr<SigningProvider> CWallet::GetSolvingProvider(const CScript& script, SignatureData& sigdata) const
 {
     // Search the cache for relevant SPKMs instead of iterating m_spk_managers
-    const auto& it = m_cached_spks.find(script);
+    const auto& it = m_cached_spks.find(script.WithoutExtension());
     if (it != m_cached_spks.end()) {
         // All spkms for a given script must already be able to make a SigningProvider for the script, so just return the first one.
         Assume(it->second.at(0)->CanProvide(script, sigdata));

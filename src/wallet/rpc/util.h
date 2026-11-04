@@ -30,6 +30,7 @@ class UniValue;
 struct bilingual_str;
 
 namespace wallet {
+struct COutput;
 class LegacyScriptPubKeyMan;
 enum class DatabaseStatus;
 struct WalletContext;
@@ -51,6 +52,9 @@ std::shared_ptr<CWallet> GetWalletForJSONRPCRequest(const JSONRPCRequest& reques
 bool GetWalletNameFromJSONRPCRequest(const JSONRPCRequest& request, std::string& wallet_name);
 
 void EnsureWalletIsUnlocked(const CWallet&);
+//! Whether consensus counts this asset output: made at or above the assets
+//! activation height (a claim made before was never checked and is worthless).
+bool IsCountedAssetOutput(const CWallet& wallet, const COutput& out, int tip_height);
 WalletContext& EnsureWalletContext(const std::any& context);
 LegacyScriptPubKeyMan& EnsureLegacyScriptPubKeyMan(CWallet& wallet, bool also_create = false);
 const LegacyScriptPubKeyMan& EnsureConstLegacyScriptPubKeyMan(const CWallet& wallet);

@@ -52,5 +52,9 @@ CAmount GetTimeAdjustedValue(const CAmount& initial_value, int relative_depth);
 /** Convert between demurrage currency and inflationary scrip. */
 CAmount FreicoinToScrip(const CAmount& freicoin, uint32_t height);
 CAmount ScripToFreicoin(const CAmount& scrip, uint32_t height);
+/** The smallest Freicoin value held at `height` whose scrip value is at least
+ *  `scrip`.  Before the epoch scrip is the coarser unit, so the scrip value is
+ *  then exactly `scrip`: what a payment of that much scrip must carry. */
+CAmount FreicoinForScrip(const CAmount& scrip, uint32_t height);
 
 #endif // FREICOIN_CONSENSUS_AMOUNT_H

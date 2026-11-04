@@ -141,6 +141,33 @@ BOOST_AUTO_TEST_CASE(BinaryOperatorTest)
     BOOST_CHECK(a == b);
 }
 
+BOOST_AUTO_TEST_CASE(ScripTest)
+{
+    // At the epoch scrip and Freicoin agree; before it scrip is the smaller number.
+    BOOST_CHECK_EQUAL(FreicoinToScrip(COIN, 5040000), COIN);
+    BOOST_CHECK_LT(FreicoinToScrip(COIN, 500000), COIN);
+    for (const uint32_t height : {0u, 1u, 100000u, 497000u, 2000000u, 5039999u, 5040000u}) {
+        for (const CAmount scrip : {CAmount{1}, CAmount{2}, CAmount{76}, CAmount{12345678}, COIN, 10000 * COIN}) {
+            // a payment of `scrip` is worth exactly that, and nothing less carries it
+            const CAmount value = FreicoinForScrip(scrip, height);
+            BOOST_REQUIRE(MoneyRange(value));
+            BOOST_CHECK_EQUAL(FreicoinToScrip(value, height), scrip);
+            BOOST_CHECK_LT(FreicoinToScrip(value - 1, height), scrip);
+        }
+    }
+    BOOST_CHECK_EQUAL(FreicoinForScrip(0, 1000), 0);
+    BOOST_CHECK(!MoneyRange(FreicoinForScrip(MAX_MONEY, 0)));
+    // A held amount keeps its scrip value: its present value at any later height is
+    // worth the same scrip, up to the rounding of the two conversions.
+    for (const CAmount value : {COIN, 123456789 * COIN / 1000, CAmount{999}}) {
+        for (const int distance : {1, 1000, 100000, 1000000}) {
+            const uint32_t height = 400000;
+            const CAmount later = FreicoinToScrip(GetTimeAdjustedValue(value, distance), height + distance);
+            BOOST_CHECK_LE(std::abs(later - FreicoinToScrip(value, height)), 1);
+        }
+    }
+}
+
 BOOST_AUTO_TEST_CASE(ToStringTest)
 {
     CFeeRate feeRate;

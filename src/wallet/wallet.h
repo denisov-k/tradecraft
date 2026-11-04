@@ -19,6 +19,7 @@
 
 #include <addresstype.h>
 #include <consensus/amount.h>
+#include <consensus/assets.h>
 #include <interfaces/chain.h>
 #include <interfaces/handler.h>
 #include <kernel/cs_main.h>
@@ -301,7 +302,15 @@ struct CRecipient
     CTxDestination dest;
     CAmount nAmount;
     bool fSubtractFeeFromAmount;
+    //! An asset output (nAmount 0) carrying this; a null asset id is the asset
+    //! the transaction issues, filled in once its first input is known.
+    std::optional<AssetAmount> asset{};
+    //! Otherwise, the extension push of a ledger output (a peg-in or a peg-out), if any.
+    std::vector<unsigned char> extension{};
 };
+
+//! The output script of a recipient: its destination, and the asset extension if any.
+CScript GetScriptForRecipient(const CRecipient& recipient);
 
 class WalletRescanReserver; //forward declarations for ScanForWalletTransactions/RescanFromTime
 /**

@@ -227,6 +227,20 @@ class BlockchainTest(FreicoinTestFramework):
                 }
             },
             'segwit': {'type': 'buried', 'active': True, 'height': 6},
+            'assets': {
+                'type': 'bip9',
+                'height': 0,
+                'active': True,
+                'bip9': {
+                    'start_time': -1,
+                    'timeout': 9223372036854775807,
+                    'min_activation_height': 0,
+                    'status': 'active',
+                    'since': 0,
+                    'status_next':
+                    'active'
+                }
+            },
             'testdummy': {
                 'type': 'bip9',
                 'bip9': {

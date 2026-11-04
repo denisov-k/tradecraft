@@ -2134,7 +2134,8 @@ util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const 
 isminetype DescriptorScriptPubKeyMan::IsMine(const CScript& script) const
 {
     LOCK(cs_desc_man);
-    if (m_map_script_pub_keys.count(script) > 0) {
+    // An extension output (an asset) belongs to whoever its witness program does.
+    if (m_map_script_pub_keys.count(script.WithoutExtension()) > 0) {
         return ISMINE_SPENDABLE;
     }
     return ISMINE_NO;
@@ -2478,8 +2479,8 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
 {
     LOCK(cs_desc_man);
 
-    // Find the index of the script
-    auto it = m_map_script_pub_keys.find(script);
+    // Find the index of the script (of its owner, for an extension output)
+    auto it = m_map_script_pub_keys.find(script.WithoutExtension());
     if (it == m_map_script_pub_keys.end()) {
         return nullptr;
     }

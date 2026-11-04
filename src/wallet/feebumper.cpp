@@ -270,10 +270,21 @@ Result CreateRateBumpTransaction(CWallet& wallet, const uint256& txid, const CCo
         const CTxOut& output = txouts.at(i);
         CTxDestination dest;
         ExtractDestination(output.scriptPubKey, dest);
-        if (original_change_index.has_value() ?  original_change_index.value() == i : OutputIsChange(wallet, output)) {
+        // An extension output (an asset, a peg-in or peg-out) stays what it is, even
+        // back to this wallet: never freicoin change.
+        AssetAmount asset;
+        std::vector<unsigned char> ext;
+        const bool is_asset = GetAssetOutput(output, asset) == AssetOutputType::ASSET;
+        const bool has_ext = output.scriptPubKey.GetExtensionOutput(ext);
+        if (!has_ext && (original_change_index.has_value() ?  original_change_index.value() == i : OutputIsChange(wallet, output))) {
             new_coin_control.destChange = dest;
         } else {
             CRecipient recipient = {dest, output.GetReferenceValue(), false};
+            if (is_asset) {
+                recipient.asset = asset;
+            } else if (has_ext) {
+                recipient.extension = ext;
+            }
             recipients.push_back(recipient);
         }
         new_outputs_value += output.GetReferenceValue();

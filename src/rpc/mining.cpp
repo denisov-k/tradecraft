@@ -21,6 +21,7 @@
 #include <chainparamsbase.h>
 #include <common/system.h>
 #include <consensus/amount.h>
+#include <consensus/assets.h>
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
 #include <consensus/params.h>
@@ -391,6 +392,16 @@ static RPCHelpMan generateblock()
 
         CHECK_NONFATAL(block.vtx.size() == (1U + !!has_block_final_tx));
 
+        // The scrip ledger is settled by the block assembler, from the mempool; a
+        // block put together here would lack the pool and payouts.
+        for (const CTransactionRef& tx : txs) {
+            for (const CTxOut& txout : tx->vout) {
+                CAmount ledger_amount = 0;
+                if (GetLedgerOutput(txout, ledger_amount) != LedgerOutputType::NONE) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "generateblock cannot include peg-ins or peg-outs; send them to the mempool and use generatetoaddress");
+                }
+            }
+        }
         // Add transactions
         block.vtx.insert(block.vtx.end() - !!has_block_final_tx, txs.begin(), txs.end());
         RegenerateCommitments(block, chainman);
@@ -669,6 +680,16 @@ static RPCHelpMan getblocktemplate()
                             {RPCResult::Type::NUM, "vout", "index to the output vector of the previous transaction"},
                             {RPCResult::Type::NUM, "amount", "value of input at current refheight"},
                         }},
+                    }},
+                    {RPCResult::Type::OBJ, "pool", /*optional=*/true, "the scrip pool, the output the block-final transaction must carry before its last (commitment) output", {
+                        {RPCResult::Type::STR_HEX, "scriptPubKey", "the output script"},
+                        {RPCResult::Type::NUM, "amount", "the output value, in kria"},
+                    }},
+                }},
+                {RPCResult::Type::ARR, "coinbasepayouts", /*optional=*/true, "outputs the coinbase must carry to pay the peg-outs of the block, out of what the block-final transaction forwards (not included in coinbasevalue)", {
+                    {RPCResult::Type::OBJ, "", "", {
+                        {RPCResult::Type::STR_HEX, "scriptPubKey", "the output script"},
+                        {RPCResult::Type::NUM, "amount", "the output value, in kria"},
                     }},
                 }},
             }},
@@ -1001,9 +1022,30 @@ static RPCHelpMan getblocktemplate()
             }
             finaltx_prevout.push_back(in);
         }
+        // A client that builds the block-final transaction or the coinbase itself must
+        // know to carry the pool and pay the peg-outs.
+        if ((pblocktemplate->ledger_pool || !pblocktemplate->ledger_payouts.empty()) && !setClientRules.count("assets")) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Support for 'assets' rule requires explicit client support: the template carries the scrip ledger");
+        }
         UniValue finaltx(UniValue::VOBJ);
         finaltx.pushKV("prevout", finaltx_prevout);
+        if (pblocktemplate->ledger_pool) {
+            UniValue pool(UniValue::VOBJ);
+            pool.pushKV("scriptPubKey", HexStr(pblocktemplate->ledger_pool->scriptPubKey));
+            pool.pushKV("amount", pblocktemplate->ledger_pool->GetReferenceValue());
+            finaltx.pushKV("pool", std::move(pool));
+        }
         result.pushKV("finaltx", finaltx);
+        if (!pblocktemplate->ledger_payouts.empty()) {
+            UniValue payouts(UniValue::VARR);
+            for (const CTxOut& out : pblocktemplate->ledger_payouts) {
+                UniValue o(UniValue::VOBJ);
+                o.pushKV("scriptPubKey", HexStr(out.scriptPubKey));
+                o.pushKV("amount", out.GetReferenceValue());
+                payouts.push_back(std::move(o));
+            }
+            result.pushKV("coinbasepayouts", std::move(payouts));
+        }
     }
 
     if (consensusParams.signet_blocks) {

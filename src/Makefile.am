@@ -165,6 +165,7 @@ FREICOIN_CORE_H = \
   consensus/merkleproof.h \
   consensus/merklerange.h \
   consensus/tx_check.h \
+  consensus/assets.h \
   consensus/tx_verify.h \
   core_io.h \
   core_memusage.h \
@@ -703,6 +704,7 @@ libfreicoin_common_a_SOURCES = \
   chainparamsbase.cpp \
   chainparams.cpp \
   coins.cpp \
+  consensus/assets.cpp \
   common/args.cpp \
   common/bloom.cpp \
   common/config.cpp \
@@ -957,7 +959,11 @@ libfreicoinkernel_la_SOURCES = \
   compressor.cpp \
   consensus/merkle.cpp \
   consensus/merkleproof.cpp \
+<<<<<<< HEAD
   consensus/merklerange.cpp \
+=======
+  consensus/assets.cpp \
+>>>>>>> scrip-ledger
   consensus/tx_check.cpp \
   consensus/tx_verify.cpp \
   core_read.cpp \

@@ -21,6 +21,7 @@
 #include <coins.h>
 #include <common/args.h>
 #include <consensus/amount.h>
+#include <consensus/assets.h>
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
 #include <consensus/tx_verify.h>
@@ -95,6 +96,7 @@ void BlockAssembler::resetBlock()
 
     // Reserve space for coinbase tx
     nBlockWeight = m_options.coinbase_max_additional_weight;
+    m_ledger_final_weight = 0;
     nBlockSigOpsCost = m_options.coinbase_output_max_additional_sigops;
 
     // These counters do not include coinbase tx
@@ -196,6 +198,12 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
         addPackageTxs(*m_mempool, nPackagesSelected, nDescendantsUpdated);
     }
 
+    // The scrip ledger (consensus/assets.h): peg-ins into the pool, peg-outs to the coinbase.
+    std::vector<std::pair<CScript, CAmount>> ledger_payouts;
+    if (m_block_final_state == HAS_BLOCK_FINAL_TX && DeploymentActiveAfter(pindexPrev, m_chainstate.m_chainman, Consensus::DEPLOYMENT_ASSETS)) {
+        ledger_payouts = settleLedger(pindexPrev);
+    }
+
     const auto time_1{SteadyClock::now()};
 
     m_last_block_num_txs = nBlockTx;
@@ -208,6 +216,11 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vout.resize(1);
     coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
     coinbaseTx.vout[0].SetReferenceValue(nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus()));
+    for (const auto& [dest, pay] : ledger_payouts) {
+        if (pay <= 0) continue;
+        coinbaseTx.vout[0].AdjustReferenceValue(-pay);
+        coinbaseTx.vout.emplace_back(pay, dest);
+    }
     if (m_block_final_state == INITIAL_BLOCK_FINAL_TXOUT) {
         CTxOut txout(0, CScript() << OP_TRUE);
         coinbaseTx.vout.insert(coinbaseTx.vout.begin(), txout);
@@ -319,6 +332,19 @@ void BlockAssembler::AddToBlock(CTxMemPool::txiter iter)
     pblocktemplate->vTxFees.insert(pblocktemplate->vTxFees.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), iter->GetFee());
     pblocktemplate->vTxSigOpsCost.insert(pblocktemplate->vTxSigOpsCost.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), iter->GetSigOpCost());
     nBlockWeight += iter->GetTxWeight();
+    // Room for what settling the ledger will add: a block-final input per peg-in
+    // (and the pool output, once), a coinbase output per peg-out.
+    for (const CTxOut& txout : iter->GetTx().vout) {
+        CAmount ledger_amount = 0;
+        const LedgerOutputType ledger = GetLedgerOutput(txout, ledger_amount);
+        if (ledger == LedgerOutputType::PEGIN) {
+            const uint64_t reserve = WITNESS_SCALE_FACTOR * (41 + (m_ledger_final_weight ? 0 : 60));
+            nBlockWeight += reserve;
+            m_ledger_final_weight += reserve;
+        } else if (ledger == LedgerOutputType::PEGOUT) {
+            nBlockWeight += WITNESS_SCALE_FACTOR * (::GetSerializeSize(txout) - 10);
+        }
+    }
     ++nBlockTx;
     nBlockSigOpsCost += iter->GetSigOpCost();
     nFees += GetTimeAdjustedValue(iter->GetFee(), nHeight - iter->GetReferenceHeight());
@@ -433,6 +459,50 @@ void BlockAssembler::initFinalTx(const BlockFinalTxEntry& final_tx)
 
     // ...the size is not:
     nBlockWeight += GetTransactionWeight(*pblocktemplate->block.vtx.back());
+}
+
+std::vector<std::pair<CScript, CAmount>> BlockAssembler::settleLedger(const CBlockIndex* pindexPrev)
+{
+    ChainstateManager& chainman = m_chainstate.m_chainman;
+    const int asset_height = chainman.m_versionbitscache.StateSinceHeight(pindexPrev, chainman.GetConsensus(), Consensus::DEPLOYMENT_ASSETS);
+    BlockLedger ledger;
+    for (const auto& [prevout, coin] : m_block_final_tx_coin_map) ledger.AddPriorOutput(coin, nHeight, asset_height);
+    // the selected transactions sit between the coinbase and the block-final transaction
+    for (size_t i = 1; i + 1 < pblocktemplate->block.vtx.size(); ++i) ledger.AddTransaction(*pblocktemplate->block.vtx[i], nHeight);
+    if (!ledger.Active()) return {};
+    const LedgerResult result = ComputeLedger(ledger, nHeight);
+
+    CMutableTransaction final_tx(*pblocktemplate->block.vtx.back());
+    const int64_t old_weight = GetTransactionWeight(CTransaction(final_tx));
+    for (const COutPoint& pegin : ledger.pegins) {
+        final_tx.vin.push_back(CTxIn(pegin, CScript(), CTxIn::SEQUENCE_FINAL));
+        // for getblocktemplate, which lists what the block-final transaction spends
+        for (size_t i = 1; i + 1 < pblocktemplate->block.vtx.size(); ++i) {
+            const CTransaction& tx = *pblocktemplate->block.vtx[i];
+            if (tx.GetHash() == pegin.hash) m_block_final_tx_coin_map[pegin] = Coin(tx.vout[pegin.n], tx.lock_height, nHeight, false);
+        }
+    }
+    // the pool goes before the last output, which carries the commitments
+    if (result.pool_value || result.pool_scrip) {
+        final_tx.vout.insert(final_tx.vout.begin(), CTxOut(result.pool_value, LedgerBase() << LedgerExtension(EXTENSION_POOL, result.pool_scrip)));
+        pblocktemplate->ledger_pool = final_tx.vout.front();
+    }
+    for (const auto& [dest, pay] : result.payouts) {
+        if (pay > 0) pblocktemplate->ledger_payouts.emplace_back(pay, dest);
+    }
+    pblocktemplate->block.vtx.back() = MakeTransactionRef(std::move(final_tx));
+
+    // What the block-final transaction forwards to the coinbase changes by the
+    // peg-ins it claims and the pool it keeps: the payouts, and the roundings.
+    const CAmount fee = pblocktemplate->vTxFees.back() + ledger.pegin_value - result.pool_value;
+    nFees += fee - pblocktemplate->vTxFees.back();
+    pblocktemplate->vTxFees.back() = fee;
+    // the block-final transaction's growth replaces what was reserved for it; the
+    // payouts keep their reservation (the coinbase is outside nBlockWeight)
+    nBlockWeight += GetTransactionWeight(*pblocktemplate->block.vtx.back()) - old_weight;
+    nBlockWeight -= std::min(nBlockWeight, m_ledger_final_weight);
+    m_ledger_final_weight = 0;
+    return result.payouts;
 }
 
 // This transaction selection algorithm orders the mempool based

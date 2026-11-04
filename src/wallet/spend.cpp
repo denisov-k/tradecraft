@@ -419,6 +419,14 @@ CoinsResult AvailableCoins(const CWallet& wallet,
             if (wallet.IsSpent(outpoint))
                 continue;
 
+            if (!params.include_extension_outputs && output.scriptPubKey.WithoutExtension() != output.scriptPubKey)
+                continue;
+
+            // a peg-out is paid through the coinbase: nothing in it to spend
+            CAmount ledger_amount = 0;
+            if (GetLedgerOutput(output, ledger_amount) != LedgerOutputType::NONE)
+                continue;
+
             isminetype mine = wallet.IsMine(output);
 
             if (mine == ISMINE_NO) {
@@ -1015,13 +1023,26 @@ static void DiscourageFeeSniping(CMutableTransaction& tx, FastRandomContext& rng
     }
 }
 
+CScript GetScriptForRecipient(const CRecipient& recipient)
+{
+    CScript script = GetScriptForDestination(recipient.dest);
+    if (recipient.asset) {
+        script << AssetExtension(*recipient.asset);
+    } else if (!recipient.extension.empty()) {
+        script << recipient.extension;
+    }
+    return script;
+}
+
 size_t GetSerializeSizeForRecipient(const CRecipient& recipient)
 {
-    return ::GetSerializeSize(CTxOut(recipient.nAmount, GetScriptForDestination(recipient.dest)));
+    return ::GetSerializeSize(CTxOut(recipient.nAmount, GetScriptForRecipient(recipient)));
 }
 
 bool IsDust(const CRecipient& recipient, const CFeeRate& dustRelayFee)
 {
+    // an asset output or a peg-out holds no freicoin by rule
+    if (recipient.asset || !recipient.extension.empty()) return false;
     return ::IsDust(CTxOut(recipient.nAmount, GetScriptForDestination(recipient.dest)), dustRelayFee);
 }
 
@@ -1194,7 +1215,7 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     // vouts to the payees
     for (const auto& recipient : vecSend)
     {
-        txNew.vout.emplace_back(recipient.nAmount, GetScriptForDestination(recipient.dest));
+        txNew.vout.emplace_back(recipient.nAmount, GetScriptForRecipient(recipient));
     }
     const CAmount change_amount = result.GetChange(coin_selection_params.min_viable_change, coin_selection_params.m_change_fee);
     if (change_amount > 0) {
@@ -1341,6 +1362,16 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     // Give up if change keypool ran out and change is required
     if (scriptChange.empty() && change_pos) {
         return util::Error{error};
+    }
+
+    // An issued asset takes the id of the first input, known only now (the size
+    // of the output does not change).
+    for (CTxOut& txout : txNew.vout) {
+        AssetAmount asset;
+        if (GetAssetOutput(txout, asset) == AssetOutputType::ASSET && asset.asset.IsNull()) {
+            asset.asset = AssetIssuanceId(txNew.vin.at(0).prevout);
+            txout.scriptPubKey = txout.scriptPubKey.WithoutExtension() << AssetExtension(asset);
+        }
     }
 
     if (sign && !wallet.SignTransaction(txNew)) {

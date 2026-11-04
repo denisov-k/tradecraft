@@ -1076,6 +1076,7 @@ RPCHelpMan getunconfirmedbalance();
 RPCHelpMan lockunspent();
 RPCHelpMan listlockunspent();
 RPCHelpMan getbalances();
+RPCHelpMan getassetbalances();
 RPCHelpMan listunspent();
 
 // encryption
@@ -1093,6 +1094,10 @@ RPCHelpMan bumpfee();
 RPCHelpMan pstbumpfee();
 RPCHelpMan send();
 RPCHelpMan sendall();
+RPCHelpMan issueasset();
+RPCHelpMan sendasset();
+RPCHelpMan pegin();
+RPCHelpMan pegout();
 RPCHelpMan walletprocesspst();
 RPCHelpMan walletcreatefundedpst();
 RPCHelpMan signrawtransactionwithwallet();
@@ -1129,6 +1134,7 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &encryptwallet},
         {"wallet", &getaddressesbylabel},
         {"wallet", &getaddressinfo},
+        {"wallet", &getassetbalances},
         {"wallet", &getbalance},
         {"wallet", &gethdkeys},
         {"wallet", &getnewaddress},
@@ -1146,6 +1152,7 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &importprunedfunds},
         {"wallet", &importpubkey},
         {"wallet", &importwallet},
+        {"wallet", &issueasset},
         {"wallet", &keypoolrefill},
         {"wallet", &listaddressgroupings},
         {"wallet", &listdescriptors},
@@ -1162,9 +1169,12 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &lockunspent},
         {"wallet", &migratewallet},
         {"wallet", &newkeypool},
+        {"wallet", &pegin},
+        {"wallet", &pegout},
         {"wallet", &removeprunedfunds},
         {"wallet", &rescanblockchain},
         {"wallet", &send},
+        {"wallet", &sendasset},
         {"wallet", &sendmany},
         {"wallet", &sendtoaddress},
         {"wallet", &sethdseed},

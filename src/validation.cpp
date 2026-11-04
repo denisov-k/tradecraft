@@ -23,6 +23,7 @@
 #include <checkqueue.h>
 #include <clientversion.h>
 #include <consensus/amount.h>
+#include <consensus/assets.h>
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
 #include <consensus/tx_check.h>
@@ -919,6 +920,46 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     // The mempool holds txs for the next block, so pass height+1 to CheckTxInputs
     if (!Consensus::CheckTxInputs(tx, state, m_view, chainparams.GetConsensus(), /* per_input_adjustment = */ 0, m_active_chainstate.m_chain.Height() + 1, Consensus::NONE, ws.m_base_fees)) {
         return false; // state filled in by CheckTxInputs
+    }
+
+    // Asset rules as the next block will apply them.
+    {
+        const CBlockIndex* tip = m_active_chainstate.m_chain.Tip();
+        ChainstateManager& chainman = m_active_chainstate.m_chainman;
+        if (DeploymentActiveAfter(tip, chainman, Consensus::DEPLOYMENT_ASSETS)) {
+            const int asset_height = chainman.m_versionbitscache.StateSinceHeight(tip, chainman.GetConsensus(), Consensus::DEPLOYMENT_ASSETS);
+            if (!Consensus::CheckTxAssets(tx, m_view, asset_height, state)) {
+                return false; // state filled in by CheckTxAssets
+            }
+            // The ledger needs a block-final transaction in the next block: none
+            // until the block-final rules apply (the first outputs mature).
+            bool ledger_tx = false;
+            for (const CTxOut& txout : tx.vout) {
+                CAmount ledger_amount = 0;
+                ledger_tx |= GetLedgerOutput(txout, ledger_amount) != LedgerOutputType::NONE;
+            }
+            if (ledger_tx) {
+                const BlockFinalTxEntry final_entry = coins_cache.GetFinalTx();
+                bool final_ready = !final_entry.IsNull();
+                for (uint32_t n = 0; final_ready && n < final_entry.size; ++n) {
+                    const Coin& coin = coins_cache.AccessCoin(COutPoint(final_entry.hash, n));
+                    if (coin.IsSpent() || (coin.IsCoinBase() && tip->nHeight + 1 - static_cast<int>(coin.nHeight) < COINBASE_MATURITY)) final_ready = false;
+                }
+                if (!final_ready) {
+                    return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "ledger-before-block-final");
+                }
+            }
+        } else {
+            // Not before activation: such a transaction would still wait in the
+            // mempool when the rules take effect, unchecked.
+            for (const CTxOut& txout : tx.vout) {
+                AssetAmount asset;
+                CAmount ledger_amount = 0;
+                if (GetAssetOutput(txout, asset) != AssetOutputType::NONE || GetLedgerOutput(txout, ledger_amount) != LedgerOutputType::NONE) {
+                    return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "extension-output-premature");
+                }
+            }
+        }
     }
 
     if (m_pool.m_opts.require_standard && !AreInputsStandard(tx, m_view)) {
@@ -2755,6 +2796,20 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     CCheckQueueControl<CScriptCheck> control(fScriptChecks && parallel_script_checks ? &m_chainman.GetCheckQueue() : nullptr);
     std::vector<PrecomputedTransactionData> txsdata(block.vtx.size());
 
+    // Asset rules (consensus/assets.h), from the block the deployment activates in.
+    const bool enforce_assets = DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_ASSETS);
+    const int asset_height = enforce_assets ? m_chainman.m_versionbitscache.StateSinceHeight(pindex->pprev, params.GetConsensus(), Consensus::DEPLOYMENT_ASSETS) : 0;
+
+    // The scrip ledger of the block, starting from the pool in the prior
+    // block-final transaction.
+    BlockLedger ledger;
+    if (enforce_assets) {
+        const BlockFinalTxEntry prior_final = view.GetFinalTx();
+        for (uint32_t n = 0; n < prior_final.size; ++n) {
+            ledger.AddPriorOutput(view.AccessCoin(COutPoint(prior_final.hash, n)), pindex->nHeight, asset_height);
+        }
+    }
+
     std::vector<int> prevheights;
     CAmount nFees = 0;
     int nInputs = 0;
@@ -2765,6 +2820,18 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         const CTransaction &tx = *(block.vtx[i]);
 
         nInputs += tx.vin.size();
+
+        if (enforce_assets) {
+            const bool is_final_tx = enforce_block_final && i + 1 == block.vtx.size() && i > 0;
+            TxValidationState tx_state;
+            if (!Consensus::CheckTxAssets(tx, view, asset_height, tx_state, is_final_tx)) {
+                state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
+                            tx_state.GetRejectReason(), tx_state.GetDebugMessage());
+                LogError("%s: Consensus::CheckTxAssets: %s, %s\n", __func__, tx.GetHash().ToString(), state.ToString());
+                return false;
+            }
+            if (!tx.IsCoinBase() && !is_final_tx) ledger.AddTransaction(tx, pindex->nHeight);
+        }
 
         if (!tx.IsCoinBase())
         {
@@ -2840,6 +2907,11 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     if (static_cast<int64_t>(block.vtx[0]->lock_height) != static_cast<int64_t>(pindex->nHeight)) {
         LogPrintf("ERROR: coinbase lock_height != block height (%d != %d)\n", block.vtx[0]->lock_height, pindex->nHeight);
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-lock-height");
+    }
+
+    if (enforce_assets && !Consensus::CheckBlockLedger(block, ledger, pindex->nHeight, enforce_block_final, state)) {
+        LogError("%s: Consensus::CheckBlockLedger: %s\n", __func__, state.ToString());
+        return false;
     }
 
     CAmount blockReward = nFees + GetBlockSubsidy(pindex->nHeight, params.GetConsensus());

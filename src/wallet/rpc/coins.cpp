@@ -505,6 +505,40 @@ RPCHelpMan getbalances()
     };
 }
 
+RPCHelpMan getassetbalances()
+{
+    return RPCHelpMan{"getassetbalances",
+        "\nThe amounts of the assets this wallet holds, unconfirmed ones included.\n",
+        {},
+        RPCResult{RPCResult::Type::OBJ_DYN, "", "", {
+            {RPCResult::Type::NUM, "asset", "The amount held of the asset of this id"},
+        }},
+        RPCExamples{HelpExampleCli("getassetbalances", "") + HelpExampleRpc("getassetbalances", "")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const std::shared_ptr<const CWallet> pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+    pwallet->BlockUntilSyncedToCurrentChain();
+    LOCK(pwallet->cs_wallet);
+
+    const auto tip_height = pwallet->chain().getHeight();
+    if (!tip_height) throw JSONRPCError(RPC_INTERNAL_ERROR, "Cannot determine current chain height");
+    CoinFilterParams params;
+    params.min_amount = 0;
+    params.include_extension_outputs = true;
+    CCoinControl cctl;
+    std::map<uint256, CAmount> balances;
+    for (const COutput& out : AvailableCoinsListUnspent(*pwallet, *tip_height + 1, &cctl, params).All()) {
+        AssetAmount a;
+        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET && IsCountedAssetOutput(*pwallet, out, *tip_height)) balances[a.asset] += a.amount;
+    }
+    UniValue result(UniValue::VOBJ);
+    for (const auto& [asset, amount] : balances) result.pushKV(HexStr(asset), amount);
+    return result;
+},
+    };
+}
+
 RPCHelpMan listunspent()
 {
     return RPCHelpMan{
@@ -546,6 +580,8 @@ RPCHelpMan listunspent()
                             {RPCResult::Type::STR_AMOUNT, "value", "the transaction output amount in " + CURRENCY_UNIT + " at the reference height of the transaction"},
                             {RPCResult::Type::STR_AMOUNT, "amount", "the transaction output amount in " + CURRENCY_UNIT + " as of the next block"},
                             {RPCResult::Type::NUM, "refheight", "the reference height of the transaction"},
+                            {RPCResult::Type::STR_HEX, "asset", /*optional=*/true, "The id of the asset, for an asset output"},
+                            {RPCResult::Type::NUM, "asset_amount", /*optional=*/true, "The amount of the asset, for an asset output"},
                             {RPCResult::Type::NUM, "confirmations", "The number of confirmations"},
                             {RPCResult::Type::NUM, "ancestorcount", /*optional=*/true, "The number of in-mempool ancestor transactions, including this one (if transaction is in the mempool)"},
                             {RPCResult::Type::NUM, "ancestorsize", /*optional=*/true, "The virtual transaction size of in-mempool ancestors, including this one (if transaction is in the mempool)"},
@@ -619,6 +655,7 @@ RPCHelpMan listunspent()
 
     CoinFilterParams filter_coins;
     filter_coins.min_amount = 0;
+    filter_coins.include_extension_outputs = true;
 
     if (!request.params[4].isNull()) {
         const UniValue& options = request.params[4].get_obj();
@@ -743,6 +780,11 @@ RPCHelpMan listunspent()
         entry.pushKV("value", ValueFromAmount(out.txout.GetReferenceValue()));
         entry.pushKV("amount", ValueFromAmount(out.adjusted));
         entry.pushKV("refheight", (uint64_t)out.refheight);
+        AssetAmount asset;
+        if (GetAssetOutput(out.txout, asset) == AssetOutputType::ASSET && IsCountedAssetOutput(*pwallet, out, current_height)) {
+            entry.pushKV("asset", HexStr(asset.asset));
+            entry.pushKV("asset_amount", asset.amount);
+        }
         entry.pushKV("confirmations", out.depth);
         if (!out.depth) {
             size_t ancestor_count, descendant_count, ancestor_size;
