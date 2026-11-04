@@ -320,12 +320,6 @@ bool BlockAssembler::TestPackageTransactions(const CTxMemPool::setEntries& packa
         if (!IsFinalTx(it->GetTx(), nHeight, m_lock_time_cutoff)) {
             return false;
         }
-        if (m_options.exclude_pegouts) {
-            for (const CTxOut& txout : it->GetTx().vout) {
-                CAmount ledger_amount = 0;
-                if (GetLedgerOutput(txout, ledger_amount) == LedgerOutputType::PEGOUT) return false;
-            }
-        }
     }
     return true;
 }
