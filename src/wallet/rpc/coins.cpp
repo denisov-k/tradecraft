@@ -508,7 +508,8 @@ RPCHelpMan getbalances()
 RPCHelpMan getassetbalances()
 {
     return RPCHelpMan{"getassetbalances",
-        "\nThe amounts of the assets this wallet holds, unconfirmed ones included.\n",
+        "\nThe amounts of the assets this wallet holds, unconfirmed ones included (an asset with\n"
+        "demurrage at its value in the next block).\n",
         {},
         RPCResult{RPCResult::Type::OBJ_DYN, "", "", {
             {RPCResult::Type::NUM, "asset", "The amount held of the asset of this id"},
@@ -530,7 +531,10 @@ RPCHelpMan getassetbalances()
     std::map<uint256, CAmount> balances;
     for (const COutput& out : AvailableCoinsListUnspent(*pwallet, *tip_height + 1, &cctl, params).All()) {
         AssetAmount a;
-        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET && IsCountedAssetOutput(*pwallet, out, *tip_height)) balances[a.asset] += a.amount;
+        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET && IsCountedAssetOutput(*pwallet, out, *tip_height)) {
+            const uint32_t next = *tip_height + 1;
+            balances[a.asset] += next > out.refheight ? AssetPresentValue(a.amount, a.demurrage, next - out.refheight) : a.amount;
+        }
     }
     UniValue result(UniValue::VOBJ);
     for (const auto& [asset, amount] : balances) result.pushKV(HexStr(asset), amount);
@@ -582,6 +586,8 @@ RPCHelpMan listunspent()
                             {RPCResult::Type::NUM, "refheight", "the reference height of the transaction"},
                             {RPCResult::Type::STR_HEX, "asset", /*optional=*/true, "The id of the asset, for an asset output"},
                             {RPCResult::Type::NUM, "asset_amount", /*optional=*/true, "The amount of the asset, for an asset output"},
+                            {RPCResult::Type::BOOL, "asset_demurrage", /*optional=*/true, "True for an asset that decays as " + CURRENCY_UNIT + " does"},
+                            {RPCResult::Type::NUM, "asset_present", /*optional=*/true, "The amount at the next block, for an asset with demurrage (asset_amount is at refheight)"},
                             {RPCResult::Type::NUM, "confirmations", "The number of confirmations"},
                             {RPCResult::Type::NUM, "ancestorcount", /*optional=*/true, "The number of in-mempool ancestor transactions, including this one (if transaction is in the mempool)"},
                             {RPCResult::Type::NUM, "ancestorsize", /*optional=*/true, "The virtual transaction size of in-mempool ancestors, including this one (if transaction is in the mempool)"},
@@ -784,6 +790,11 @@ RPCHelpMan listunspent()
         if (GetAssetOutput(out.txout, asset) == AssetOutputType::ASSET && IsCountedAssetOutput(*pwallet, out, current_height)) {
             entry.pushKV("asset", HexStr(asset.asset));
             entry.pushKV("asset_amount", asset.amount);
+            if (asset.demurrage) {
+                entry.pushKV("asset_demurrage", true);
+                const uint32_t next = current_height + 1;
+                entry.pushKV("asset_present", next > out.refheight ? AssetPresentValue(asset.amount, asset.demurrage, next - out.refheight) : asset.amount);
+            }
         }
         entry.pushKV("confirmations", out.depth);
         if (!out.depth) {

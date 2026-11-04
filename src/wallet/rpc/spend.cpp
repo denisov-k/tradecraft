@@ -478,18 +478,24 @@ static uint32_t NextHeight(const CWallet& wallet)
     return static_cast<uint32_t>(*tip_height + 1);
 }
 
-/** Select the wallet's outputs of an asset, largest first, to cover an amount; returns their sum. */
-static CAmount SelectAsset(CWallet& wallet, const uint256& asset, CAmount amount, CCoinControl& coin_control) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+/** Select the wallet's outputs of an asset, largest first, to cover an amount at the
+ *  reference height of the transaction to spend them; returns their sum at that height,
+ *  and whether the asset carries demurrage. */
+static CAmount SelectAsset(CWallet& wallet, const uint256& asset, CAmount amount, uint32_t refheight, CCoinControl& coin_control, bool& demurrage) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     CoinFilterParams params;
     params.min_amount = 0;
     params.include_extension_outputs = true;
     CCoinControl list_control;
     std::vector<std::pair<CAmount, COutPoint>> held;
-    for (const COutput& out : AvailableCoinsListUnspent(wallet, NextHeight(wallet), &list_control, params).All()) {
+    demurrage = false;
+    for (const COutput& out : AvailableCoinsListUnspent(wallet, refheight, &list_control, params).All()) {
         AssetAmount a;
-        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET && a.asset == asset && IsCountedAssetOutput(wallet, out, NextHeight(wallet) - 1)) {
-            held.emplace_back(a.amount, out.outpoint);
+        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET && a.asset == asset && IsCountedAssetOutput(wallet, out, refheight - 1)) {
+            // an output from a later reference height could not be spent at this one
+            if (a.demurrage && out.refheight > refheight) continue;
+            held.emplace_back(AssetPresentValue(a.amount, a.demurrage, refheight - out.refheight), out.outpoint);
+            demurrage = a.demurrage;
         }
     }
     std::sort(held.begin(), held.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
@@ -511,13 +517,15 @@ RPCHelpMan issueasset()
         HELP_REQUIRING_PASSPHRASE,
         {
             {"amount", RPCArg::Type::NUM, RPCArg::Optional::NO, "The supply, in whole units of the asset"},
-            {"address", RPCArg::Type::STR, RPCArg::DefaultHint{"a new address of this wallet"}, "The native witness address to receive the supply"},
+            {"address", RPCArg::Type::STR, RPCArg::DefaultHint{"a new address of this wallet"}, "The native witness address to receive the supply (\"\" for a new one)"},
+            {"demurrage", RPCArg::Type::BOOL, RPCArg::Default{false}, "Whether the asset decays as " + CURRENCY_UNIT + " does (for a claim on " + CURRENCY_UNIT + "), fixed for good"},
         },
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::STR_HEX, "txid", "The transaction id"},
             {RPCResult::Type::STR_HEX, "asset", "The id of the asset issued"},
+            {RPCResult::Type::BOOL, "demurrage", "Whether it decays as " + CURRENCY_UNIT + " does"},
         }},
-        RPCExamples{HelpExampleCli("issueasset", "1000000") + HelpExampleRpc("issueasset", "1000000")},
+        RPCExamples{HelpExampleCli("issueasset", "1000000") + HelpExampleCli("issueasset", "1000000 \"\" true") + HelpExampleRpc("issueasset", "1000000")},
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
@@ -525,15 +533,18 @@ RPCHelpMan issueasset()
     pwallet->BlockUntilSyncedToCurrentChain();
     LOCK(pwallet->cs_wallet);
 
-    CRecipient recipient{AssetDestination(*pwallet, request.params[1], /*change=*/false), 0, false};
-    recipient.asset = AssetAmount{uint256::ZERO, ParseAssetAmount(request.params[0])};
+    const bool demurrage = !request.params[2].isNull() && request.params[2].get_bool();
+    const bool new_address = request.params[1].isNull() || request.params[1].get_str().empty();
+    CRecipient recipient{AssetDestination(*pwallet, new_address ? UniValue() : request.params[1], /*change=*/false), 0, false};
+    recipient.asset = AssetAmount{uint256::ZERO, ParseAssetAmount(request.params[0]), demurrage};
     std::vector<CRecipient> recipients{recipient};
     CCoinControl coin_control;
     const CTransactionRef tx = SendAssets(*pwallet, coin_control, recipients);
 
     UniValue result(UniValue::VOBJ);
     result.pushKV("txid", tx->GetHash().GetHex());
-    result.pushKV("asset", HexStr(AssetIssuanceId(tx->vin.at(0).prevout)));
+    result.pushKV("asset", HexStr(AssetIssuanceId(tx->vin.at(0).prevout, demurrage)));
+    result.pushKV("demurrage", demurrage);
     return result;
 },
     };
@@ -544,7 +555,7 @@ RPCHelpMan sendasset()
     return RPCHelpMan{"sendasset",
         "\nSend an amount of an asset this wallet holds to an address.  The asset outputs spent\n"
         "are chosen largest first, the rest of the asset returns to a new change address,\n"
-        "and the fee is paid in freicoin.\n" +
+        "and the fee is paid in freicoin.  An asset with demurrage is valued at the next block.\n" +
         HELP_REQUIRING_PASSPHRASE,
         {
             {"asset", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The id of the asset"},
@@ -565,14 +576,16 @@ RPCHelpMan sendasset()
     const CTxDestination dest = AssetDestination(*pwallet, request.params[2], /*change=*/false);
 
     CCoinControl coin_control;
-    const CAmount selected = SelectAsset(*pwallet, asset, amount, coin_control);
+    const uint32_t refheight = NextHeight(*pwallet);
+    bool demurrage = false;
+    const CAmount selected = SelectAsset(*pwallet, asset, amount, refheight, coin_control, demurrage);
 
     std::vector<CRecipient> recipients;
-    recipients.push_back(CRecipient{dest, 0, false, AssetAmount{asset, amount}});
+    recipients.push_back(CRecipient{dest, 0, false, AssetAmount{asset, amount, demurrage}});
     if (selected > amount) {
-        recipients.push_back(CRecipient{AssetDestination(*pwallet, UniValue(), /*change=*/true), 0, false, AssetAmount{asset, selected - amount}});
+        recipients.push_back(CRecipient{AssetDestination(*pwallet, UniValue(), /*change=*/true), 0, false, AssetAmount{asset, selected - amount, demurrage}});
     }
-    return SendAssets(*pwallet, coin_control, recipients)->GetHash().GetHex();
+    return SendAssets(*pwallet, coin_control, recipients, refheight)->GetHash().GetHex();
 },
     };
 }
@@ -650,7 +663,8 @@ RPCHelpMan pegout()
     const CAmount amount = ParseAssetAmount(request.params[0]);
     const CTxDestination dest = AssetDestination(*pwallet, request.params[1], /*change=*/false);
     CCoinControl coin_control;
-    const CAmount selected = SelectAsset(*pwallet, ScripAssetId(), amount, coin_control);
+    bool demurrage = false;
+    const CAmount selected = SelectAsset(*pwallet, ScripAssetId(), amount, NextHeight(*pwallet), coin_control, demurrage);
 
     std::vector<CRecipient> recipients;
     recipients.push_back(CRecipient{dest, 0, false, std::nullopt, LedgerExtension(EXTENSION_PEGOUT, amount)});

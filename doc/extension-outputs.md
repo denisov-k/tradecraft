@@ -29,7 +29,7 @@ The owner of the output is its witness program, as before: old nodes require the
 
 | version | name | payload | output value |
 |---|---|---|---|
-| `0x01` | asset | asset id (32) ‖ amount (int64 LE) | 0 |
+| `0x01` | asset | asset id (32) ‖ amount (int64 LE) [‖ `0x01`: demurrage] | 0 |
 | `0x02` | pool | scrip (int64 LE) | the freicoin backing it |
 | `0x03` | peg-in | 0 (int64) | the freicoin paid in |
 | `0x04` | peg-out | scrip (int64 LE) | 0 |
@@ -47,12 +47,21 @@ counts for nothing.
 ## 3. Assets (`0x01`)
 
 - An asset output holds no freicoin (`bad-txns-asset-nonzero-value`); its amount is 1..`MAX_MONEY`.
-- A transaction issues exactly one asset: `id = TaggedHash("Freicoin/asset-issuance", vin[0].prevout)`,
+- A transaction issues an asset: `id = TaggedHash("Freicoin/asset-issuance", vin[0].prevout [‖ 0x01])`,
   in any amount and number of outputs.  The outpoint is spent once, so every asset is issued once and its
   supply is fixed.  A coinbase issues nothing.
 - For every other asset the outputs carry no more than the inputs (`bad-txns-asset-in-belowout`); the rest
   is burned.  Several assets may move in one transaction, so a swap is one transaction.
-- Assets carry no demurrage: the amount is the amount, whatever the reference height.
+- **Demurrage.**  An asset carries none by default: the amount is the amount, whatever the reference
+  height.  An asset issued with demurrage (the flag byte `0x01` after the amount) decays exactly as
+  freicoin does, by freicoin's own kernel (`GetTimeAdjustedValue`), from the output's reference height
+  (the lock height of its transaction).  That is what a claim on freicoin needs (an exchange deposit, an
+  IOU, a pool share): one that kept its amount while freicoin decayed would pay to hold instead of the
+  coins.  The id commits to the flag, every output and input of an asset agrees on it
+  (`bad-txns-asset-demurrage`), and scrip has none.  Inputs are valued at the transaction's lock height,
+  which may not be below such an input's reference height (`bad-txns-asset-lock-height`; zero-value
+  outputs are otherwise exempt from monotonicity).  Other rates (Freimarkets) are not supported; a
+  later extension version could add them as a soft fork.
 - Policy: an asset output and a peg-out are not dust; a peg-in may pay the (otherwise nonstandard) ledger program.
 
 Code: `src/consensus/assets.{h,cpp}` (`GetAssetOutput`, `AssetIssuanceId`, `Consensus::CheckTxAssets`),
@@ -123,8 +132,9 @@ with them, without the share carrying them (branch `sharechain-ledger`).
 - Automatic coin selection and `sendall` never spend extension outputs (they would burn the asset);
   ledger outputs are never offered at all.  `bumpfee` and `fundrawtransaction` keep asset outputs as they
   are; asset change is never folded into freicoin change.
-- RPCs: `issueasset`, `sendasset`, `getassetbalances`, `pegin`, `pegout`; `listunspent` shows `asset` and
-  `asset_amount`.  Asset outputs go to native witness addresses only.  Fees are paid in freicoin.
+- RPCs: `issueasset` (with an optional `demurrage`), `sendasset`, `getassetbalances`, `pegin`, `pegout`;
+  `listunspent` shows `asset` and `asset_amount`, and for an asset with demurrage `asset_demurrage` and
+  `asset_present`.  Balances and sends value such an asset at the next block.  Asset outputs go to native witness addresses only.  Fees are paid in freicoin.
 
 `scrip-interface` (separate, no consensus): with `-scrip` the wallet RPCs report and accept amounts in
 scrip, valuing each output at its reference height, so held amounts are constant; RPCs that cannot do this
@@ -160,5 +170,5 @@ The epoch is `SCRIP_EPOCH = 5040000`, as already in `consensus/amount.cpp`.
 
 ## 9. Questions
 
-1. **Rates on assets?**  User-issued assets carry no demurrage here.  Should an asset be able to carry its
-   own rate (as in Freimarkets), or are assets meant to sit outside the demurrage kernel?
+1. **Rates on assets.**  An asset may decay as freicoin does, or not at all (§3), which is what a claim on
+   freicoin needs.  Do you want the Freimarkets rates (any rate, or interest) on chain as well?

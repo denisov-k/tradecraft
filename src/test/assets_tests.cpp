@@ -54,11 +54,12 @@ struct Fixture {
         return prevout;
     }
 
-    bool Check(const std::vector<COutPoint>& in, const std::vector<CTxOut>& out, std::string& reason, int asset_height = 100)
+    bool Check(const std::vector<COutPoint>& in, const std::vector<CTxOut>& out, std::string& reason, int asset_height = 100, uint32_t lock_height = 0)
     {
         CMutableTransaction tx;
         for (const COutPoint& prevout : in) tx.vin.emplace_back(prevout);
         tx.vout = out;
+        tx.lock_height = lock_height;
         TxValidationState state;
         const bool ok = Consensus::CheckTxAssets(CTransaction(tx), view, asset_height, state);
         reason = state.GetRejectReason();
@@ -169,6 +170,69 @@ BOOST_AUTO_TEST_CASE(asset_output_rules)
     TxValidationState state;
     BOOST_CHECK(!Consensus::CheckTxAssets(CTransaction(cb), f.view, 100, state));
     BOOST_CHECK_EQUAL(state.GetRejectReason(), "bad-txns-asset-coinbase");
+}
+
+BOOST_AUTO_TEST_CASE(asset_demurrage)
+{
+    Fixture f;
+    std::string reason;
+    const uint256 asset{0xab};
+    AssetAmount a;
+
+    // the value: freicoin's, or the amount
+    BOOST_CHECK_EQUAL(AssetPresentValue(MAX_MONEY, false, 1000000), MAX_MONEY);
+    BOOST_CHECK_EQUAL(AssetPresentValue(MAX_MONEY, true, 0), MAX_MONEY);
+    for (const uint32_t distance : {1u, 1000u, 52560u, 30000000u}) {
+        BOOST_CHECK_EQUAL(AssetPresentValue(MAX_MONEY, true, distance), GetTimeAdjustedValue(MAX_MONEY, static_cast<int>(distance)));
+    }
+    BOOST_CHECK_LT(AssetPresentValue(COIN, true, 52560), COIN);
+
+    // the flag rides in one more byte, absent without demurrage
+    BOOST_CHECK_EQUAL(AssetExtension({asset, 5}).size(), ASSET_EXTENSION_SIZE);
+    BOOST_CHECK_EQUAL(AssetExtension({asset, 5, true}).size(), ASSET_EXTENSION_SIZE_DEMURRAGE);
+    BOOST_CHECK(GetAssetOutput(CTxOut(0, WitnessScript(AssetExtension({asset, 5, true}))), a) == AssetOutputType::ASSET);
+    BOOST_CHECK(a.demurrage);
+    BOOST_CHECK_EQUAL(a.amount, 5);
+    BOOST_CHECK(GetAssetOutput(AssetOut(asset, 5), a) == AssetOutputType::ASSET);
+    BOOST_CHECK(!a.demurrage);
+    for (const unsigned char flag : {0x00, 0x02, 0x14}) {
+        std::vector<unsigned char> bad = AssetExtension({asset, 5, true});
+        bad.back() = flag;
+        BOOST_CHECK(GetAssetOutput(CTxOut(0, WitnessScript(bad)), a) == AssetOutputType::MALFORMED);
+    }
+
+    // the id commits to it: issuing the other way than the id's is no issuance
+    const COutPoint fund = f.Add(CTxOut(COIN, WitnessScript()), 150);
+    const uint256 id = AssetIssuanceId(fund, true);
+    BOOST_CHECK(id != AssetIssuanceId(fund));
+    const auto out = [&](CAmount amount, bool decays = true) { return CTxOut(0, WitnessScript(AssetExtension({id, amount, decays}))); };
+    BOOST_CHECK(f.Check({fund}, {out(1000)}, reason, 100, 150));
+    BOOST_CHECK(!f.Check({fund}, {out(1000, false)}, reason, 100, 150));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-asset-in-belowout");
+    BOOST_CHECK(!f.Check({fund}, {out(1000), out(1, false)}, reason, 100, 150));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-asset-demurrage");
+
+    // a holding decays from its reference height: spent at its present value
+    const COutPoint fee = f.Add(CTxOut(COIN, WitnessScript()), 150);
+    const CAmount held = 1000000000;
+    const COutPoint hold = f.Add(out(held), 150);
+    BOOST_CHECK(f.Check({fee, hold}, {out(held)}, reason, 100, 150));
+    const CAmount later = GetTimeAdjustedValue(held, 1000);
+    BOOST_CHECK_LT(later, held);
+    BOOST_CHECK(f.Check({fee, hold}, {out(later - 1), out(1)}, reason, 100, 1150));
+    BOOST_CHECK(!f.Check({fee, hold}, {out(later), out(1)}, reason, 100, 1150));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-asset-in-belowout");
+    // valued at the lock height, which may not go back
+    BOOST_CHECK(!f.Check({fee, hold}, {out(held)}, reason, 100, 149));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-asset-lock-height");
+    // the demurrage goes with the asset
+    BOOST_CHECK(!f.Check({fee, hold}, {out(later, false)}, reason, 100, 1150));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-asset-demurrage");
+    // scrip has none
+    const COutPoint scrip = f.Add(AssetOut(ScripAssetId(), 500), 150);
+    BOOST_CHECK(f.Check({fee, scrip}, {AssetOut(ScripAssetId(), 500)}, reason, 100, 150));
+    BOOST_CHECK(!f.Check({fee, scrip}, {CTxOut(0, WitnessScript(AssetExtension({ScripAssetId(), 500, true})))}, reason, 100, 150));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-asset-demurrage");
 }
 
 BOOST_AUTO_TEST_CASE(asset_claims_before_activation)

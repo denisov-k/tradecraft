@@ -33,7 +33,12 @@ AssetOutputType GetAssetOutput(const CTxOut& txout, AssetAmount& out)
     if (!txout.scriptPubKey.GetExtensionOutput(ext) || ext.empty() || ext[0] != EXTENSION_ASSET) {
         return AssetOutputType::NONE;
     }
-    if (ext.size() != ASSET_EXTENSION_SIZE) {
+    // one encoding each: no demurrage has no flag byte
+    if (ext.size() == ASSET_EXTENSION_SIZE) {
+        out.demurrage = false;
+    } else if (ext.size() == ASSET_EXTENSION_SIZE_DEMURRAGE && ext.back() == ASSET_DEMURRAGE) {
+        out.demurrage = true;
+    } else {
         return AssetOutputType::MALFORMED;
     }
     std::copy(ext.begin() + 1, ext.begin() + 33, out.asset.begin());
@@ -43,17 +48,26 @@ AssetOutputType GetAssetOutput(const CTxOut& txout, AssetAmount& out)
 
 std::vector<unsigned char> AssetExtension(const AssetAmount& amount)
 {
-    std::vector<unsigned char> ext(ASSET_EXTENSION_SIZE);
+    std::vector<unsigned char> ext(amount.demurrage ? ASSET_EXTENSION_SIZE_DEMURRAGE : ASSET_EXTENSION_SIZE);
     ext[0] = EXTENSION_ASSET;
     std::copy(amount.asset.begin(), amount.asset.end(), ext.begin() + 1);
     WriteLE64(ext.data() + 33, static_cast<uint64_t>(amount.amount));
+    if (amount.demurrage) ext.back() = ASSET_DEMURRAGE;
     return ext;
 }
 
-uint256 AssetIssuanceId(const COutPoint& prevout)
+CAmount AssetPresentValue(CAmount amount, bool demurrage, uint32_t distance)
+{
+    return demurrage ? GetTimeAdjustedValue(amount, static_cast<int>(distance)) : amount;
+}
+
+uint256 AssetIssuanceId(const COutPoint& prevout, bool demurrage)
 {
     static const HashWriter HASHER_ISSUANCE{TaggedHash("Freicoin/asset-issuance")};
-    return (HashWriter{HASHER_ISSUANCE} << prevout).GetSHA256();
+    HashWriter hasher{HASHER_ISSUANCE};
+    hasher << prevout;
+    if (demurrage) hasher << ASSET_DEMURRAGE;
+    return hasher.GetSHA256();
 }
 
 uint256 ScripAssetId()
@@ -227,6 +241,12 @@ bool Consensus::CheckBlockLedger(const CBlock& block, const BlockLedger& ledger,
 bool Consensus::CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inputs, int asset_height, TxValidationState& state, bool block_final)
 {
     std::map<uint256, CAmount> value_out;
+    // every output and input of an asset agrees on its demurrage (scrip has none)
+    std::map<uint256, bool> demurrage;
+    const auto demurrage_ok = [&](const uint256& asset, bool decays) {
+        if (asset == ScripAssetId()) return !decays;
+        return demurrage.emplace(asset, decays).first->second == decays;
+    };
     CAmount minted = 0;
     for (const CTxOut& txout : tx.vout) {
         CAmount ledger_amount = 0;
@@ -287,6 +307,9 @@ bool Consensus::CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inp
         if (a.amount <= 0 || a.amount > MAX_MONEY) {
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-amount-outofrange");
         }
+        if (!demurrage_ok(a.asset, a.demurrage)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-demurrage");
+        }
         CAmount& sum = value_out[a.asset];
         sum += a.amount;
         if (!MoneyRange(sum)) {
@@ -318,17 +341,26 @@ bool Consensus::CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inp
         }
         AssetAmount a;
         if (GetAssetOutput(coin.out, a) != AssetOutputType::ASSET) continue;
+        if (!demurrage_ok(a.asset, a.demurrage)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-demurrage");
+        }
+        // An asset with demurrage is valued at the lock height, which may not go back
+        // before the input's reference height (zero-value outputs are otherwise exempt).
+        if (a.demurrage && tx.lock_height < coin.refheight) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-lock-height");
+        }
         CAmount& sum = value_in[a.asset];
-        sum += a.amount;
+        sum += AssetPresentValue(a.amount, a.demurrage, tx.lock_height - coin.refheight);
         if (!MoneyRange(sum)) {
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-inputs-outofrange");
         }
     }
 
     // An asset input with no asset output is burned, which needs no check.
-    const uint256 issued = AssetIssuanceId(tx.vin[0].prevout);
     for (const auto& [asset, amount] : value_out) {
-        if (asset == issued) continue; // the issuance: any supply, once
+        // the issuance: any supply, once (with the demurrage the id commits to)
+        const auto decays = demurrage.find(asset);
+        if (decays != demurrage.end() && asset == AssetIssuanceId(tx.vin[0].prevout, decays->second)) continue;
         const auto it = value_in.find(asset);
         if (it == value_in.end() || it->second < amount) {
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-asset-in-belowout",
