@@ -4769,38 +4769,42 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             return;
         }
         size_t accepted = 0, dup = 0, invalid = 0, missing_n = 0;
-        {
+        // With no chain of our own yet, a chain share whose anchor is neither known nor
+        // anywhere in the batch is the peer's pruned base, and becomes ours.  (One whose
+        // anchor is in the batch merely waits for it, e.g. for a Freicoin block we lack.)
+        // ... and only from the batch that answers our request, which starts at the
+        // peer's base; a later batch continues a chain whose start we failed to accept.
+        const bool fresh = first_batch && WITH_LOCK(::cs_main, return g_sharechainman->ActiveHeight() < 0);
+        std::set<uint256> in_batch;
+        for (const ShareMessage& m : batch) {
+            if (m.has_body) in_batch.insert(m.share.GetHash());
+        }
+        const auto allow_base = [&](const ShareMessage& m) { return fresh && m.has_body && !in_batch.count(m.share.anchor); };
+        // cs_main is taken per share, not for the batch: each share is accepted or
+        // refused on its own, and a batch of 500 took long enough (a window walk per
+        // chain share) that the GUI and every RPC waited for the whole of it.  (Seen
+        // live: the Qt "not responding" for minutes on a laptop catching up.)
+        for (const ShareMessage& m : batch) {
+            std::vector<uint256> missing;
+            std::string reason;
             LOCK(::cs_main);
-            // With no chain of our own yet, a chain share whose anchor is neither known nor
-            // anywhere in the batch is the peer's pruned base, and becomes ours.  (One whose
-            // anchor is in the batch merely waits for it, e.g. for a Freicoin block we lack.)
-            // ... and only from the batch that answers our request, which starts at the
-            // peer's base; a later batch continues a chain whose start we failed to accept.
-            const bool fresh = first_batch && g_sharechainman->ActiveHeight() < 0;
-            std::set<uint256> in_batch;
-            for (const ShareMessage& m : batch) {
-                if (m.has_body) in_batch.insert(m.share.GetHash());
+            switch (g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false, allow_base(m))) {
+            case ShareAccept::ACCEPTED: ++accepted; break;
+            case ShareAccept::DUPLICATE: ++dup; break;
+            case ShareAccept::MISSING: ++missing_n; g_sharechainman->AddOrphan(m); break;
+            case ShareAccept::INVALID: ++invalid; break;
             }
-            const auto allow_base = [&](const ShareMessage& m) { return fresh && m.has_body && !in_batch.count(m.share.anchor); };
-            for (const ShareMessage& m : batch) {
+        }
+        // dependencies inside the batch may have been out of order
+        if (missing_n) {
+            const std::vector<ShareMessage> retry = WITH_LOCK(::cs_main, return g_sharechainman->TakeOrphans());
+            for (const ShareMessage& m : retry) {
                 std::vector<uint256> missing;
                 std::string reason;
-                switch (g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false, allow_base(m))) {
-                case ShareAccept::ACCEPTED: ++accepted; break;
-                case ShareAccept::DUPLICATE: ++dup; break;
-                case ShareAccept::MISSING: ++missing_n; g_sharechainman->AddOrphan(m); break;
-                case ShareAccept::INVALID: ++invalid; break;
-                }
-            }
-            // dependencies inside the batch may have been out of order
-            if (missing_n) {
-                for (const ShareMessage& m : g_sharechainman->TakeOrphans()) {
-                    std::vector<uint256> missing;
-                    std::string reason;
-                    const ShareAccept r = g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false, allow_base(m));
-                    if (r == ShareAccept::ACCEPTED) { ++accepted; --missing_n; }
-                    else if (r == ShareAccept::MISSING) g_sharechainman->AddOrphan(m);
-                }
+                LOCK(::cs_main);
+                const ShareAccept r = g_sharechainman->ProcessShareMessage(m, missing, reason, /*live=*/false, allow_base(m));
+                if (r == ShareAccept::ACCEPTED) { ++accepted; --missing_n; }
+                else if (r == ShareAccept::MISSING) g_sharechainman->AddOrphan(m);
             }
         }
         LogPrint(BCLog::NET, "shares batch from peer=%d: %d accepted, %d duplicate, %d invalid, %d waiting\n", pfrom.GetId(), accepted, dup, invalid, missing_n);
