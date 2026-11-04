@@ -140,7 +140,11 @@ class ScripLedgerTest(FreicoinTestFramework):
         self.log.info("Reorg: the ledger blocks undone, their transactions back, the same ledger again")
         self.node.invalidateblock(pegin2_hash)
         assert_equal(self.node.getbestblockhash(), pegin1_hash)
-        assert_equal(sorted(self.node.getrawmempool()), sorted([pending.hash, out1.hash, out2.hash]))
+        mempool = self.node.getrawmempool()
+        back = {"the second peg-in": pending, "the peg-out": out1, "the peg-out of the rest": out2}
+        missing = {name: self.node.testmempoolaccept([tx.serialize().hex()])[0] for name, tx in back.items() if tx.hash not in mempool}
+        assert not missing, missing
+        assert_equal(len(mempool), 3)
         height = self.node.getblockcount() + 1
         expected = sorted([self.node.convertscrip(part, "freicoin", height)["amount"],
                            self.node.convertscrip(minted - part, "freicoin", height)["amount"]])
