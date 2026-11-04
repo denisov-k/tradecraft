@@ -39,6 +39,7 @@ private:
     void refresh();
     void applyRefresh(const UniValue& info, const UniValue& credits, bool got_credits);
     void applyMode();
+    void sendFruit();
     Mode configuredMode() const;
     QString configuredAddress() const;
 
@@ -70,6 +71,7 @@ private:
     QGroupBox* m_fruit_box;
     QLabel* m_fruit_summary;
     QTableWidget* m_fruit;
+    QPushButton* m_send_fruit;
 };
 
 #endif // FREICOIN_QT_MININGPAGE_H

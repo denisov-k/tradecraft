@@ -5,6 +5,7 @@
 
 #include <interfaces/node.h>
 #include <interfaces/wallet.h>
+#include <key.h>
 #include <key_io.h>
 #include <outputtype.h>
 #include <qt/clientmodel.h>
@@ -13,14 +14,20 @@
 #include <qt/walletmodel.h>
 
 #include <univalue.h>
+#include <util/strencodings.h>
 
 #include <QApplication>
 #include <QButtonGroup>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QNetworkInterface>
@@ -32,6 +39,7 @@
 #include <QVBoxLayout>
 
 #include <set>
+#include <stdexcept>
 #include <thread>
 
 #include <QPointer>
@@ -211,6 +219,13 @@ MiningPage::MiningPage(const PlatformStyle* platform_style, QWidget* parent)
     m_fruit->setSelectionMode(QAbstractItemView::NoSelection);
     m_fruit->setMinimumHeight(90);
     fruit_layout->addWidget(m_fruit);
+    m_send_fruit = new QPushButton(tr("Send fruit to another address..."));
+    m_send_fruit->setToolTip(tr("Move this wallet's fruit to another address, for example another wallet of yours."));
+    m_send_fruit->setEnabled(false);
+    auto* send_row = new QHBoxLayout();
+    send_row->addStretch();
+    send_row->addWidget(m_send_fruit);
+    fruit_layout->addLayout(send_row);
     layout->addWidget(m_fruit_box);
     layout->addStretch();
 
@@ -233,6 +248,7 @@ MiningPage::MiningPage(const PlatformStyle* platform_style, QWidget* parent)
         m_mode_note->setVisible(true);
     });
     connect(m_apply, &QPushButton::clicked, [this] { applyMode(); });
+    connect(m_send_fruit, &QPushButton::clicked, [this] { sendFruit(); });
     connect(m_timer, &QTimer::timeout, [this] { if (isVisible()) refresh(); });
     m_timer->start(5000);
 }
@@ -454,9 +470,121 @@ void MiningPage::applyRefresh(const UniValue& info, const UniValue& credits_in, 
             m_fruit->setItem(row, 2, new QTableWidgetItem(QString::number((e["share"].isNum() ? e["share"].get_real() : 0) * 100, 'f', 2) + "%"));
             m_fruit->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(e["payout"].getValStr()) + " FRC"));
         }
+        m_send_fruit->setEnabled(m_fruit->rowCount() > 0);
         if (m_fruit->rowCount() == 0) {
             m_fruit->insertRow(0);
             m_fruit->setItem(0, 0, new QTableWidgetItem(tr("No fruit yet: it appears a few minutes after your miner starts finding shares.")));
         }
     }
+}
+
+void MiningPage::sendFruit()
+{
+    if (!m_client_model || !m_wallet_model || !m_have_credits) return;
+
+    // This wallet's addresses that hold fruit in the share chain window.
+    struct Own { QString address; int64_t fruits; QString payout; };
+    std::vector<Own> own;
+    const UniValue& list = m_last_credits["credits"];
+    for (size_t i = 0; list.isArray() && i < list.size(); ++i) {
+        const UniValue& e = list[i];
+        const std::string a = e["address"].isStr() ? e["address"].get_str() : "";
+        if (a.empty() || !m_wallet_model->wallet().isSpendable(DecodeDestination(a))) continue;
+        own.push_back({QString::fromStdString(a), e["fruits"].isNum() ? e["fruits"].getInt<int64_t>() : 0,
+                       QString::fromStdString(e["payout"].getValStr())});
+    }
+    if (own.empty()) {
+        QMessageBox::information(this, tr("Send fruit"), tr("This wallet has no fruit in the share chain window yet."));
+        return;
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("Send fruit"));
+    auto* v = new QVBoxLayout(&dlg);
+    auto* intro = new QLabel(tr("Move all the fruit one of this wallet's addresses holds in the share chain window to another "
+                                "address, for example to another wallet of yours. From the next chain share on (about a minute), "
+                                "the block rewards for that fruit go to the new address.\n\n"
+                                "This cannot be undone: only the new address's wallet can move the fruit again."));
+    intro->setWordWrap(true);
+    v->addWidget(intro);
+    auto* form = new QFormLayout();
+    auto* from = new QComboBox();
+    for (const Own& o : own) {
+        from->addItem(tr("%1  (%2 fruit, %3 FRC if a block lands now)").arg(o.address).arg(o.fruits).arg(o.payout), o.address);
+    }
+    form->addRow(tr("From:"), from);
+    auto* to = new QLineEdit();
+    to->setPlaceholderText(tr("Freicoin address (fc1...)"));
+    to->setFont(GUIUtil::fixedPitchFont());
+    form->addRow(tr("To:"), to);
+    v->addLayout(form);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("Send fruit"));
+    v->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    dlg.resize(640, dlg.sizeHint().height());
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    const QString from_addr = from->currentData().toString();
+    const QString to_addr = to->text().trimmed();
+    const CTxDestination from_dest = DecodeDestination(from_addr.toStdString());
+    const CTxDestination to_dest = DecodeDestination(to_addr.toStdString());
+    if (!IsValidDestination(to_dest)) {
+        QMessageBox::warning(this, tr("Send fruit"), tr("\"%1\" is not a valid Freicoin address.").arg(to_addr));
+        return;
+    }
+    if (GetScriptForDestination(to_dest) == GetScriptForDestination(from_dest)) {
+        QMessageBox::warning(this, tr("Send fruit"), tr("That is the same address the fruit is already at."));
+        return;
+    }
+    const auto answer = QMessageBox::question(this, tr("Confirm send fruit"),
+        tr("Send all the fruit at\n%1\n\nto\n%2\n\nCheck the address carefully: this cannot be undone.").arg(from_addr, to_addr),
+        QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+    if (answer != QMessageBox::Yes) return;
+
+    WalletModel::UnlockContext ctx(m_wallet_model->requestUnlock());
+    if (!ctx.isValid()) return;
+    CKey key;
+    if (!m_wallet_model->wallet().getShareKey(from_dest, key)) {
+        QMessageBox::critical(this, tr("Send fruit"), tr("Could not find this address's key in the wallet."));
+        return;
+    }
+
+    interfaces::Node& node = m_client_model->node();
+    QString error;
+    std::string txid;
+    try {
+        UniValue p(UniValue::VARR);
+        p.push_back(HexStr(key.GetPubKey()));
+        p.push_back(to_addr.toStdString());
+        const UniValue built = node.executeRpc("createsharetransfer", p, "");
+        // The transfer must take the fruit from the address chosen above.
+        if (GetScriptForDestination(DecodeDestination(built["from"].get_str())) != GetScriptForDestination(from_dest)) {
+            throw std::runtime_error("the transfer's owner does not match the chosen address");
+        }
+        const std::vector<unsigned char> sighash = ParseHex(built["sighash"].get_str());
+        if (sighash.size() != 32) throw std::runtime_error("unexpected signature hash");
+        std::vector<unsigned char> sig;
+        if (!key.Sign(uint256{Span<const unsigned char>{sighash}}, sig)) throw std::runtime_error("signing failed");
+        UniValue c(UniValue::VARR);
+        c.push_back(built["hex"].get_str());
+        c.push_back(HexStr(sig));
+        const UniValue signed_tx = node.executeRpc("completesharetx", c, "");
+        UniValue s(UniValue::VARR);
+        s.push_back(signed_tx["hex"].get_str());
+        txid = node.executeRpc("sendsharetx", s, "").get_str();
+    } catch (const UniValue& e) {
+        error = QString::fromStdString(e.find_value("message").isStr() ? e.find_value("message").get_str() : e.write());
+    } catch (const std::exception& e) {
+        error = QString::fromStdString(e.what());
+    }
+    if (!error.isEmpty()) {
+        QMessageBox::critical(this, tr("Send fruit"), tr("The fruit was not sent: %1").arg(error));
+        return;
+    }
+    QMessageBox::information(this, tr("Send fruit"),
+        tr("Sent. The fruit moves to the new address from the next chain share (about a minute); "
+           "the table here updates after that.\n\nShare transaction: %1").arg(QString::fromStdString(txid)));
+    m_have_credits = false; // fetch the credits again on the next refresh
 }

@@ -179,6 +179,17 @@ public:
         }
         return false;
     }
+    bool getShareKey(const CTxDestination& dest, CKey& key) override
+    {
+        LOCK(m_wallet->cs_wallet);
+        const CScript script = GetScriptForDestination(dest);
+        for (ScriptPubKeyMan* spk_man : m_wallet->GetScriptPubKeyMans(script)) {
+            if (auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+                if (desc->GetKeyForScript(script, key)) return true;
+            }
+        }
+        return false;
+    }
     SigningResult signMessage(const std::string& message, const PKHash& pkhash, std::string& str_sig) override
     {
         return m_wallet->SignMessage(message, pkhash, str_sig);
