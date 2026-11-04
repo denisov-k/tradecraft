@@ -193,6 +193,9 @@ public:
         // Whether to call TestBlockValidity() at the end of CreateNewBlock().
         bool test_block_validity{true};
         bool print_modified_fee{DEFAULT_PRINT_MODIFIED_FEE};
+        // Leave out transactions with peg-outs: their payouts are coinbase outputs, which a
+        // share's coinbase (payouts and commitment only) cannot carry yet.
+        bool exclude_pegouts{false};
     };
 
     explicit BlockAssembler(Chainstate& chainstate, const CTxMemPool* mempool, const Options& options);

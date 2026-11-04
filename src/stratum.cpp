@@ -613,6 +613,9 @@ std::string GetWorkUnit(StratumClient& client) EXCLUSIVE_LOCKS_REQUIRED(cs_strat
         // Update block template
         const CScript script = CScript() << OP_FALSE;
         node::BlockAssembler::Options assembler_options;
+        // A block found through the share chain is also a share, whose coinbase holds
+        // only the share payouts and the commitment: no room for peg-out payouts yet.
+        assembler_options.exclude_pegouts = g_context->sharechainman != nullptr;
         std::unique_ptr<node::CBlockTemplate> new_work;
         new_work = node::BlockAssembler(g_context->chainman->ActiveChainstate(), &mempool, assembler_options).CreateNewBlock(script);
         if (!new_work) {
