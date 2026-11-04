@@ -47,6 +47,12 @@ class ScripLedgerTest(FreicoinTestFramework):
         tx.rehash()
         return tx
 
+    def fee_utxo(self):
+        """The wallet's oldest coin: MiniWallet hands out coinbases at exactly maturity,
+        which the reorg below would make immature again."""
+        oldest = min(self.wallet.get_utxos(mark_as_spent=False), key=lambda u: u["height"] if u["height"] > 0 else 1 << 30)
+        return self.wallet.get_utxo(txid=oldest["txid"], vout=oldest["vout"])
+
     def utxo(self, tx, vout, value=0):
         return {"txid": tx.hash, "vout": vout, "value": Decimal(value) / COIN, "refheight": tx.lock_height}
 
@@ -72,7 +78,7 @@ class ScripLedgerTest(FreicoinTestFramework):
         self.scrip = bytes.fromhex(self.node.convertscrip(0)["asset"])
 
         self.log.info("Peg in: freicoin paid to the pool mints its scrip value, no more")
-        fund = self.wallet.get_utxo()
+        fund = self.fee_utxo()
         pay_in = int(fund["value"] * COIN) // 2
         tx = self.spend([fund], [], pay_in=pay_in)
         minted = self.node.convertscrip(pay_in, "scrip", tx.lock_height)["amount"]
@@ -89,14 +95,14 @@ class ScripLedgerTest(FreicoinTestFramework):
         pegin1_hash = block["hash"]
 
         self.log.info("The pool and peg-ins are not anyone's to spend")
-        fee = self.wallet.get_utxo()
+        fee = self.fee_utxo()
         pending = self.spend([fee], [pegin, self.scrip_out(1)], pay_in=pay_in // 4)
         pending.vout[1].nValue = pay_in // 4
         pending.rehash()
         self.send(pending)
         # the pool records what a peg-in may mint; what it leaves unminted never exists
         minted2 = self.node.convertscrip(pay_in // 4, "scrip", pending.lock_height)["amount"]
-        self.reject(self.spend([self.wallet.get_utxo(), self.utxo(pending, 1, pay_in // 4)], []), "bad-txns-ledger-spend")
+        self.reject(self.spend([self.fee_utxo(), self.utxo(pending, 1, pay_in // 4)], []), "bad-txns-ledger-spend")
         block = self.node.getblock(self.generate(self.node, 1)[0], 2)
         pool_value2, pool_scrip2 = self.final_pool(block)
         pegin2_hash = block["hash"]
@@ -106,7 +112,7 @@ class ScripLedgerTest(FreicoinTestFramework):
         self.log.info("Peg out: scrip burned, its freicoin value paid by the coinbase")
         dest = bytes(self.wallet.get_scriptPubKey())
         part = minted // 3
-        fee = self.wallet.get_utxo()
+        fee = self.fee_utxo()
         self.reject(self.spend([fee, holding], [CTxOut(0, dest + ledger_ext(0x04, minted + 1))]), "bad-txns-asset-in-belowout")
         self.reject(self.spend([fee, holding], [CTxOut(1000, dest + ledger_ext(0x04, part))]), "bad-txns-pegout-nonzero-value")
         tx = self.spend([fee, holding], [CTxOut(0, dest + ledger_ext(0x04, part)), self.scrip_out(minted - part)])
@@ -119,11 +125,11 @@ class ScripLedgerTest(FreicoinTestFramework):
         _, pool_scrip3 = self.final_pool(block)
         assert_equal(pool_scrip3, minted + minted2 - part)
         out1 = tx
-        self.reject(self.spend([self.wallet.get_utxo(), self.utxo(tx, 1)], []), "bad-txns-pegout-spend")
+        self.reject(self.spend([self.fee_utxo(), self.utxo(tx, 1)], []), "bad-txns-pegout-spend")
 
         self.log.info("Peg out the rest of the first peg-in")
         rest = self.utxo(tx, 2)
-        fee = self.wallet.get_utxo()
+        fee = self.fee_utxo()
         tx = self.spend([fee, rest], [CTxOut(0, dest + ledger_ext(0x04, minted - part))])
         self.send(tx)
         block = self.node.getblock(self.generate(self.node, 1)[0], 2)
