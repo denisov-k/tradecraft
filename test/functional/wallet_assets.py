@@ -15,6 +15,9 @@
 """Test the wallet with user-issued assets: issueasset, sendasset,
 getassetbalances, and that freicoin spending never touches asset outputs."""
 
+from decimal import Decimal
+
+from test_framework.messages import COIN
 from test_framework.test_framework import FreicoinTestFramework
 from test_framework.util import (
     assert_equal,
@@ -81,6 +84,39 @@ class WalletAssetsTest(FreicoinTestFramework):
         self.sync_mempools()
         self.generate(issuer, 1)
         assert_equal(issuer.getassetbalances(), {asset: 950, other: 5})
+
+        self.log.info("An asset with demurrage decays as freicoin does")
+        # With the same amount of freicoin, demurrage at the same heights gives the same value.
+        supply = 10**9
+        twin = issuer.getnewaddress()
+        res = issuer.issueasset(supply, "", True)
+        assert_equal(res["demurrage"], True)
+        rated = res["asset"]
+        twin_txid = issuer.sendtoaddress(twin, Decimal(supply) / COIN)
+        self.sync_mempools()
+        self.generate(issuer, 1)
+        refheight = issuer.getblockcount()
+        [u] = [u for u in issuer.listunspent() if u.get("asset") == rated]
+        assert_equal((u["asset_amount"], u["asset_demurrage"], u["refheight"]), (supply, True, refheight))
+        [t] = [t for t in issuer.listunspent() if t["txid"] == twin_txid and t["address"] == twin]
+        assert_equal(t["refheight"], refheight)
+        assert_equal(u["asset_present"], int(t["amount"] * COIN))
+        assert_equal(issuer.getassetbalances()[rated], int(t["amount"] * COIN))
+        assert "asset_demurrage" not in [u for u in issuer.listunspent() if u.get("asset") == asset][0]
+
+        self.generate(issuer, 50)
+        balance = issuer.getassetbalances()[rated]
+        [t] = [t for t in issuer.listunspent() if t["txid"] == twin_txid and t["address"] == twin]
+        assert_equal(balance, int(t["amount"] * COIN))
+        assert balance < supply
+        assert_raises_rpc_error(-6, "Insufficient asset", issuer.sendasset, rated, balance + 1, holder.getnewaddress())
+        issuer.sendasset(rated, balance, holder.getnewaddress())  # all of it: no change
+        self.sync_mempools()
+        self.generate(issuer, 1)
+        assert rated not in issuer.getassetbalances()
+        [u] = [u for u in holder.listunspent() if u.get("asset") == rated]
+        assert_equal((u["asset_amount"], u["asset_demurrage"]), (balance, True))
+        assert holder.getassetbalances()[rated] < balance
 
         self.log.info("Spending all the freicoin leaves the assets alone")
         issuer.sendall([holder.getnewaddress()])

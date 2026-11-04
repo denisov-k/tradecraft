@@ -52,6 +52,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "getnetworkhashps", 0, "height" },
     { "sendtoaddress", 1, "amount" },
     { "issueasset", 0, "amount" },
+    { "issueasset", 2, "demurrage" },
     { "sendasset", 1, "amount" },
     { "pegin", 0, "amount" },
     { "pegout", 0, "amount" },

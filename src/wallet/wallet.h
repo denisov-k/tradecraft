@@ -303,7 +303,8 @@ struct CRecipient
     CAmount nAmount;
     bool fSubtractFeeFromAmount;
     //! An asset output (nAmount 0) carrying this; a null asset id is the asset
-    //! the transaction issues, filled in once its first input is known.
+    //! the transaction issues (with the demurrage given), filled in once its first input
+    //! is known.
     std::optional<AssetAmount> asset{};
     //! Otherwise, the extension push of a ledger output (a peg-in or a peg-out), if any.
     std::vector<unsigned char> extension{};

@@ -1364,12 +1364,12 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
         return util::Error{error};
     }
 
-    // An issued asset takes the id of the first input, known only now (the size
-    // of the output does not change).
+    // An issued asset takes the id of the first input (and its demurrage), known only now
+    // (the size of the output does not change).
     for (CTxOut& txout : txNew.vout) {
         AssetAmount asset;
         if (GetAssetOutput(txout, asset) == AssetOutputType::ASSET && asset.asset.IsNull()) {
-            asset.asset = AssetIssuanceId(txNew.vin.at(0).prevout);
+            asset.asset = AssetIssuanceId(txNew.vin.at(0).prevout, asset.demurrage);
             txout.scriptPubKey = txout.scriptPubKey.WithoutExtension() << AssetExtension(asset);
         }
     }

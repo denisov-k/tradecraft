@@ -37,15 +37,27 @@ class TxValidationState;
  *  its program (and shard specifier), which consensus ignored until now; with
  *  the assets deployment its first byte is the extension version. */
 static constexpr unsigned char EXTENSION_ASSET = 0x01;
-/** An asset output's extension: version, asset id, amount (64-bit little endian). */
+/** An asset output's extension: version, asset id, amount (64-bit little endian),
+ *  and for an asset with demurrage the flag byte. */
 static constexpr size_t ASSET_EXTENSION_SIZE = 1 + 32 + 8;
+static constexpr size_t ASSET_EXTENSION_SIZE_DEMURRAGE = ASSET_EXTENSION_SIZE + 1;
+static constexpr unsigned char ASSET_DEMURRAGE = 0x01;
 
-/** An amount of a user-issued asset, held in a zero-value output.  Assets carry
- *  no demurrage: the amount is the amount, whatever the reference height. */
+/** An amount of a user-issued asset, held in a zero-value output.  By default an
+ *  asset carries no demurrage: the amount is the amount, whatever the reference
+ *  height.  An asset issued with demurrage decays exactly as freicoin does: the
+ *  amount is its value at the output's reference height (the lock height of its
+ *  transaction).  Which it is is fixed when the asset is issued (the id commits to
+ *  it), so a claim on freicoin can be an asset that keeps pace with freicoin. */
 struct AssetAmount {
     uint256 asset;
     CAmount amount{0};
+    bool demurrage{false};
 };
+
+/** The value of an asset amount `distance` blocks after its reference height: with
+ *  demurrage, freicoin's (GetTimeAdjustedValue); without, the amount. */
+CAmount AssetPresentValue(CAmount amount, bool demurrage, uint32_t distance);
 
 enum class AssetOutputType {
     NONE,      //!< no asset extension (any other output, or an unknown version)
@@ -60,13 +72,15 @@ AssetOutputType GetAssetOutput(const CTxOut& txout, AssetAmount& out);
 std::vector<unsigned char> AssetExtension(const AssetAmount& amount);
 
 /** The asset a transaction issues: derived from the outpoint its first input
- *  spends, which can be spent once, so every asset is issued exactly once. */
-uint256 AssetIssuanceId(const COutPoint& prevout);
+ *  spends, which can be spent once, so every asset is issued exactly once, and
+ *  from whether it carries demurrage, which is thus fixed for good. */
+uint256 AssetIssuanceId(const COutPoint& prevout, bool demurrage = false);
 
 namespace Consensus {
 /** Check the asset rules of a transaction: asset outputs are well formed and
  *  hold no freicoin, and for every asset the outputs carry no more than the
- *  inputs, except the asset the transaction issues.  Inputs created below
+ *  inputs, valued at the transaction's lock height, except the assets the
+ *  transaction issues; an asset's outputs and inputs all agree on its demurrage.  Inputs created below
  *  `asset_height`, the activation height, never had their claims checked and
  *  count for nothing.  The coins spent must be in `inputs`. */
 [[nodiscard]] bool CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inputs, int asset_height, TxValidationState& state, bool block_final = false);
