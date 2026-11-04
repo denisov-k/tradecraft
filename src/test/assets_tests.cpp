@@ -17,6 +17,7 @@
 #include <consensus/validation.h>
 #include <primitives/transaction.h>
 #include <script/script.h>
+#include <random.h>
 #include <test/util/setup_common.h>
 
 #include <boost/test/unit_test.hpp>
@@ -260,6 +261,57 @@ BOOST_AUTO_TEST_CASE(scrip_ledger_settlement)
     BOOST_CHECK_EQUAL(r2.pool_scrip, in.minted);
     // the pool covers its scrip: the peg-in's rounding stays with it
     BOOST_CHECK_GE(r2.pool_value + 1, ScripToFreicoin(r2.pool_scrip, height));
+}
+
+BOOST_AUTO_TEST_CASE(scrip_ledger_properties)
+{
+    // Random blocks built only from what the transaction rules allow: the pool never
+    // creates or loses freicoin, never goes negative, and covers what is still out.
+    FastRandomContext rng{/*fDeterministic=*/true};
+    const CScript dest = WitnessScript();
+    for (int iter = 0; iter < 3000; ++iter) {
+        const int height = 100 + static_cast<int>(rng.randrange(5000000));
+
+        // a payment of any scrip amount is exact
+        const CAmount scrip = 1 + static_cast<CAmount>(rng.randrange(1000 * COIN));
+        const CAmount value = FreicoinForScrip(scrip, height);
+        BOOST_REQUIRE(MoneyRange(value));
+        BOOST_CHECK_EQUAL(FreicoinToScrip(value, height), scrip);
+        BOOST_CHECK_LT(FreicoinToScrip(value - 1, height), scrip);
+
+        BlockLedger ledger;
+        ledger.prior_scrip = static_cast<CAmount>(rng.randrange(1000 * COIN));
+        ledger.prior_value = ScripToFreicoin(ledger.prior_scrip, height) + static_cast<CAmount>(rng.randrange(1000));
+        for (int k = rng.randrange(4); k > 0; --k) {
+            CMutableTransaction tx;
+            tx.lock_height = height - rng.randrange(100);
+            tx.vout.emplace_back(1 + static_cast<CAmount>(rng.randrange(100 * COIN)), LedgerBase() << LedgerExtension(EXTENSION_PEGIN, 0));
+            ledger.AddTransaction(CTransaction(tx), height);
+        }
+        CAmount outstanding = ledger.prior_scrip + ledger.minted;
+        for (int k = rng.randrange(4); k > 0 && outstanding > 0; --k) {
+            const CAmount out = 1 + static_cast<CAmount>(rng.randrange(outstanding));
+            ledger.pegouts.emplace_back(dest, out);
+            outstanding -= out;
+        }
+        const CAmount slack = static_cast<CAmount>(ledger.pegins.size() + ledger.pegouts.size()) + 1;
+
+        const LedgerResult r = ComputeLedger(ledger, height);
+        BOOST_REQUIRE_EQUAL(r.payouts.size(), ledger.pegouts.size());
+        CAmount paid = 0;
+        for (size_t i = 0; i < r.payouts.size(); ++i) {
+            const CAmount full = ScripToFreicoin(ledger.pegouts[i].second, height);
+            BOOST_CHECK_GE(r.payouts[i].second, 0);
+            BOOST_CHECK_LE(r.payouts[i].second, full);
+            // paid in full, but for the roundings of the conversions
+            BOOST_CHECK_GE(r.payouts[i].second + slack, full);
+            paid += r.payouts[i].second;
+        }
+        BOOST_CHECK_EQUAL(paid + r.pool_value, ledger.prior_value + ledger.pegin_value);
+        BOOST_CHECK_GE(r.pool_value, 0);
+        BOOST_CHECK_EQUAL(r.pool_scrip, outstanding);
+        BOOST_CHECK_GE(r.pool_value + slack, ScripToFreicoin(r.pool_scrip, height));
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

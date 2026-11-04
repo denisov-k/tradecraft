@@ -86,6 +86,7 @@ class ScripLedgerTest(FreicoinTestFramework):
         assert_equal(pool_scrip, minted)
         assert pay_in - pay_in // 1000 < pool_value <= pay_in, (pool_value, pay_in)
         holding = self.utxo(tx, 2)
+        pegin1_hash = block["hash"]
 
         self.log.info("The pool and peg-ins are not anyone's to spend")
         fee = self.wallet.get_utxo()
@@ -98,6 +99,7 @@ class ScripLedgerTest(FreicoinTestFramework):
         self.reject(self.spend([self.wallet.get_utxo(), self.utxo(pending, 1, pay_in // 4)], []), "bad-txns-ledger-spend")
         block = self.node.getblock(self.generate(self.node, 1)[0], 2)
         pool_value2, pool_scrip2 = self.final_pool(block)
+        pegin2_hash = block["hash"]
         assert_equal(pool_scrip2, minted + minted2)
         assert_greater_than(pool_value2, pool_value)
 
@@ -116,6 +118,7 @@ class ScripLedgerTest(FreicoinTestFramework):
         assert_equal([int(o["value"] * COIN) for o in payouts], [expected])
         _, pool_scrip3 = self.final_pool(block)
         assert_equal(pool_scrip3, minted + minted2 - part)
+        out1 = tx
         self.reject(self.spend([self.wallet.get_utxo(), self.utxo(tx, 1)], []), "bad-txns-pegout-spend")
 
         self.log.info("Peg out the rest of the first peg-in")
@@ -126,6 +129,26 @@ class ScripLedgerTest(FreicoinTestFramework):
         block = self.node.getblock(self.generate(self.node, 1)[0], 2)
         _, pool_scrip4 = self.final_pool(block)
         assert_equal(pool_scrip4, minted2)  # what the second peg-in may still account for
+        out2 = tx
+
+        self.log.info("Reorg: the ledger blocks undone, their transactions back, the same ledger again")
+        self.node.invalidateblock(pegin2_hash)
+        assert_equal(self.node.getbestblockhash(), pegin1_hash)
+        assert_equal(sorted(self.node.getrawmempool()), sorted([pending.hash, out1.hash, out2.hash]))
+        height = self.node.getblockcount() + 1
+        expected = sorted([self.node.convertscrip(part, "freicoin", height)["amount"],
+                           self.node.convertscrip(minted - part, "freicoin", height)["amount"]])
+        tmpl = self.node.getblocktemplate({"rules": ["segwit", "finaltx", "auxpow"]})
+        assert_equal(sorted(p["amount"] for p in tmpl["coinbasepayouts"]), expected)
+        assert_equal(struct.unpack("<q", bytes.fromhex(tmpl["finaltx"]["pool"]["scriptPubKey"])[6:])[0], minted2)
+        block = self.node.getblock(self.generate(self.node, 1)[0], 2)
+        assert {pending.hash, out1.hash, out2.hash} <= {t["txid"] for t in block["tx"]}
+        payouts = [o for o in block["tx"][0]["vout"] if o["scriptPubKey"]["hex"] == dest.hex()]
+        assert_equal(sorted(int(o["value"] * COIN) for o in payouts), expected)
+        _, pool_scrip5 = self.final_pool(block)
+        assert_equal(pool_scrip5, minted2)
+        assert self.node.gettxout(block["tx"][-1]["txid"], 0) is not None
+        assert_equal(self.node.getrawmempool(), [])
 
 
 if __name__ == '__main__':
