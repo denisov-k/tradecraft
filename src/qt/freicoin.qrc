@@ -86,4 +86,7 @@
     <qresource prefix="/fonts">
         <file alias="monospace">res/fonts/RobotoMono-Bold.ttf</file>
     </qresource>
+    <qresource prefix="/images">
+        <file alias="splash">res/images/splash.png</file>
+    </qresource>
 </RCC>
