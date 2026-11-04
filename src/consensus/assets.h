@@ -125,9 +125,10 @@ struct BlockLedger {
 };
 
 /** The pool after a block and the payouts its coinbase owes.  Each peg-out is paid
- *  ScripToFreicoin of its scrip at the block height, out of the pool and the block's
- *  peg-ins, in order; a payout the pool cannot cover in full gets what is left (the
- *  pool keeps every rounding, so only the last kria of the last scrip could). */
+ *  ScripToFreicoin of its scrip at the block height, out of the prior pool, in order
+ *  (the block's own peg-ins join the pool after); a payout the pool cannot cover in
+ *  full gets what is left (the pool keeps every rounding, so only the last kria of the
+ *  last scrip could). */
 struct LedgerResult {
     CAmount pool_value{0};
     CAmount pool_scrip{0};

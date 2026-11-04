@@ -84,9 +84,10 @@ version 0 program that anyone can spend, so the block-final transaction can.
   mainnet, 10 on regtest).  What a block owes is thus fixed by the chain below it, read from block h − D
   (`GetDuePegouts`, `BlockPegouts`); peg-outs made before activation are not paid.
 - Each due peg-out of scrip s is paid `min(ScripToFreicoin(s, height), available)` in order, where
-  `available` starts at `present(V) + Σ present(peg-in values)`.  The coinbase must carry an output to the
-  peg-out's program of at least that much, one output per payout (`bad-blk-ledger-payout`).
-- The new pool must be exactly `available` after the payouts, recording `S + Σ mintable − Σ s` (a queued
+  `available` starts at `present(V)`: the prior pool, which backs the queued scrip, so the payouts follow
+  from the chain below.  The coinbase must carry an output to the peg-out's program of at least that much,
+  one output per payout (`bad-blk-ledger-payout`).
+- The new pool must be exactly `available` after the payouts plus `Σ present(peg-in values)`, recording `S + Σ mintable − Σ s` (a queued
   peg-out stays in S until paid), as one
   output before the last (commitment) output of the block-final transaction; no pool output when both are
   zero (`bad-blk-ledger-pool`, `bad-blk-ledger-pool-count`).

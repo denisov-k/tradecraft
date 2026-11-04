@@ -131,7 +131,9 @@ void BlockLedger::AddTransaction(const CTransaction& tx, int height)
 LedgerResult ComputeLedger(const BlockLedger& ledger, int height)
 {
     LedgerResult result;
-    CAmount available = ledger.prior_value + ledger.pegin_value;
+    // The payouts come out of the prior pool alone, which backs the queued scrip: so
+    // what a block owes follows from the chain below it, not from its own peg-ins.
+    CAmount available = ledger.prior_value;
     result.pool_scrip = ledger.prior_scrip + ledger.minted;
     for (const auto& [dest, scrip] : ledger.pegouts) {
         const CAmount pay = std::min(ScripToFreicoin(scrip, height), available);
@@ -139,7 +141,7 @@ LedgerResult ComputeLedger(const BlockLedger& ledger, int height)
         result.pool_scrip -= scrip;
         result.payouts.emplace_back(dest, pay);
     }
-    result.pool_value = available;
+    result.pool_value = available + ledger.pegin_value;
     return result;
 }
 
