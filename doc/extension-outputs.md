@@ -80,7 +80,7 @@ version 0 program that anyone can spend, so the block-final transaction can.
 **Block rules** (`BlockLedger`, `ComputeLedger`, `Consensus::CheckBlockLedger`):
 - The prior pool is the pool output of the prior block-final transaction (if any): value V, scrip S.
 - The block-final transaction must claim every peg-in of the block (`bad-blk-ledger-pegin-unclaimed`).
-- **The payout queue.** A peg-out made in block h is paid by block h + D (`ledger_payout_delay`: 100 on
+- **The payout queue.** A peg-out made in block h is paid by block h + D (`ledger_payout_delay`: 1 on
   mainnet, 10 on regtest).  What a block owes is thus fixed by the chain below it, read from block h − D
   (`GetDuePegouts`, `BlockPegouts`); peg-outs made before activation are not paid.
 - Each due peg-out of scrip s is paid `min(ScripToFreicoin(s, height), available)` in order, where
@@ -143,7 +143,14 @@ unchanged.
   with protocol cleanup has one push and no version.  This keeps the deployed grammar and puts the version
   in the first byte of the push.
 - **Payouts** go through a queue as in the paper, with a fixed delay rather than lock-in and maturation:
-  the coinbase D blocks later pays them (see question 1).
+  the coinbase D blocks later pays them, D = 1 on mainnet (the next block).  The queue is what the share
+  chain needs: a share's coinbase is rebuilt by its peers, who cannot know a block's own peg-outs but can
+  compute the payouts due from the chain below.  One block is enough for that, and a longer delay buys no
+  safety: the payouts follow from the chain, so a reorg that drops a peg-out drops its payout with it, and
+  a delay only means the peg-out has D confirmations when paid, which a recipient waits for anyway.  Each
+  block of delay is ten minutes a user waits.  We read the paper's lock-in and maturation as needed for
+  the peg between two chains in Forward Blocks, which a single chain does not have.  Regtest keeps D = 10
+  so the queue is visible in tests.
 - **Fees** are paid in freicoin; fees in scrip (an explicit fee output, XI-B, or rebatable fees, XI-A) are
   not implemented.
 - **Confidential amounts** would replace the amount in the extension with a commitment and put the range
@@ -153,10 +160,5 @@ The epoch is `SCRIP_EPOCH = 5040000`, as already in `consensus/amount.cpp`.
 
 ## 9. Questions
 
-1. **The payout delay.**  Peg-outs are paid D blocks later (100 on mainnet).  We first paid them in the
-   same block; the queue was needed for the share chain: a share's coinbase is rebuilt by its peers, who
-   cannot know a block's own peg-outs but can compute the payouts due from the chain below.  It also keeps
-   payouts out of reach of shallow reorgs, now that coinbase maturity is one block.  Is a fixed delay of
-   100 right, or do you want the paper's lock-in and maturation?
-2. **Rates on assets?**  User-issued assets carry no demurrage here.  Should an asset be able to carry its
+1. **Rates on assets?**  User-issued assets carry no demurrage here.  Should an asset be able to carry its
    own rate (as in Freimarkets), or are assets meant to sit outside the demurrage kernel?
