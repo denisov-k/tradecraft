@@ -959,7 +959,8 @@ libfreicoinkernel_la_SOURCES = \
   compressor.cpp \
   consensus/merkle.cpp \
   consensus/merkleproof.cpp \
-  consensus/assets.cpp \n  consensus/merklerange.cpp \
+  consensus/assets.cpp \
+  consensus/merklerange.cpp \
   consensus/tx_check.cpp \
   consensus/tx_verify.cpp \
   core_read.cpp \
