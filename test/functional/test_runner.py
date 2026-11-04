@@ -246,6 +246,8 @@ BASE_SCRIPTS = [
     'rpc_blockchain.py --v2transport',
     'feature_block_final_tx.py',
     'feature_assets.py',
+    'wallet_assets.py --descriptors',
+    'wallet_assets.py --legacy-wallet',
     'rpc_deprecated.py',
     'wallet_disable.py',
     'wallet_change_address.py --legacy-wallet',

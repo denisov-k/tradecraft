@@ -687,6 +687,8 @@ public:
     /** The extension push that may end a witness program (after its program and
      *  shard specifier): true and its contents if there is one. */
     bool GetExtensionOutput(std::vector<unsigned char>& ext) const;
+    /** The script without its extension push, if it has one: the output's owner. */
+    CScript WithoutExtension() const;
 
     /** Called by IsStandardTx and P2SH/BIP62 VerifyScript (which makes it consensus-critical). */
     bool IsPushOnly(const_iterator pc) const;

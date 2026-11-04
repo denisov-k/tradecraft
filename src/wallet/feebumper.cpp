@@ -270,10 +270,14 @@ Result CreateRateBumpTransaction(CWallet& wallet, const uint256& txid, const CCo
         const CTxOut& output = txouts.at(i);
         CTxDestination dest;
         ExtractDestination(output.scriptPubKey, dest);
-        if (original_change_index.has_value() ?  original_change_index.value() == i : OutputIsChange(wallet, output)) {
+        // An asset output stays what it is, even back to this wallet: not freicoin change.
+        AssetAmount asset;
+        const bool is_asset = GetAssetOutput(output, asset) == AssetOutputType::ASSET;
+        if (!is_asset && (original_change_index.has_value() ?  original_change_index.value() == i : OutputIsChange(wallet, output))) {
             new_coin_control.destChange = dest;
         } else {
             CRecipient recipient = {dest, output.GetReferenceValue(), false};
+            if (is_asset) recipient.asset = asset;
             recipients.push_back(recipient);
         }
         new_outputs_value += output.GetReferenceValue();

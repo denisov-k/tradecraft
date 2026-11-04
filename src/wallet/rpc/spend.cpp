@@ -426,6 +426,142 @@ RPCHelpMan sendmany()
     };
 }
 
+static uint256 ParseAssetId(const UniValue& param)
+{
+    const std::vector<unsigned char> bytes = ParseHexV(param, "asset");
+    if (bytes.size() != 32) throw JSONRPCError(RPC_INVALID_PARAMETER, "asset must be 32 bytes");
+    uint256 asset;
+    std::copy(bytes.begin(), bytes.end(), asset.begin());
+    return asset;
+}
+
+static CAmount ParseAssetAmount(const UniValue& param)
+{
+    const int64_t amount = param.getInt<int64_t>();
+    if (amount <= 0 || amount > MAX_MONEY) throw JSONRPCError(RPC_TYPE_ERROR, "Amount out of range");
+    return amount;
+}
+
+/** Where an asset output may go: a native witness program, which the extension can follow. */
+static CTxDestination AssetDestination(CWallet& wallet, const UniValue& address, bool change) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    CTxDestination dest;
+    if (address.isNull()) {
+        auto res = change ? wallet.GetNewChangeDestination(wallet.m_default_change_type.value_or(wallet.m_default_address_type))
+                          : wallet.GetNewDestination(wallet.m_default_address_type, "");
+        if (!res) throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, util::ErrorString(res).original);
+        dest = *res;
+    } else {
+        dest = DecodeDestination(address.get_str());
+        if (!IsValidDestination(dest)) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Freicoin address");
+    }
+    if (!GetScriptForDestination(dest).IsWitnessProgram()) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Assets need a native witness address");
+    }
+    return dest;
+}
+
+static CTransactionRef SendAssets(CWallet& wallet, CCoinControl& coin_control, std::vector<CRecipient>& recipients) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    EnsureWalletIsUnlocked(wallet);
+    auto res = CreateTransaction(wallet, recipients, /*refheight=*/std::nullopt, /*change_pos=*/std::nullopt, coin_control, /*sign=*/true);
+    if (!res) throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, util::ErrorString(res).original);
+    wallet.CommitTransaction(res->tx, /*mapValue=*/{}, /*orderForm=*/{});
+    return res->tx;
+}
+
+RPCHelpMan issueasset()
+{
+    return RPCHelpMan{"issueasset",
+        "\nIssue a new asset: its id is derived from the first input of the transaction, and the whole\n"
+        "supply goes to one output.  An asset is issued once; its supply is fixed.\n" +
+        HELP_REQUIRING_PASSPHRASE,
+        {
+            {"amount", RPCArg::Type::NUM, RPCArg::Optional::NO, "The supply, in whole units of the asset"},
+            {"address", RPCArg::Type::STR, RPCArg::DefaultHint{"a new address of this wallet"}, "The native witness address to receive the supply"},
+        },
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::STR_HEX, "txid", "The transaction id"},
+            {RPCResult::Type::STR_HEX, "asset", "The id of the asset issued"},
+        }},
+        RPCExamples{HelpExampleCli("issueasset", "1000000") + HelpExampleRpc("issueasset", "1000000")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+    pwallet->BlockUntilSyncedToCurrentChain();
+    LOCK(pwallet->cs_wallet);
+
+    CRecipient recipient{AssetDestination(*pwallet, request.params[1], /*change=*/false), 0, false};
+    recipient.asset = AssetAmount{uint256::ZERO, ParseAssetAmount(request.params[0])};
+    std::vector<CRecipient> recipients{recipient};
+    CCoinControl coin_control;
+    const CTransactionRef tx = SendAssets(*pwallet, coin_control, recipients);
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("txid", tx->GetHash().GetHex());
+    result.pushKV("asset", HexStr(AssetIssuanceId(tx->vin.at(0).prevout)));
+    return result;
+},
+    };
+}
+
+RPCHelpMan sendasset()
+{
+    return RPCHelpMan{"sendasset",
+        "\nSend an amount of an asset this wallet holds to an address.  The asset outputs spent\n"
+        "are chosen largest first, the rest of the asset returns to a new change address,\n"
+        "and the fee is paid in freicoin.\n" +
+        HELP_REQUIRING_PASSPHRASE,
+        {
+            {"asset", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The id of the asset"},
+            {"amount", RPCArg::Type::NUM, RPCArg::Optional::NO, "The amount, in whole units of the asset"},
+            {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The native witness address to send to"},
+        },
+        RPCResult{RPCResult::Type::STR_HEX, "txid", "The transaction id"},
+        RPCExamples{HelpExampleCli("sendasset", "\"<asset>\" 250 \"" + EXAMPLE_ADDRESS[0] + "\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+    pwallet->BlockUntilSyncedToCurrentChain();
+    LOCK(pwallet->cs_wallet);
+
+    const uint256 asset = ParseAssetId(request.params[0]);
+    const CAmount amount = ParseAssetAmount(request.params[1]);
+    const CTxDestination dest = AssetDestination(*pwallet, request.params[2], /*change=*/false);
+
+    const auto tip_height = pwallet->chain().getHeight();
+    if (!tip_height) throw JSONRPCError(RPC_INTERNAL_ERROR, "Cannot determine current chain height");
+    CoinFilterParams params;
+    params.min_amount = 0;
+    params.include_extension_outputs = true;
+    CCoinControl list_control;
+    std::vector<std::pair<CAmount, COutPoint>> held;
+    for (const COutput& out : AvailableCoinsListUnspent(*pwallet, *tip_height + 1, &list_control, params).All()) {
+        AssetAmount a;
+        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET && a.asset == asset) held.emplace_back(a.amount, out.outpoint);
+    }
+    std::sort(held.begin(), held.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    CCoinControl coin_control;
+    CAmount selected = 0;
+    for (const auto& [value, outpoint] : held) {
+        if (selected >= amount) break;
+        coin_control.Select(outpoint);
+        selected += value;
+    }
+    if (selected < amount) throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient asset");
+
+    std::vector<CRecipient> recipients;
+    recipients.push_back(CRecipient{dest, 0, false, AssetAmount{asset, amount}});
+    if (selected > amount) {
+        recipients.push_back(CRecipient{AssetDestination(*pwallet, UniValue(), /*change=*/true), 0, false, AssetAmount{asset, selected - amount}});
+    }
+    return SendAssets(*pwallet, coin_control, recipients)->GetHash().GetHex();
+},
+    };
+}
+
 RPCHelpMan settxfee()
 {
     return RPCHelpMan{"settxfee",
@@ -882,6 +1018,10 @@ RPCHelpMan fundrawtransaction()
             destinations,
             InterpretSubtractFeeFromOutputInstructions(options["subtractFeeFromOutputs"], dummy)
     );
+    for (size_t i = 0; i < tx.vout.size(); ++i) {
+        AssetAmount asset;
+        if (GetAssetOutput(tx.vout[i], asset) == AssetOutputType::ASSET) recipients[i].asset = asset;
+    }
     CCoinControl coin_control;
     // Automatically select (additional) coins. Can be overridden by options.add_inputs.
     coin_control.m_allow_other_inputs = true;

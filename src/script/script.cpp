@@ -279,6 +279,16 @@ bool CScript::GetExtensionOutput(std::vector<unsigned char>& ext) const
     return true;
 }
 
+CScript CScript::WithoutExtension() const
+{
+    std::vector<unsigned char> ext;
+    if (!GetExtensionOutput(ext)) {
+        return *this;
+    }
+    // the push is at most 75 bytes, so its opcode is one byte
+    return CScript(begin(), end() - ext.size() - 1);
+}
+
 bool CScript::IsWitnessProgram(int* version, std::vector<unsigned char>* program) const
 {
     // Early-out based on the minimum and maximum sizes.

@@ -89,6 +89,8 @@ struct CoinFilterParams {
     bool include_immature_coinbase{false};
     // By default, skip locked UTXOs
     bool skip_locked{true};
+    // By default, skip extension outputs (assets): spent as freicoin they would be burned
+    bool include_extension_outputs{false};
 };
 
 /**

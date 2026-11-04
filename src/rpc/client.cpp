@@ -51,6 +51,8 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "generateblock", 2, "submit" },
     { "getnetworkhashps", 0, "height" },
     { "sendtoaddress", 1, "amount" },
+    { "issueasset", 0, "amount" },
+    { "sendasset", 1, "amount" },
     { "sendtoaddress", 4, "subtractfeefromamount" },
     { "sendtoaddress", 5 , "replaceable" },
     { "sendtoaddress", 6 , "conf_target" },
