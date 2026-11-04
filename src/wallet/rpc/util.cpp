@@ -20,6 +20,7 @@
 #include <util/any.h>
 #include <util/translation.h>
 #include <wallet/context.h>
+#include <wallet/coinselection.h>
 #include <wallet/wallet.h>
 
 #include <string_view>
@@ -103,6 +104,14 @@ std::shared_ptr<CWallet> GetWalletForJSONRPCRequest(const JSONRPCRequest& reques
     }
     throw JSONRPCError(RPC_WALLET_NOT_SPECIFIED,
         "Wallet file not specified (must request wallet RPC through /wallet/<filename> uri-path).");
+}
+
+bool IsCountedAssetOutput(const CWallet& wallet, const COutput& out, int tip_height)
+{
+    const std::optional<int> since = wallet.chain().deploymentActiveSince(Consensus::DEPLOYMENT_ASSETS);
+    if (!since) return false;
+    // an unconfirmed output is checked as it enters a block
+    return out.depth <= 0 || tip_height - out.depth + 1 >= *since;
 }
 
 void EnsureWalletIsUnlocked(const CWallet& wallet)

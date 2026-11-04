@@ -18,6 +18,7 @@
 
 #include <blockfilter.h>
 #include <common/settings.h>
+#include <consensus/params.h>
 #include <primitives/transaction.h> // For CTransactionRef
 #include <util/result.h>
 
@@ -151,6 +152,9 @@ public:
     //! chain only contains genesis block, nullopt if chain does not contain
     //! any blocks)
     virtual std::optional<int> getHeight() = 0;
+
+    //! The height from which a deployment is active (for the next block), if it is.
+    virtual std::optional<int> deploymentActiveSince(Consensus::DeploymentPos pos) = 0;
 
     //! Get block hash. Height must be valid or this function will abort.
     virtual uint256 getBlockHash(int height) = 0;

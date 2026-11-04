@@ -530,7 +530,7 @@ RPCHelpMan getassetbalances()
     std::map<uint256, CAmount> balances;
     for (const COutput& out : AvailableCoinsListUnspent(*pwallet, *tip_height + 1, &cctl, params).All()) {
         AssetAmount a;
-        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET) balances[a.asset] += a.amount;
+        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET && IsCountedAssetOutput(*pwallet, out, *tip_height)) balances[a.asset] += a.amount;
     }
     UniValue result(UniValue::VOBJ);
     for (const auto& [asset, amount] : balances) result.pushKV(HexStr(asset), amount);
@@ -781,7 +781,7 @@ RPCHelpMan listunspent()
         entry.pushKV("amount", ValueFromAmount(out.adjusted));
         entry.pushKV("refheight", (uint64_t)out.refheight);
         AssetAmount asset;
-        if (GetAssetOutput(out.txout, asset) == AssetOutputType::ASSET) {
+        if (GetAssetOutput(out.txout, asset) == AssetOutputType::ASSET && IsCountedAssetOutput(*pwallet, out, current_height)) {
             entry.pushKV("asset", HexStr(asset.asset));
             entry.pushKV("asset_amount", asset.amount);
         }

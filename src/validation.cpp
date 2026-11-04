@@ -931,6 +931,24 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
             if (!Consensus::CheckTxAssets(tx, m_view, asset_height, state)) {
                 return false; // state filled in by CheckTxAssets
             }
+            // The ledger needs a block-final transaction in the next block: none
+            // until the block-final rules apply (the first outputs mature).
+            bool ledger_tx = false;
+            for (const CTxOut& txout : tx.vout) {
+                CAmount ledger_amount = 0;
+                ledger_tx |= GetLedgerOutput(txout, ledger_amount) != LedgerOutputType::NONE;
+            }
+            if (ledger_tx) {
+                const BlockFinalTxEntry final_entry = coins_cache.GetFinalTx();
+                bool final_ready = !final_entry.IsNull();
+                for (uint32_t n = 0; final_ready && n < final_entry.size; ++n) {
+                    const Coin& coin = coins_cache.AccessCoin(COutPoint(final_entry.hash, n));
+                    if (coin.IsSpent() || (coin.IsCoinBase() && tip->nHeight + 1 - static_cast<int>(coin.nHeight) < COINBASE_MATURITY)) final_ready = false;
+                }
+                if (!final_ready) {
+                    return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "ledger-before-block-final");
+                }
+            }
         } else {
             // Not before activation: such a transaction would still wait in the
             // mempool when the rules take effect, unchecked.

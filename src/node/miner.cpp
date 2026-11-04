@@ -96,6 +96,7 @@ void BlockAssembler::resetBlock()
 
     // Reserve space for coinbase tx
     nBlockWeight = m_options.coinbase_max_additional_weight;
+    m_ledger_final_weight = 0;
     nBlockSigOpsCost = m_options.coinbase_output_max_additional_sigops;
 
     // These counters do not include coinbase tx
@@ -331,6 +332,19 @@ void BlockAssembler::AddToBlock(CTxMemPool::txiter iter)
     pblocktemplate->vTxFees.insert(pblocktemplate->vTxFees.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), iter->GetFee());
     pblocktemplate->vTxSigOpsCost.insert(pblocktemplate->vTxSigOpsCost.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), iter->GetSigOpCost());
     nBlockWeight += iter->GetTxWeight();
+    // Room for what settling the ledger will add: a block-final input per peg-in
+    // (and the pool output, once), a coinbase output per peg-out.
+    for (const CTxOut& txout : iter->GetTx().vout) {
+        CAmount ledger_amount = 0;
+        const LedgerOutputType ledger = GetLedgerOutput(txout, ledger_amount);
+        if (ledger == LedgerOutputType::PEGIN) {
+            const uint64_t reserve = WITNESS_SCALE_FACTOR * (41 + (m_ledger_final_weight ? 0 : 60));
+            nBlockWeight += reserve;
+            m_ledger_final_weight += reserve;
+        } else if (ledger == LedgerOutputType::PEGOUT) {
+            nBlockWeight += WITNESS_SCALE_FACTOR * (::GetSerializeSize(txout) - 10);
+        }
+    }
     ++nBlockTx;
     nBlockSigOpsCost += iter->GetSigOpCost();
     nFees += GetTimeAdjustedValue(iter->GetFee(), nHeight - iter->GetReferenceHeight());
@@ -483,7 +497,11 @@ std::vector<std::pair<CScript, CAmount>> BlockAssembler::settleLedger(const CBlo
     const CAmount fee = pblocktemplate->vTxFees.back() + ledger.pegin_value - result.pool_value;
     nFees += fee - pblocktemplate->vTxFees.back();
     pblocktemplate->vTxFees.back() = fee;
+    // the block-final transaction's growth replaces what was reserved for it; the
+    // payouts keep their reservation (the coinbase is outside nBlockWeight)
     nBlockWeight += GetTransactionWeight(*pblocktemplate->block.vtx.back()) - old_weight;
+    nBlockWeight -= std::min(nBlockWeight, m_ledger_final_weight);
+    m_ledger_final_weight = 0;
     return result.payouts;
 }
 

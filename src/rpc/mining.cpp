@@ -21,6 +21,7 @@
 #include <chainparamsbase.h>
 #include <common/system.h>
 #include <consensus/amount.h>
+#include <consensus/assets.h>
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
 #include <consensus/params.h>
@@ -391,6 +392,16 @@ static RPCHelpMan generateblock()
 
         CHECK_NONFATAL(block.vtx.size() == (1U + !!has_block_final_tx));
 
+        // The scrip ledger is settled by the block assembler, from the mempool; a
+        // block put together here would lack the pool and payouts.
+        for (const CTransactionRef& tx : txs) {
+            for (const CTxOut& txout : tx->vout) {
+                CAmount ledger_amount = 0;
+                if (GetLedgerOutput(txout, ledger_amount) != LedgerOutputType::NONE) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "generateblock cannot include peg-ins or peg-outs; send them to the mempool and use generatetoaddress");
+                }
+            }
+        }
         // Add transactions
         block.vtx.insert(block.vtx.end() - !!has_block_final_tx, txs.begin(), txs.end());
         RegenerateCommitments(block, chainman);

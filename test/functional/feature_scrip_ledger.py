@@ -86,6 +86,8 @@ class ScripLedgerTest(FreicoinTestFramework):
         pegin = CTxOut(pay_in, LEDGER_BASE + ledger_ext(0x03, 0))
         self.reject(self.spend([fund], [pegin, self.scrip_out(minted + 1)], pay_in=pay_in), "bad-txns-asset-in-belowout")
         tx = self.spend([fund], [pegin, self.scrip_out(minted)], pay_in=pay_in)
+        assert_raises_rpc_error(-8, "generateblock cannot include peg-ins or peg-outs",
+                                self.generateblock, self.node, self.wallet.get_descriptor(), [tx.serialize().hex()])
         self.send(tx)
         block = self.node.getblock(self.generate(self.node, 1)[0], 2)
         pool_value, pool_scrip = self.final_pool(block)

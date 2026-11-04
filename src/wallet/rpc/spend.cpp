@@ -487,7 +487,9 @@ static CAmount SelectAsset(CWallet& wallet, const uint256& asset, CAmount amount
     std::vector<std::pair<CAmount, COutPoint>> held;
     for (const COutput& out : AvailableCoinsListUnspent(wallet, NextHeight(wallet), &list_control, params).All()) {
         AssetAmount a;
-        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET && a.asset == asset) held.emplace_back(a.amount, out.outpoint);
+        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET && a.asset == asset && IsCountedAssetOutput(wallet, out, NextHeight(wallet) - 1)) {
+            held.emplace_back(a.amount, out.outpoint);
+        }
     }
     std::sort(held.begin(), held.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
     CAmount selected = 0;
