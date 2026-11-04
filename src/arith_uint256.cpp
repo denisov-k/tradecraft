@@ -252,6 +252,7 @@ template int base_uint<320>::CompareTo(const base_uint<320>&) const;
 template bool base_uint<320>::EqualTo(uint64_t) const;
 template double base_uint<320>::getdouble() const;
 template unsigned int base_uint<320>::bits() const;
+template base_uint<320> base_uint<320>::operator-() const;
 
 arith_uint320::arith_uint320(const arith_uint256 &a)
 {
