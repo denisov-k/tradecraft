@@ -10,7 +10,7 @@ Status: draft for review.  Branches of `denisov-k/tradecraft`, each on the previ
 
 This follows the design described in chat (a witness-like per-output extension, value moved in and out
 through anyone-can-spend pools in the block-final transaction, an inflationary freicoin as the simplest
-asset) and Forward Blocks section XI.  Where it departs from the paper it says so (section 8).
+asset) and Forward Blocks section XI.  Where it departs from the paper it says so (section 8); two questions are in section 9.
 
 ## 1. The extension push
 
@@ -126,17 +126,24 @@ transactions and settlement), `feature_assets.py`, `feature_scrip_ledger.py`, `w
 `wallet_scrip_ledger.py`, `wallet_scrip.py`; existing wallet, mempool, mining and block-final tests pass
 unchanged.
 
-## 8. Departures from Forward Blocks section XI, and open questions
+## 8. Departures from Forward Blocks section XI
 
-1. **Suffix grammar.** One push with a version byte inside, which fits the deployed grammar, instead of up
-   to eight pushes and a trailing version opcode, which would change `IsWitnessProgram`.  Which should be
-   canonical?
-2. **Payouts.** Paid by the coinbase of the same block, not through a payout queue with maturation.
-   Reorgs remove the peg-out and its payout together, and coinbase maturity applies to the payout.  Is a
-   queue (and a delay) wanted?
-3. **Assets and demurrage.** User-issued assets carry none.  Should an asset be able to carry its own rate?
-4. **Fees in scrip** (an explicit fee output, section XI-B, or rebatable fees, XI-A) are not implemented;
-   fees are paid in freicoin.
-5. **The epoch.** `SCRIP_EPOCH = 5040000` as in the code: is that the intended peg height?
-6. **Confidential amounts** would replace the amount in the extension with a commitment and put the range
-   proof in an output witness committed in the block-final transaction; not started.
+- **Suffix grammar.** The paper has up to eight pushes and a trailing version opcode; the grammar deployed
+  with protocol cleanup has one push and no version.  This keeps the deployed grammar and puts the version
+  in the first byte of the push.
+- **Payouts** are paid by the coinbase of the same block, not through a payout queue with maturation (see
+  question 1).
+- **Fees** are paid in freicoin; fees in scrip (an explicit fee output, XI-B, or rebatable fees, XI-A) are
+  not implemented.
+- **Confidential amounts** would replace the amount in the extension with a commitment and put the range
+  proof in an output witness committed in the block-final transaction; not started.
+
+The epoch is `SCRIP_EPOCH = 5040000`, as already in `consensus/amount.cpp`.
+
+## 9. Questions
+
+1. **A payout queue?**  A peg-out and its payout share a block, so a reorg removes both and the payout
+   then matures like any coinbase output.  Is that enough, or do you want peg-outs to go through a queue
+   with a delay, as in the paper?
+2. **Rates on assets?**  User-issued assets carry no demurrage here.  Should an asset be able to carry its
+   own rate (as in Freimarkets), or are assets meant to sit outside the demurrage kernel?
