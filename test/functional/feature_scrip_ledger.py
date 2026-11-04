@@ -159,7 +159,9 @@ class ScripLedgerTest(FreicoinTestFramework):
         if out2.hash not in self.node.getrawmempool():
             assert self.node.testmempoolaccept([out2.serialize().hex()])[0]["allowed"]
             self.node.sendrawtransaction(out2.serialize().hex())
-        block = self.node.getblock(self.generate(self.node, 1)[0], 2)
+        # mined in the same second to the same address, the block would be the one just
+        # invalidated: pay another address
+        block = self.node.getblock(self.generatetoaddress(self.node, 1, self.wallet.get_address())[0], 2)
         assert out2.hash in {t["txid"] for t in block["tx"]}
         assert_equal(self.final_pool(block)[1], minted + minted2 - part)
         self.generate(self.node, DELAY - 1)
