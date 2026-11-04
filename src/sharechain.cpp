@@ -773,7 +773,9 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
     if (m_options.ledger_payouts_callback) {
         const auto due = m_options.ledger_payouts_callback(share.wit.hashPrevBlock);
         if (!due) {
-            reason = "share-prev-block-unknown";
+            // the block (or the one whose peg-outs are due) has not reached us yet:
+            // the share waits for it, as for an unknown previous block
+            reason = "share-unknown-prev-block";
             return false;
         }
         extra = *due;
