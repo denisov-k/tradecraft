@@ -365,7 +365,7 @@ void MiningPage::refresh()
     interfaces::Node* node = &m_client_model->node();
     // The share chain RPCs can take a while on a full window: never run them on
     // the GUI thread. Fruit is refreshed less often than the miner list.
-    const bool want_credits = configuredMode() == SHARE && (++m_tick % 6 == 1 || !m_have_credits);
+    const bool want_credits = configuredMode() == SHARE && (++m_tick % 6 == 1 || !m_have_credits || m_force_credits);
     QPointer<MiningPage> self(this);
     std::thread([self, node, want_credits] {
         UniValue info, credits;
@@ -442,6 +442,7 @@ void MiningPage::applyRefresh(const UniValue& info, const UniValue& credits_in, 
 
     // Fruit (kept from the last fetch between the slower credit refreshes)
     if (got_credits) {
+        m_force_credits = false;
         m_have_credits = credits_in.isObject();
         if (m_have_credits) m_last_credits = credits_in;
     }
@@ -480,7 +481,11 @@ void MiningPage::applyRefresh(const UniValue& info, const UniValue& credits_in, 
 
 void MiningPage::sendFruit()
 {
-    if (!m_client_model || !m_wallet_model || !m_have_credits) return;
+    if (!m_client_model || !m_wallet_model) return;
+    if (!m_have_credits) {
+        QMessageBox::information(this, tr("Send fruit"), tr("The fruit list is still loading. Try again in a moment."));
+        return;
+    }
 
     // This wallet's addresses that hold fruit in the share chain window.
     struct Own { QString address; int64_t fruits; QString payout; };
@@ -586,5 +591,8 @@ void MiningPage::sendFruit()
     QMessageBox::information(this, tr("Send fruit"),
         tr("Sent. The fruit moves to the new address from the next chain share (about a minute); "
            "the table here updates after that.\n\nShare transaction: %1").arg(QString::fromStdString(txid)));
-    m_have_credits = false; // fetch the credits again on the next refresh
+    // Show the move as soon as the node has it: fetch the fruit again now.
+    m_send_fruit->setEnabled(false);
+    m_force_credits = true;
+    refresh();
 }

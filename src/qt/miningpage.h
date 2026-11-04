@@ -49,6 +49,7 @@ private:
     bool m_busy{false};
     int m_tick{0};
     bool m_have_credits{false};
+    bool m_force_credits{false}; //!< fetch the fruit again on the next refresh (after a send)
     UniValue m_last_credits;
 
     QLabel* m_status;
