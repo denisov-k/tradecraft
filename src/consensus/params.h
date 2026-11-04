@@ -108,6 +108,8 @@ struct Params {
     /** Bitcoin unit test compatibility mode */
     bool bitcoin_mode;
     int nSubsidyHalvingInterval;
+    /** Blocks between a peg-out and the coinbase that pays it (the scrip ledger's payout queue) */
+    int ledger_payout_delay{100};
     /** Perpetual distribution via constant block reward */
     CAmount perpetual_subsidy; // equilibrium_monetary_base * demurrage rate
     /** Initial distribution via excess subsidy */

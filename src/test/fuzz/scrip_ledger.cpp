@@ -48,10 +48,13 @@ FUZZ_TARGET(scrip_ledger)
         tx.vout.emplace_back(fdp.ConsumeIntegralInRange<CAmount>(1, 1000 * COIN), LedgerBase() << LedgerExtension(EXTENSION_PEGIN, 0));
         ledger.AddTransaction(CTransaction(tx), height);
     }
+    // the peg-outs due were made D blocks ago: out of the scrip the prior pool backs
+    CAmount payable = ledger.prior_scrip;
     CAmount outstanding = ledger.prior_scrip + ledger.minted;
-    LIMITED_WHILE(fdp.ConsumeBool() && outstanding > 0, 8) {
-        const CAmount out = fdp.ConsumeIntegralInRange<CAmount>(1, outstanding);
+    LIMITED_WHILE(fdp.ConsumeBool() && payable > 0, 8) {
+        const CAmount out = fdp.ConsumeIntegralInRange<CAmount>(1, payable);
         ledger.pegouts.emplace_back(base, out);
+        payable -= out;
         outstanding -= out;
     }
     const CAmount slack = static_cast<CAmount>(ledger.pegins.size() + ledger.pegouts.size()) + 1;

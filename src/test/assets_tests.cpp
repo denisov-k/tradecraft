@@ -289,10 +289,13 @@ BOOST_AUTO_TEST_CASE(scrip_ledger_properties)
             tx.vout.emplace_back(1 + static_cast<CAmount>(rng.randrange(100 * COIN)), LedgerBase() << LedgerExtension(EXTENSION_PEGIN, 0));
             ledger.AddTransaction(CTransaction(tx), height);
         }
+        // the peg-outs due were made D blocks ago: out of the scrip the prior pool backs
+        CAmount payable = ledger.prior_scrip;
         CAmount outstanding = ledger.prior_scrip + ledger.minted;
-        for (int k = rng.randrange(4); k > 0 && outstanding > 0; --k) {
-            const CAmount out = 1 + static_cast<CAmount>(rng.randrange(outstanding));
+        for (int k = rng.randrange(4); k > 0 && payable > 0; --k) {
+            const CAmount out = 1 + static_cast<CAmount>(rng.randrange(payable));
             ledger.pegouts.emplace_back(dest, out);
+            payable -= out;
             outstanding -= out;
         }
         const CAmount slack = static_cast<CAmount>(ledger.pegins.size() + ledger.pegouts.size()) + 1;

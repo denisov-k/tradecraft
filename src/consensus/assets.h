@@ -76,9 +76,11 @@ namespace Consensus {
  *  scrip epoch (FreicoinToScrip), an asset without demurrage, backed by a pool of
  *  freicoin held in the block-final transaction.  Freicoin enters the pool through
  *  peg-in outputs, which the block-final transaction of the same block claims, and
- *  leaves it through peg-outs, which the coinbase of the same block pays: to nodes
- *  that do not know these rules the pool is a trivially spendable output and the
- *  payouts are fees, so this is a soft fork. */
+ *  leaves it through peg-outs, which the coinbase of the block `ledger_payout_delay`
+ *  later pays (a payout queue: what a block owes follows from the chain below it,
+ *  so a share of the share chain can be checked, and a reorg near the tip cannot
+ *  move a payout).  To nodes that do not know these rules the pool is a trivially
+ *  spendable output and the payouts are fees, so this is a soft fork. */
 static constexpr unsigned char EXTENSION_POOL = 0x02;   //!< the pool: scrip outstanding, at most
 static constexpr unsigned char EXTENSION_PEGIN = 0x03;  //!< freicoin paid into the pool
 static constexpr unsigned char EXTENSION_PEGOUT = 0x04; //!< scrip paid out to the output's program
@@ -112,25 +114,30 @@ struct BlockLedger {
     CAmount pegin_value{0};   //!< freicoin paid in, at its present value
     CAmount minted{0};        //!< scrip minted by the peg-ins
     std::vector<COutPoint> pegins;
-    std::vector<std::pair<CScript, CAmount>> pegouts; //!< destination program, scrip
+    //! The peg-outs this block pays: those of the block ledger_payout_delay below (destination program, scrip)
+    std::vector<std::pair<CScript, CAmount>> pegouts;
 
     /** A prior block-final output: the pool, if it is one (and was made since activation). */
     void AddPriorOutput(const Coin& coin, int height, int asset_height);
-    /** A transaction of the block (not the coinbase or the block-final one). */
+    /** A transaction of the block (not the coinbase or the block-final one): its peg-ins. */
     void AddTransaction(const CTransaction& tx, int height);
     bool Active() const { return prior_value || prior_scrip || !pegins.empty() || !pegouts.empty(); }
 };
 
 /** The pool after a block and the payouts its coinbase owes.  Each peg-out is paid
- *  ScripToFreicoin of its scrip at the block height, out of the pool and the block's
- *  peg-ins, in order; a payout the pool cannot cover in full gets what is left (the
- *  pool keeps every rounding, so only the last kria of the last scrip could). */
+ *  ScripToFreicoin of its scrip at the block height, out of the prior pool, in order
+ *  (the block's own peg-ins join the pool after); a payout the pool cannot cover in
+ *  full gets what is left (the pool keeps every rounding, so only the last kria of the
+ *  last scrip could). */
 struct LedgerResult {
     CAmount pool_value{0};
     CAmount pool_scrip{0};
     std::vector<std::pair<CScript, CAmount>> payouts; //!< destination program, freicoin
 };
 LedgerResult ComputeLedger(const BlockLedger& ledger, int height);
+
+/** The peg-outs a block makes, in order: what the block ledger_payout_delay above it pays. */
+std::vector<std::pair<CScript, CAmount>> BlockPegouts(const CBlock& block);
 
 namespace Consensus {
 /** Check a block against its ledger movements: the block-final transaction claims
