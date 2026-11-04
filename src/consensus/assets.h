@@ -79,7 +79,7 @@ namespace Consensus {
  *  leaves it through peg-outs, which the coinbase of the same block pays: to nodes
  *  that do not know these rules the pool is a trivially spendable output and the
  *  payouts are fees, so this is a soft fork. */
-static constexpr unsigned char EXTENSION_POOL = 0x02;   //!< the pool: scrip outstanding
+static constexpr unsigned char EXTENSION_POOL = 0x02;   //!< the pool: scrip outstanding, at most
 static constexpr unsigned char EXTENSION_PEGIN = 0x03;  //!< freicoin paid into the pool
 static constexpr unsigned char EXTENSION_PEGOUT = 0x04; //!< scrip paid out to the output's program
 /** A ledger output's extension: version, amount (64-bit little endian). */
@@ -93,7 +93,7 @@ CScript LedgerBase();
 
 enum class LedgerOutputType {
     NONE,
-    POOL,      //!< amount: the scrip outstanding; value: the freicoin backing it
+    POOL,      //!< amount: the scrip the peg-ins could mint less the peg-outs, a bound on the scrip outstanding; value: the freicoin backing it
     PEGIN,     //!< value: the freicoin paid in
     PEGOUT,    //!< amount: the scrip paid out, to the output's witness program
     MALFORMED, //!< a ledger extension of the wrong size, or a pool or peg-in on another program

@@ -93,10 +93,12 @@ class ScripLedgerTest(FreicoinTestFramework):
         pending.vout[1].nValue = pay_in // 4
         pending.rehash()
         self.send(pending)
+        # the pool records what a peg-in may mint; what it leaves unminted never exists
+        minted2 = self.node.convertscrip(pay_in // 4, "scrip", pending.lock_height)["amount"]
         self.reject(self.spend([self.wallet.get_utxo(), self.utxo(pending, 1, pay_in // 4)], []), "bad-txns-ledger-spend")
         block = self.node.getblock(self.generate(self.node, 1)[0], 2)
         pool_value2, pool_scrip2 = self.final_pool(block)
-        assert_equal(pool_scrip2, minted + 1)
+        assert_equal(pool_scrip2, minted + minted2)
         assert_greater_than(pool_value2, pool_value)
 
         self.log.info("Peg out: scrip burned, its freicoin value paid by the coinbase")
@@ -113,7 +115,7 @@ class ScripLedgerTest(FreicoinTestFramework):
         payouts = [o for o in block["tx"][0]["vout"] if o["scriptPubKey"]["hex"] == dest.hex()]
         assert_equal([int(o["value"] * COIN) for o in payouts], [expected])
         _, pool_scrip3 = self.final_pool(block)
-        assert_equal(pool_scrip3, minted + 1 - part)
+        assert_equal(pool_scrip3, minted + minted2 - part)
         self.reject(self.spend([self.wallet.get_utxo(), self.utxo(tx, 1)], []), "bad-txns-pegout-spend")
 
         self.log.info("Peg out the rest of the first peg-in")
@@ -123,7 +125,7 @@ class ScripLedgerTest(FreicoinTestFramework):
         self.send(tx)
         block = self.node.getblock(self.generate(self.node, 1)[0], 2)
         _, pool_scrip4 = self.final_pool(block)
-        assert_equal(pool_scrip4, 1)  # the scrip of the second peg-in is still out
+        assert_equal(pool_scrip4, minted2)  # what the second peg-in may still account for
 
 
 if __name__ == '__main__':
