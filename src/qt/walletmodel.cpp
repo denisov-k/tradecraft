@@ -86,7 +86,15 @@ void WalletModel::startPollBalance()
 void WalletModel::setClientModel(ClientModel* client_model)
 {
     m_client_model = client_model;
-    if (!m_client_model) timer->stop();
+    if (!m_client_model) {
+        timer->stop();
+        return;
+    }
+    // Fill the client model's tip cache now, while cs_main is free: otherwise the
+    // balance poll asks the node for the tip (under cs_main) on the GUI thread
+    // until the first new block, and freezes the window while a share chain sync
+    // or other long job holds the lock.
+    m_client_model->getBestBlockHash();
 }
 
 void WalletModel::updateStatus()
