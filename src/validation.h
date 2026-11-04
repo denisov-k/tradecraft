@@ -512,6 +512,12 @@ bool IsTriviallySpendable(const CTransaction& txFrom, uint32_t n, unsigned int f
 /** The peg-outs the block at `height` on the chain through `prev` must pay: those of the
  *  block ledger_payout_delay below (none from before `asset_height`).  Nullopt if that
  *  block cannot be read. */
+/** The coinbase outputs the scrip ledger requires of a block on top of `prev`: the payouts
+ *  of the peg-outs due, out of the pool in `prev`'s block-final transaction.  They follow
+ *  from the chain alone (the share chain rebuilds share coinbases with them).  Nullopt if
+ *  a block needed cannot be read. */
+std::optional<std::vector<CTxOut>> GetLedgerPayouts(ChainstateManager& chainman, const CBlockIndex* prev) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+
 std::optional<std::vector<std::pair<CScript, CAmount>>> GetDuePegouts(const node::BlockManager& blockman, const Consensus::Params& params, const CBlockIndex* prev, int height, int asset_height);
 
 /**

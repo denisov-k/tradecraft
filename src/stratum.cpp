@@ -2004,6 +2004,13 @@ bool InitShareChain(node::NodeContext& node)
                 }
                 return GetNextWorkRequired(index, &header, Params().GetConsensus());
             },
+            .ledger_payouts_callback = [&node](const uint256& prev) -> std::optional<std::vector<CTxOut>> {
+                if (!node.chainman) return std::nullopt;
+                LOCK(::cs_main);
+                const CBlockIndex* index = node.chainman->m_blockman.LookupBlockIndex(prev);
+                if (!index) return std::nullopt;
+                return GetLedgerPayouts(*node.chainman, index);
+            },
         };
         node.sharechainman = std::make_unique<ShareChainstateManager>(sharechainman_opts);
         LOCK(::cs_main);

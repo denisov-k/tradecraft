@@ -5,12 +5,14 @@
 #ifndef BITCOIN_KERNEL_SHARECHAINSTATEMANAGER_OPTS_H
 #define BITCOIN_KERNEL_SHARECHAINSTATEMANAGER_OPTS_H
 
+#include <primitives/transaction.h>
 #include <util/time.h>
 
 #include <cstdint>
 #include <optional>
 #include <uint256.h>
 #include <functional>
+#include <vector>
 
 class CBlockHeader;
 class CChainParams;
@@ -40,6 +42,10 @@ struct ShareChainstateManagerOpts {
     //! unknown.  It sizes the PPLNS window, so template, check and prune must
     //! all use it.
     std::function<std::optional<uint32_t>(const uint256&, const CBlockHeader&)> window_bits_callback{nullptr};
+    //! The coinbase outputs, after the share payouts, that a Freicoin block on top of
+    //! the given previous block must carry (the scrip ledger's payouts due), or nullopt
+    //! if that block is unknown.  Unset: none.
+    std::function<std::optional<std::vector<CTxOut>>(const uint256&)> ledger_payouts_callback{nullptr};
 };
 
 } // namespace kernel

@@ -587,7 +587,7 @@ CScript ShareCommitmentScript(const uint256& commitment_root)
     return CScript() << OP_RETURN << data;
 }
 
-bool BuildShareCoinbase(const Share& share, const std::vector<std::pair<WitnessUnknown, CAmount>>& payouts, CMutableTransaction& cb)
+bool BuildShareCoinbase(const Share& share, const std::vector<std::pair<WitnessUnknown, CAmount>>& payouts, CMutableTransaction& cb, const std::vector<CTxOut>& extra)
 {
     bool invalid = false;
     const uint256 root = ComputeMerkleMapRootFromBranch(share.GetHeaderHash(), share.wit.commit, share.wit.share_chain_path, &invalid);
@@ -600,6 +600,7 @@ bool BuildShareCoinbase(const Share& share, const std::vector<std::pair<WitnessU
     for (const auto& payout : payouts) {
         cb.vout.emplace_back(payout.second, GetScriptForDestination(payout.first));
     }
+    cb.vout.insert(cb.vout.end(), extra.begin(), extra.end());
     cb.vout.emplace_back(0, ShareCommitmentScript(root));
     cb.nLockTime = share.wit.nLockTime;
     cb.lock_height = share.wit.lock_height;
@@ -764,10 +765,21 @@ bool ShareChainstateManager::CheckPayouts(const Share& share, const ShareIndex* 
     }
     ShareCredits credits = cached.window_credits.credits;
     const auto payouts = ComputeSharePayouts(std::move(credits), total, share.miner, Params().Dust(), Params().MaxPayees());
-    // The coinbase is exactly these payouts plus the commitment: rebuild it and
-    // compare with the txid the proof of work covers.
+    // The coinbase is exactly these payouts, what the block chain requires of a block
+    // on the share's previous block (the scrip ledger's payouts due, which follow from
+    // the chain), and the commitment: rebuild it and compare with the txid the proof
+    // of work covers.
+    std::vector<CTxOut> extra;
+    if (m_options.ledger_payouts_callback) {
+        const auto due = m_options.ledger_payouts_callback(share.wit.hashPrevBlock);
+        if (!due) {
+            reason = "share-prev-block-unknown";
+            return false;
+        }
+        extra = *due;
+    }
     CMutableTransaction cb;
-    if (!BuildShareCoinbase(share, payouts, cb)) {
+    if (!BuildShareCoinbase(share, payouts, cb, extra)) {
         reason = "share-bad-coinbase";
         return false;
     }

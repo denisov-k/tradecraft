@@ -803,9 +803,10 @@ uint256 FruitsRoot(const std::vector<uint256>& fruits);
 /** The commitment output a share template appends last: OP_RETURN <root||id>. */
 CScript ShareCommitmentScript(const uint256& commitment_root);
 /** Build the coinbase a share's template must have had: the witness fields,
- *  the given payouts, and the share commitment last.  Its txid must equal
+ *  the given payouts, the outputs the block chain requires (`extra`, the scrip
+ *  ledger's payouts due), and the share commitment last.  Its txid must equal
  *  the witness cb_hash. */
-bool BuildShareCoinbase(const Share& share, const std::vector<std::pair<WitnessUnknown, CAmount>>& payouts, CMutableTransaction& cb);
+bool BuildShareCoinbase(const Share& share, const std::vector<std::pair<WitnessUnknown, CAmount>>& payouts, CMutableTransaction& cb, const std::vector<CTxOut>& extra = {});
 /** The share header a template built from `st` for `miner` commits to (native witness, version 0). */
 Share ShareFromTemplateState(const ShareChainstateManager::TemplateState& st, const WitnessUnknown& miner);
 /** Fill a native witness from the mined coinbase and header; false if the coinbase does not end with a share commitment. */

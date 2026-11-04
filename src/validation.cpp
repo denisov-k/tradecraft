@@ -2378,6 +2378,34 @@ std::optional<std::vector<std::pair<CScript, CAmount>>> GetDuePegouts(const node
     return BlockPegouts(block);
 }
 
+std::optional<std::vector<CTxOut>> GetLedgerPayouts(ChainstateManager& chainman, const CBlockIndex* prev)
+{
+    AssertLockHeld(cs_main);
+    std::vector<CTxOut> outs;
+    if (!prev || !DeploymentActiveAfter(prev, chainman, Consensus::DEPLOYMENT_ASSETS)) return outs;
+    const int height = prev->nHeight + 1;
+    const int asset_height = chainman.m_versionbitscache.StateSinceHeight(prev, chainman.GetConsensus(), Consensus::DEPLOYMENT_ASSETS);
+    BlockLedger ledger;
+    const auto due = GetDuePegouts(chainman.m_blockman, chainman.GetConsensus(), prev, height, asset_height);
+    if (!due) return std::nullopt;
+    if (due->empty()) return outs;
+    ledger.pegouts = *due;
+    // the prior pool sits in the block-final transaction of prev (no pool output appears
+    // anywhere else since activation)
+    CBlock block;
+    if (!chainman.m_blockman.ReadBlockFromDisk(block, *prev)) return std::nullopt;
+    if (block.vtx.size() >= 2) {
+        const CTransaction& final_tx = *block.vtx.back();
+        for (const CTxOut& txout : final_tx.vout) {
+            ledger.AddPriorOutput(Coin(txout, final_tx.lock_height, prev->nHeight, false), height, asset_height);
+        }
+    }
+    for (const auto& [dest, pay] : ComputeLedger(ledger, height).payouts) {
+        if (pay > 0) outs.emplace_back(pay, dest);
+    }
+    return outs;
+}
+
 bool IsTriviallySpendable(const CTransaction& txFrom, uint32_t n, unsigned int flags)
 {
     // Build the coin object from which we will attempt to spend the output:

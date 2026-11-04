@@ -247,6 +247,7 @@ BASE_SCRIPTS = [
     'feature_block_final_tx.py',
     'feature_assets.py',
     'feature_scrip_ledger.py',
+    'feature_sharechain_ledger.py',
     'wallet_scrip_ledger.py --descriptors',
     'wallet_scrip_ledger.py --legacy-wallet',
     'wallet_assets.py --descriptors',
