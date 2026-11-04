@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include <chainparams.h>
 #include <common/messages.h>
 #include <consensus/validation.h>
 #include <core_io.h>
@@ -625,8 +626,9 @@ RPCHelpMan pegout()
 {
     return RPCHelpMan{"pegout",
         "\nBurn scrip this wallet holds and have its freicoin value paid to an address by the\n"
-        "coinbase of the block that confirms the transaction (at that block's height).  The\n"
-        "rest of the scrip spent returns to a change address; the fee is paid in freicoin.\n" +
+        "coinbase of the block a fixed number of blocks after the one that confirms the\n"
+        "transaction (at that block's height).  The rest of the scrip spent returns to a\n"
+        "change address; the fee is paid in freicoin.\n" +
         HELP_REQUIRING_PASSPHRASE,
         {
             {"amount", RPCArg::Type::NUM, RPCArg::Optional::NO, "The scrip to pay out, in kria of scrip"},
@@ -635,6 +637,7 @@ RPCHelpMan pegout()
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::STR_HEX, "txid", "The transaction id"},
             {RPCResult::Type::STR_AMOUNT, "freicoin", "The payout if confirmed in the next block"},
+            {RPCResult::Type::NUM, "payout_height", "The block that pays it, if confirmed in the next block"},
         }},
         RPCExamples{HelpExampleCli("pegout", "100000 \"" + EXAMPLE_ADDRESS[0] + "\"")},
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
@@ -658,7 +661,9 @@ RPCHelpMan pegout()
 
     UniValue result(UniValue::VOBJ);
     result.pushKV("txid", tx->GetHash().GetHex());
-    result.pushKV("freicoin", ValueFromAmount(ScripToFreicoin(amount, NextHeight(*pwallet))));
+    const int payout_height = NextHeight(*pwallet) + Params().GetConsensus().ledger_payout_delay;
+    result.pushKV("freicoin", ValueFromAmount(ScripToFreicoin(amount, payout_height)));
+    result.pushKV("payout_height", payout_height);
     return result;
 },
     };

@@ -66,12 +66,16 @@ class WalletScripLedgerTest(FreicoinTestFramework):
         dest = holder.getnewaddress()
         out = half // 3
         res = holder.pegout(out, dest)
-        expected = holder.convertscrip(out, "freicoin", holder.getblockcount() + 1)["amount"]
+        # paid by the coinbase ledger_payout_delay (10 on regtest) blocks after it confirms
+        assert_equal(res["payout_height"], holder.getblockcount() + 1 + 10)
+        expected = holder.convertscrip(out, "freicoin", res["payout_height"])["amount"]
         assert_equal(res["freicoin"], Decimal(expected) / COIN)
         self.sync_mempools()
+        self.generate(holder, 10)
         tmpl = holder.getblocktemplate(RULES)
         assert_equal(tmpl["coinbasepayouts"], [{"scriptPubKey": holder.getaddressinfo(dest)["scriptPubKey"], "amount": expected}])
         block = holder.getblock(self.generate(holder, 1)[0], 2)
+        assert_equal(block["height"], res["payout_height"])
         paid = [o for o in block["tx"][0]["vout"] if o["scriptPubKey"].get("address") == dest]
         assert_equal([int(o["value"] * COIN) for o in paid], [expected])
         assert_equal(holder.getassetbalances(), {scrip: half - out})

@@ -2368,6 +2368,16 @@ bool IsTriviallySpendable(const Coin& from, const COutPoint& prevout, unsigned i
     return check();
 }
 
+std::optional<std::vector<std::pair<CScript, CAmount>>> GetDuePegouts(const node::BlockManager& blockman, const Consensus::Params& params, const CBlockIndex* prev, int height, int asset_height)
+{
+    const int due_height = height - params.ledger_payout_delay;
+    if (due_height < std::max(asset_height, 1) || !prev) return std::vector<std::pair<CScript, CAmount>>{};
+    const CBlockIndex* due = prev->GetAncestor(due_height);
+    CBlock block;
+    if (!due || !blockman.ReadBlockFromDisk(block, *due)) return std::nullopt;
+    return BlockPegouts(block);
+}
+
 bool IsTriviallySpendable(const CTransaction& txFrom, uint32_t n, unsigned int flags)
 {
     // Build the coin object from which we will attempt to spend the output:
@@ -2808,6 +2818,11 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         for (uint32_t n = 0; n < prior_final.size; ++n) {
             ledger.AddPriorOutput(view.AccessCoin(COutPoint(prior_final.hash, n)), pindex->nHeight, asset_height);
         }
+        const auto due = GetDuePegouts(m_blockman, params.GetConsensus(), pindex->pprev, pindex->nHeight, asset_height);
+        if (!due) {
+            return FatalError(m_chainman.GetNotifications(), state, _("Failed to read the block whose peg-outs this block pays."));
+        }
+        ledger.pegouts = *due;
     }
 
     std::vector<int> prevheights;

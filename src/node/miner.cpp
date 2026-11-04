@@ -333,7 +333,8 @@ void BlockAssembler::AddToBlock(CTxMemPool::txiter iter)
     pblocktemplate->vTxSigOpsCost.insert(pblocktemplate->vTxSigOpsCost.end() - !!(m_block_final_state == HAS_BLOCK_FINAL_TX), iter->GetSigOpCost());
     nBlockWeight += iter->GetTxWeight();
     // Room for what settling the ledger will add: a block-final input per peg-in
-    // (and the pool output, once), a coinbase output per peg-out.
+    // (and the pool output, once).  The payouts due are known before selection and
+    // fit in the coinbase's reserved weight.
     for (const CTxOut& txout : iter->GetTx().vout) {
         CAmount ledger_amount = 0;
         const LedgerOutputType ledger = GetLedgerOutput(txout, ledger_amount);
@@ -341,8 +342,6 @@ void BlockAssembler::AddToBlock(CTxMemPool::txiter iter)
             const uint64_t reserve = WITNESS_SCALE_FACTOR * (41 + (m_ledger_final_weight ? 0 : 60));
             nBlockWeight += reserve;
             m_ledger_final_weight += reserve;
-        } else if (ledger == LedgerOutputType::PEGOUT) {
-            nBlockWeight += WITNESS_SCALE_FACTOR * (::GetSerializeSize(txout) - 10);
         }
     }
     ++nBlockTx;
@@ -469,6 +468,12 @@ std::vector<std::pair<CScript, CAmount>> BlockAssembler::settleLedger(const CBlo
     for (const auto& [prevout, coin] : m_block_final_tx_coin_map) ledger.AddPriorOutput(coin, nHeight, asset_height);
     // the selected transactions sit between the coinbase and the block-final transaction
     for (size_t i = 1; i + 1 < pblocktemplate->block.vtx.size(); ++i) ledger.AddTransaction(*pblocktemplate->block.vtx[i], nHeight);
+    const auto due = GetDuePegouts(m_chainstate.m_blockman, chainman.GetConsensus(), pindexPrev, nHeight, asset_height);
+    if (!due) {
+        LogPrintf("ERROR: %s: cannot read the block whose peg-outs this one pays\n", __func__);
+        return {};
+    }
+    ledger.pegouts = *due;
     if (!ledger.Active()) return {};
     const LedgerResult result = ComputeLedger(ledger, nHeight);
 

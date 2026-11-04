@@ -24,6 +24,8 @@ from test_framework.util import assert_equal, assert_greater_than, assert_raises
 from test_framework.wallet import MiniWallet
 
 LEDGER_BASE = bytes([0x00, 0x02]) + b"FS"
+DELAY = 10  # ledger_payout_delay on regtest
+RULES = {"rules": ["segwit", "finaltx", "auxpow", "assets"]}
 
 
 def ledger_ext(version, amount):
@@ -63,6 +65,10 @@ class ScripLedgerTest(FreicoinTestFramework):
 
     def send(self, tx):
         self.wallet.sendrawtransaction(from_node=self.node, tx_hex=tx.serialize().hex())
+
+    def payouts(self, block, dest):
+        """What the coinbase of a block pays to a program."""
+        return [int(o["value"] * COIN) for o in block["tx"][0]["vout"] if o["scriptPubKey"]["hex"] == dest.hex()]
 
     def final_pool(self, block):
         """The pool of a block: the first output of its block-final transaction."""
@@ -111,59 +117,55 @@ class ScripLedgerTest(FreicoinTestFramework):
         assert_equal(pool_scrip2, minted + minted2)
         assert_greater_than(pool_value2, pool_value)
 
-        self.log.info("Peg out: scrip burned, its freicoin value paid by the coinbase")
+        self.log.info("Peg out: scrip burned now, its freicoin value paid by the coinbase DELAY blocks later")
         dest = bytes(self.wallet.get_scriptPubKey())
         part = minted // 3
         fee = self.fee_utxo()
         self.reject(self.spend([fee, holding], [CTxOut(0, dest + ledger_ext(0x04, minted + 1))]), "bad-txns-asset-in-belowout")
         self.reject(self.spend([fee, holding], [CTxOut(1000, dest + ledger_ext(0x04, part))]), "bad-txns-pegout-nonzero-value")
-        tx = self.spend([fee, holding], [CTxOut(0, dest + ledger_ext(0x04, part)), self.scrip_out(minted - part)])
-        self.send(tx)
-        height = self.node.getblockcount() + 1
+        out1 = self.spend([fee, holding], [CTxOut(0, dest + ledger_ext(0x04, part)), self.scrip_out(minted - part)])
+        self.send(out1)
+        pegout_height = self.node.getblockcount() + 1
         block = self.node.getblock(self.generate(self.node, 1)[0], 2)
-        expected = self.node.convertscrip(part, "freicoin", height)["amount"]
-        payouts = [o for o in block["tx"][0]["vout"] if o["scriptPubKey"]["hex"] == dest.hex()]
-        assert_equal([int(o["value"] * COIN) for o in payouts], [expected])
-        _, pool_scrip3 = self.final_pool(block)
-        assert_equal(pool_scrip3, minted + minted2 - part)
-        out1 = tx
-        self.reject(self.spend([self.fee_utxo(), self.utxo(tx, 1)], []), "bad-txns-pegout-spend")
+        assert_equal(self.payouts(block, dest), [])
+        # owed until paid: the pool still records it
+        assert_equal(self.final_pool(block)[1], minted + minted2)
+        self.reject(self.spend([self.fee_utxo(), self.utxo(out1, 1)], []), "bad-txns-pegout-spend")
+        self.generate(self.node, DELAY - 1)
+        expected = self.node.convertscrip(part, "freicoin", pegout_height + DELAY)["amount"]
+        assert_raises_rpc_error(-8, "Support for 'assets' rule", self.node.getblocktemplate, {"rules": ["segwit", "finaltx", "auxpow"]})
+        tmpl = self.node.getblocktemplate(RULES)
+        assert_equal(tmpl["coinbasepayouts"], [{"scriptPubKey": dest.hex(), "amount": expected}])
+        block = self.node.getblock(self.generate(self.node, 1)[0], 2)
+        assert_equal(block["height"], pegout_height + DELAY)
+        assert_equal(self.payouts(block, dest), [expected])
+        assert_equal(self.final_pool(block)[1], minted + minted2 - part)
 
         self.log.info("Peg out the rest of the first peg-in")
-        rest = self.utxo(tx, 2)
-        fee = self.fee_utxo()
-        tx = self.spend([fee, rest], [CTxOut(0, dest + ledger_ext(0x04, minted - part))])
-        self.send(tx)
+        out2 = self.spend([self.fee_utxo(), self.utxo(out1, 2)], [CTxOut(0, dest + ledger_ext(0x04, minted - part))])
+        self.send(out2)
+        rest_height = self.node.getblockcount() + 1
+        rest_block = self.generate(self.node, 1)[0]
+        self.generate(self.node, DELAY - 1)
         block = self.node.getblock(self.generate(self.node, 1)[0], 2)
-        _, pool_scrip4 = self.final_pool(block)
-        assert_equal(pool_scrip4, minted2)  # what the second peg-in may still account for
-        out2 = tx
+        assert_equal(self.payouts(block, dest), [self.node.convertscrip(minted - part, "freicoin", rest_height + DELAY)["amount"]])
+        assert_equal(self.final_pool(block)[1], minted2)  # what the second peg-in may still account for
 
-        self.log.info("Reorg: the ledger blocks undone, their transactions back, the same ledger again")
-        self.node.invalidateblock(pegin2_hash)
-        assert_equal(self.node.getbestblockhash(), pegin1_hash)
-        # invalidateblock takes the blocks off one at a time, so a transaction whose
-        # parent sat in the next block down may not come back by itself; it is still
-        # valid, and its sender would send it again
-        mempool = self.node.getrawmempool()
-        for tx in (pending, out1, out2):
-            if tx.hash not in mempool:
-                assert self.node.testmempoolaccept([tx.serialize().hex()])[0]["allowed"]
-                self.node.sendrawtransaction(tx.serialize().hex())
-        assert_equal(sorted(self.node.getrawmempool()), sorted([pending.hash, out1.hash, out2.hash]))
-        height = self.node.getblockcount() + 1
-        expected = sorted([self.node.convertscrip(part, "freicoin", height)["amount"],
-                           self.node.convertscrip(minted - part, "freicoin", height)["amount"]])
-        assert_raises_rpc_error(-8, "Support for 'assets' rule", self.node.getblocktemplate, {"rules": ["segwit", "finaltx", "auxpow"]})
-        tmpl = self.node.getblocktemplate({"rules": ["segwit", "finaltx", "auxpow", "assets"]})
-        assert_equal(sorted(p["amount"] for p in tmpl["coinbasepayouts"]), expected)
-        assert_equal(struct.unpack("<q", bytes.fromhex(tmpl["finaltx"]["pool"]["scriptPubKey"])[6:])[0], minted2)
+        self.log.info("Reorg: the peg-out undone with the blocks after it; mined again, it is paid again, on time")
+        self.node.invalidateblock(rest_block)
+        assert_equal(self.node.getblockcount(), rest_height - 1)
+        # invalidateblock brings transactions back for the last few blocks only; the
+        # peg-out sat deeper, and its sender would send it again
+        if out2.hash not in self.node.getrawmempool():
+            assert self.node.testmempoolaccept([out2.serialize().hex()])[0]["allowed"]
+            self.node.sendrawtransaction(out2.serialize().hex())
         block = self.node.getblock(self.generate(self.node, 1)[0], 2)
-        assert {pending.hash, out1.hash, out2.hash} <= {t["txid"] for t in block["tx"]}
-        payouts = [o for o in block["tx"][0]["vout"] if o["scriptPubKey"]["hex"] == dest.hex()]
-        assert_equal(sorted(int(o["value"] * COIN) for o in payouts), expected)
-        _, pool_scrip5 = self.final_pool(block)
-        assert_equal(pool_scrip5, minted2)
+        assert out2.hash in {t["txid"] for t in block["tx"]}
+        assert_equal(self.final_pool(block)[1], minted + minted2 - part)
+        self.generate(self.node, DELAY - 1)
+        block = self.node.getblock(self.generate(self.node, 1)[0], 2)
+        assert_equal(self.payouts(block, dest), [self.node.convertscrip(minted - part, "freicoin", rest_height + DELAY)["amount"]])
+        assert_equal(self.final_pool(block)[1], minted2)
         assert self.node.gettxout(block["tx"][-1]["txid"], 0) is not None
         assert_equal(self.node.getrawmempool(), [])
 

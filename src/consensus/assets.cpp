@@ -120,7 +120,7 @@ void BlockLedger::AddTransaction(const CTransaction& tx, int height)
                 minted += FreicoinToScrip(txout.GetReferenceValue(), tx.lock_height);
                 break;
             case LedgerOutputType::PEGOUT:
-                pegouts.emplace_back(txout.scriptPubKey.WithoutExtension(), amount);
+                // paid later, by the block ledger_payout_delay above (BlockPegouts)
                 break;
             default:
                 break;
@@ -141,6 +141,19 @@ LedgerResult ComputeLedger(const BlockLedger& ledger, int height)
     }
     result.pool_value = available;
     return result;
+}
+
+std::vector<std::pair<CScript, CAmount>> BlockPegouts(const CBlock& block)
+{
+    std::vector<std::pair<CScript, CAmount>> pegouts;
+    // the block-final transaction holds no peg-out, so every transaction but the coinbase
+    for (size_t i = 1; i < block.vtx.size(); ++i) {
+        for (const CTxOut& txout : block.vtx[i]->vout) {
+            CAmount scrip = 0;
+            if (GetLedgerOutput(txout, scrip) == LedgerOutputType::PEGOUT) pegouts.emplace_back(txout.scriptPubKey.WithoutExtension(), scrip);
+        }
+    }
+    return pegouts;
 }
 
 bool Consensus::CheckBlockLedger(const CBlock& block, const BlockLedger& ledger, int height, bool has_final_tx, BlockValidationState& state)

@@ -606,6 +606,7 @@ public:
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 150;
+        consensus.ledger_payout_delay = 10;
         consensus.perpetual_subsidy = 5000000000; // 50.000,000,00fc
         consensus.equilibrium_height = 0; // disable
         consensus.equilibrium_monetary_base = 0;

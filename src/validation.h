@@ -509,6 +509,11 @@ PackageMempoolAcceptResult ProcessNewPackage(Chainstate& active_chainstate, CTxM
 bool IsTriviallySpendable(const Coin& from, const COutPoint& prevout, unsigned int flags);
 bool IsTriviallySpendable(const CTransaction& txFrom, uint32_t n, unsigned int flags);
 
+/** The peg-outs the block at `height` on the chain through `prev` must pay: those of the
+ *  block ledger_payout_delay below (none from before `asset_height`).  Nullopt if that
+ *  block cannot be read. */
+std::optional<std::vector<std::pair<CScript, CAmount>>> GetDuePegouts(const node::BlockManager& blockman, const Consensus::Params& params, const CBlockIndex* prev, int height, int asset_height);
+
 /**
  * Check if transaction will be final in the next block to be created.
  */

@@ -80,10 +80,14 @@ version 0 program that anyone can spend, so the block-final transaction can.
 **Block rules** (`BlockLedger`, `ComputeLedger`, `Consensus::CheckBlockLedger`):
 - The prior pool is the pool output of the prior block-final transaction (if any): value V, scrip S.
 - The block-final transaction must claim every peg-in of the block (`bad-blk-ledger-pegin-unclaimed`).
-- Each peg-out of scrip s is paid `min(ScripToFreicoin(s, height), available)` in order, where
+- **The payout queue.** A peg-out made in block h is paid by block h + D (`ledger_payout_delay`: 100 on
+  mainnet, 10 on regtest).  What a block owes is thus fixed by the chain below it, read from block h − D
+  (`GetDuePegouts`, `BlockPegouts`); peg-outs made before activation are not paid.
+- Each due peg-out of scrip s is paid `min(ScripToFreicoin(s, height), available)` in order, where
   `available` starts at `present(V) + Σ present(peg-in values)`.  The coinbase must carry an output to the
   peg-out's program of at least that much, one output per payout (`bad-blk-ledger-payout`).
-- The new pool must be exactly `available` after the payouts, recording `S + Σ mintable − Σ s`, as one
+- The new pool must be exactly `available` after the payouts, recording `S + Σ mintable − Σ s` (a queued
+  peg-out stays in S until paid), as one
   output before the last (commitment) output of the block-final transaction; no pool output when both are
   zero (`bad-blk-ledger-pool`, `bad-blk-ledger-pool-count`).
 - Every rounding stays in the pool.  The recorded scrip bounds the scrip outstanding from above: a peg-in
@@ -93,7 +97,13 @@ version 0 program that anyone can spend, so the block-final transaction can.
 are outputs the block-final transaction may spend (current-block outputs), and the payouts are fees that
 the block-final transaction forwards to the coinbase.  The new rules only restrict.
 
-**Reorgs.** A peg-out and its payout are in the same block and disappear together.
+**Reorgs.** A payout follows its peg-out by D blocks: a reorg shallower than D cannot touch a payout, and
+a deeper one replays both.
+
+**The share chain.** A block found through the share chain is also a share, whose coinbase peers rebuild
+as the share payouts plus the commitment.  Because what a block owes follows from the chain below it, a
+share-chain node can compute the due payouts for the block a share builds on and rebuild the coinbase
+with them, without the share carrying them (branch `sharechain-ledger`).
 
 ## 5. Node behaviour
 
@@ -131,8 +141,8 @@ unchanged.
 - **Suffix grammar.** The paper has up to eight pushes and a trailing version opcode; the grammar deployed
   with protocol cleanup has one push and no version.  This keeps the deployed grammar and puts the version
   in the first byte of the push.
-- **Payouts** are paid by the coinbase of the same block, not through a payout queue with maturation (see
-  question 1).
+- **Payouts** go through a queue as in the paper, with a fixed delay rather than lock-in and maturation:
+  the coinbase D blocks later pays them (see question 1).
 - **Fees** are paid in freicoin; fees in scrip (an explicit fee output, XI-B, or rebatable fees, XI-A) are
   not implemented.
 - **Confidential amounts** would replace the amount in the extension with a commitment and put the range
@@ -142,8 +152,10 @@ The epoch is `SCRIP_EPOCH = 5040000`, as already in `consensus/amount.cpp`.
 
 ## 9. Questions
 
-1. **A payout queue?**  A peg-out and its payout share a block, so a reorg removes both and the payout
-   then matures like any coinbase output.  Is that enough, or do you want peg-outs to go through a queue
-   with a delay, as in the paper?
+1. **The payout delay.**  Peg-outs are paid D blocks later (100 on mainnet).  We first paid them in the
+   same block; the queue was needed for the share chain: a share's coinbase is rebuilt by its peers, who
+   cannot know a block's own peg-outs but can compute the payouts due from the chain below.  It also keeps
+   payouts out of reach of shallow reorgs, now that coinbase maturity is one block.  Is a fixed delay of
+   100 right, or do you want the paper's lock-in and maturation?
 2. **Rates on assets?**  User-issued assets carry no demurrage here.  Should an asset be able to carry its
    own rate (as in Freimarkets), or are assets meant to sit outside the demurrage kernel?
