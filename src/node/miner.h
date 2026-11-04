@@ -51,6 +51,10 @@ struct CBlockTemplate
     std::vector<int64_t> vTxSigOpsCost;
     bool has_block_final_tx;
     std::map<COutPoint, Coin> block_final_tx_coin_map;
+    //! The scrip pool the block-final transaction must carry, if any
+    std::optional<CTxOut> ledger_pool;
+    //! The coinbase outputs the block's peg-outs require
+    std::vector<CTxOut> ledger_payouts;
 };
 
 // Container for tracking updates to ancestor feerate as we include (parent)

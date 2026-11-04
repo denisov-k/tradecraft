@@ -461,13 +461,43 @@ static CTxDestination AssetDestination(CWallet& wallet, const UniValue& address,
     return dest;
 }
 
-static CTransactionRef SendAssets(CWallet& wallet, CCoinControl& coin_control, std::vector<CRecipient>& recipients) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+static CTransactionRef SendAssets(CWallet& wallet, CCoinControl& coin_control, std::vector<CRecipient>& recipients, std::optional<uint32_t> refheight = std::nullopt) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     EnsureWalletIsUnlocked(wallet);
-    auto res = CreateTransaction(wallet, recipients, /*refheight=*/std::nullopt, /*change_pos=*/std::nullopt, coin_control, /*sign=*/true);
+    auto res = CreateTransaction(wallet, recipients, refheight, /*change_pos=*/std::nullopt, coin_control, /*sign=*/true);
     if (!res) throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, util::ErrorString(res).original);
     wallet.CommitTransaction(res->tx, /*mapValue=*/{}, /*orderForm=*/{});
     return res->tx;
+}
+
+static uint32_t NextHeight(const CWallet& wallet)
+{
+    const auto tip_height = wallet.chain().getHeight();
+    if (!tip_height) throw JSONRPCError(RPC_INTERNAL_ERROR, "Cannot determine current chain height");
+    return static_cast<uint32_t>(*tip_height + 1);
+}
+
+/** Select the wallet's outputs of an asset, largest first, to cover an amount; returns their sum. */
+static CAmount SelectAsset(CWallet& wallet, const uint256& asset, CAmount amount, CCoinControl& coin_control) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    CoinFilterParams params;
+    params.min_amount = 0;
+    params.include_extension_outputs = true;
+    CCoinControl list_control;
+    std::vector<std::pair<CAmount, COutPoint>> held;
+    for (const COutput& out : AvailableCoinsListUnspent(wallet, NextHeight(wallet), &list_control, params).All()) {
+        AssetAmount a;
+        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET && a.asset == asset) held.emplace_back(a.amount, out.outpoint);
+    }
+    std::sort(held.begin(), held.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    CAmount selected = 0;
+    for (const auto& [value, outpoint] : held) {
+        if (selected >= amount) break;
+        coin_control.Select(outpoint);
+        selected += value;
+    }
+    if (selected < amount) throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient asset");
+    return selected;
 }
 
 RPCHelpMan issueasset()
@@ -531,26 +561,8 @@ RPCHelpMan sendasset()
     const CAmount amount = ParseAssetAmount(request.params[1]);
     const CTxDestination dest = AssetDestination(*pwallet, request.params[2], /*change=*/false);
 
-    const auto tip_height = pwallet->chain().getHeight();
-    if (!tip_height) throw JSONRPCError(RPC_INTERNAL_ERROR, "Cannot determine current chain height");
-    CoinFilterParams params;
-    params.min_amount = 0;
-    params.include_extension_outputs = true;
-    CCoinControl list_control;
-    std::vector<std::pair<CAmount, COutPoint>> held;
-    for (const COutput& out : AvailableCoinsListUnspent(*pwallet, *tip_height + 1, &list_control, params).All()) {
-        AssetAmount a;
-        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET && a.asset == asset) held.emplace_back(a.amount, out.outpoint);
-    }
-    std::sort(held.begin(), held.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
     CCoinControl coin_control;
-    CAmount selected = 0;
-    for (const auto& [value, outpoint] : held) {
-        if (selected >= amount) break;
-        coin_control.Select(outpoint);
-        selected += value;
-    }
-    if (selected < amount) throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient asset");
+    const CAmount selected = SelectAsset(*pwallet, asset, amount, coin_control);
 
     std::vector<CRecipient> recipients;
     recipients.push_back(CRecipient{dest, 0, false, AssetAmount{asset, amount}});
@@ -558,6 +570,94 @@ RPCHelpMan sendasset()
         recipients.push_back(CRecipient{AssetDestination(*pwallet, UniValue(), /*change=*/true), 0, false, AssetAmount{asset, selected - amount}});
     }
     return SendAssets(*pwallet, coin_control, recipients)->GetHash().GetHex();
+},
+    };
+}
+
+RPCHelpMan pegin()
+{
+    return RPCHelpMan{"pegin",
+        "\nPay freicoin into the scrip pool and receive its value in scrip: freicoin valued at the\n"
+        "scrip epoch, an asset without demurrage (see convertscrip).  The scrip goes to an\n"
+        "address of this wallet, or the one given.\n" +
+        HELP_REQUIRING_PASSPHRASE,
+        {
+            {"amount", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "The amount in " + CURRENCY_UNIT + " to pay in"},
+            {"address", RPCArg::Type::STR, RPCArg::DefaultHint{"a new address of this wallet"}, "The native witness address to receive the scrip"},
+        },
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::STR_HEX, "txid", "The transaction id"},
+            {RPCResult::Type::NUM, "scrip", "The scrip minted, in kria of scrip"},
+        }},
+        RPCExamples{HelpExampleCli("pegin", "10") + HelpExampleRpc("pegin", "10")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+    pwallet->BlockUntilSyncedToCurrentChain();
+    LOCK(pwallet->cs_wallet);
+
+    const CAmount value = AmountFromValue(request.params[0]);
+    const CTxDestination dest = AssetDestination(*pwallet, request.params[1], /*change=*/false);
+    // the transaction's reference height fixes the scrip value
+    const uint32_t refheight = NextHeight(*pwallet);
+    const CAmount minted = FreicoinToScrip(value, refheight);
+    if (minted <= 0) throw JSONRPCError(RPC_TYPE_ERROR, "Amount too small to mint scrip");
+
+    const std::vector<unsigned char> pool_program{'F', 'S'};
+    std::vector<CRecipient> recipients;
+    recipients.push_back(CRecipient{WitnessUnknown{0, pool_program}, value, false, std::nullopt, LedgerExtension(EXTENSION_PEGIN, 0)});
+    recipients.push_back(CRecipient{dest, 0, false, AssetAmount{ScripAssetId(), minted}});
+    CCoinControl coin_control;
+    const CTransactionRef tx = SendAssets(*pwallet, coin_control, recipients, refheight);
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("txid", tx->GetHash().GetHex());
+    result.pushKV("scrip", minted);
+    return result;
+},
+    };
+}
+
+RPCHelpMan pegout()
+{
+    return RPCHelpMan{"pegout",
+        "\nBurn scrip this wallet holds and have its freicoin value paid to an address by the\n"
+        "coinbase of the block that confirms the transaction (at that block's height).  The\n"
+        "rest of the scrip spent returns to a change address; the fee is paid in freicoin.\n" +
+        HELP_REQUIRING_PASSPHRASE,
+        {
+            {"amount", RPCArg::Type::NUM, RPCArg::Optional::NO, "The scrip to pay out, in kria of scrip"},
+            {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The native witness address to receive the freicoin"},
+        },
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::STR_HEX, "txid", "The transaction id"},
+            {RPCResult::Type::STR_AMOUNT, "freicoin", "The payout if confirmed in the next block"},
+        }},
+        RPCExamples{HelpExampleCli("pegout", "100000 \"" + EXAMPLE_ADDRESS[0] + "\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+    pwallet->BlockUntilSyncedToCurrentChain();
+    LOCK(pwallet->cs_wallet);
+
+    const CAmount amount = ParseAssetAmount(request.params[0]);
+    const CTxDestination dest = AssetDestination(*pwallet, request.params[1], /*change=*/false);
+    CCoinControl coin_control;
+    const CAmount selected = SelectAsset(*pwallet, ScripAssetId(), amount, coin_control);
+
+    std::vector<CRecipient> recipients;
+    recipients.push_back(CRecipient{dest, 0, false, std::nullopt, LedgerExtension(EXTENSION_PEGOUT, amount)});
+    if (selected > amount) {
+        recipients.push_back(CRecipient{AssetDestination(*pwallet, UniValue(), /*change=*/true), 0, false, AssetAmount{ScripAssetId(), selected - amount}});
+    }
+    const CTransactionRef tx = SendAssets(*pwallet, coin_control, recipients);
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("txid", tx->GetHash().GetHex());
+    result.pushKV("freicoin", ValueFromAmount(ScripToFreicoin(amount, NextHeight(*pwallet))));
+    return result;
 },
     };
 }

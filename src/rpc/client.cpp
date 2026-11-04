@@ -53,6 +53,8 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "sendtoaddress", 1, "amount" },
     { "issueasset", 0, "amount" },
     { "sendasset", 1, "amount" },
+    { "pegin", 0, "amount" },
+    { "pegout", 0, "amount" },
     { "sendtoaddress", 4, "subtractfeefromamount" },
     { "sendtoaddress", 5 , "replaceable" },
     { "sendtoaddress", 6 , "conf_target" },

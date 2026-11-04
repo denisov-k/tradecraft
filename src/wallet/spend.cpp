@@ -422,6 +422,11 @@ CoinsResult AvailableCoins(const CWallet& wallet,
             if (!params.include_extension_outputs && output.scriptPubKey.WithoutExtension() != output.scriptPubKey)
                 continue;
 
+            // a peg-out is paid through the coinbase: nothing in it to spend
+            CAmount ledger_amount = 0;
+            if (GetLedgerOutput(output, ledger_amount) != LedgerOutputType::NONE)
+                continue;
+
             isminetype mine = wallet.IsMine(output);
 
             if (mine == ISMINE_NO) {
@@ -1021,7 +1026,11 @@ static void DiscourageFeeSniping(CMutableTransaction& tx, FastRandomContext& rng
 CScript GetScriptForRecipient(const CRecipient& recipient)
 {
     CScript script = GetScriptForDestination(recipient.dest);
-    if (recipient.asset) script << AssetExtension(*recipient.asset);
+    if (recipient.asset) {
+        script << AssetExtension(*recipient.asset);
+    } else if (!recipient.extension.empty()) {
+        script << recipient.extension;
+    }
     return script;
 }
 
@@ -1032,8 +1041,8 @@ size_t GetSerializeSizeForRecipient(const CRecipient& recipient)
 
 bool IsDust(const CRecipient& recipient, const CFeeRate& dustRelayFee)
 {
-    // an asset output holds no freicoin by rule
-    if (recipient.asset) return false;
+    // an asset output or a peg-out holds no freicoin by rule
+    if (recipient.asset || !recipient.extension.empty()) return false;
     return ::IsDust(CTxOut(recipient.nAmount, GetScriptForDestination(recipient.dest)), dustRelayFee);
 }
 

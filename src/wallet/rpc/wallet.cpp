@@ -1096,6 +1096,8 @@ RPCHelpMan send();
 RPCHelpMan sendall();
 RPCHelpMan issueasset();
 RPCHelpMan sendasset();
+RPCHelpMan pegin();
+RPCHelpMan pegout();
 RPCHelpMan walletprocesspst();
 RPCHelpMan walletcreatefundedpst();
 RPCHelpMan signrawtransactionwithwallet();
@@ -1167,6 +1169,8 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &lockunspent},
         {"wallet", &migratewallet},
         {"wallet", &newkeypool},
+        {"wallet", &pegin},
+        {"wallet", &pegout},
         {"wallet", &removeprunedfunds},
         {"wallet", &rescanblockchain},
         {"wallet", &send},

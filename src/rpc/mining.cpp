@@ -670,6 +670,16 @@ static RPCHelpMan getblocktemplate()
                             {RPCResult::Type::NUM, "amount", "value of input at current refheight"},
                         }},
                     }},
+                    {RPCResult::Type::OBJ, "pool", /*optional=*/true, "the scrip pool, the output the block-final transaction must carry before its last (commitment) output", {
+                        {RPCResult::Type::STR_HEX, "scriptPubKey", "the output script"},
+                        {RPCResult::Type::NUM, "amount", "the output value, in kria"},
+                    }},
+                }},
+                {RPCResult::Type::ARR, "coinbasepayouts", /*optional=*/true, "outputs the coinbase must carry to pay the peg-outs of the block, out of what the block-final transaction forwards (not included in coinbasevalue)", {
+                    {RPCResult::Type::OBJ, "", "", {
+                        {RPCResult::Type::STR_HEX, "scriptPubKey", "the output script"},
+                        {RPCResult::Type::NUM, "amount", "the output value, in kria"},
+                    }},
                 }},
             }},
         },
@@ -1003,7 +1013,23 @@ static RPCHelpMan getblocktemplate()
         }
         UniValue finaltx(UniValue::VOBJ);
         finaltx.pushKV("prevout", finaltx_prevout);
+        if (pblocktemplate->ledger_pool) {
+            UniValue pool(UniValue::VOBJ);
+            pool.pushKV("scriptPubKey", HexStr(pblocktemplate->ledger_pool->scriptPubKey));
+            pool.pushKV("amount", pblocktemplate->ledger_pool->GetReferenceValue());
+            finaltx.pushKV("pool", std::move(pool));
+        }
         result.pushKV("finaltx", finaltx);
+        if (!pblocktemplate->ledger_payouts.empty()) {
+            UniValue payouts(UniValue::VARR);
+            for (const CTxOut& out : pblocktemplate->ledger_payouts) {
+                UniValue o(UniValue::VOBJ);
+                o.pushKV("scriptPubKey", HexStr(out.scriptPubKey));
+                o.pushKV("amount", out.GetReferenceValue());
+                payouts.push_back(std::move(o));
+            }
+            result.pushKV("coinbasepayouts", std::move(payouts));
+        }
     }
 
     if (consensusParams.signet_blocks) {

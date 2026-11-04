@@ -458,10 +458,21 @@ std::vector<std::pair<CScript, CAmount>> BlockAssembler::settleLedger()
 
     CMutableTransaction final_tx(*pblocktemplate->block.vtx.back());
     const int64_t old_weight = GetTransactionWeight(CTransaction(final_tx));
-    for (const COutPoint& pegin : ledger.pegins) final_tx.vin.push_back(CTxIn(pegin, CScript(), CTxIn::SEQUENCE_FINAL));
+    for (const COutPoint& pegin : ledger.pegins) {
+        final_tx.vin.push_back(CTxIn(pegin, CScript(), CTxIn::SEQUENCE_FINAL));
+        // for getblocktemplate, which lists what the block-final transaction spends
+        for (size_t i = 1; i + 1 < pblocktemplate->block.vtx.size(); ++i) {
+            const CTransaction& tx = *pblocktemplate->block.vtx[i];
+            if (tx.GetHash() == pegin.hash) m_block_final_tx_coin_map[pegin] = Coin(tx.vout[pegin.n], tx.lock_height, nHeight, false);
+        }
+    }
     // the pool goes before the last output, which carries the commitments
     if (result.pool_value || result.pool_scrip) {
         final_tx.vout.insert(final_tx.vout.begin(), CTxOut(result.pool_value, LedgerBase() << LedgerExtension(EXTENSION_POOL, result.pool_scrip)));
+        pblocktemplate->ledger_pool = final_tx.vout.front();
+    }
+    for (const auto& [dest, pay] : result.payouts) {
+        if (pay > 0) pblocktemplate->ledger_payouts.emplace_back(pay, dest);
     }
     pblocktemplate->block.vtx.back() = MakeTransactionRef(std::move(final_tx));
 
