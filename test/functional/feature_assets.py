@@ -101,13 +101,13 @@ class AssetsTest(FreicoinTestFramework):
         malformed = self.spend([fee, self.asset_utxo(issue, 2)], [self.asset_out(asset, 500, ext=bytes([0x01]) + asset + b"\x00" * 7)])
         self.reject(malformed, "dust")  # policy sees a zero-value output first
         assert_raises_rpc_error(None, "bad-txns-asset-malformed",
-                                self.node.generateblock, self.wallet.get_descriptor(), [malformed.serialize().hex()])
+                                self.generateblock, self.node, self.wallet.get_descriptor(), [malformed.serialize().hex()])
         self.reject(self.spend([fee, self.asset_utxo(issue, 2)], [self.asset_out(asset, 0)]), "bad-txns-asset-amount-outofrange")
 
         self.log.info("A block carrying an inflating transfer is invalid")
         bad = self.spend([fee, self.asset_utxo(issue, 2)], [self.asset_out(asset, 501)])
         assert_raises_rpc_error(None, "bad-txns-asset-in-belowout",
-                                self.node.generateblock, self.wallet.get_descriptor(), [bad.serialize().hex()])
+                                self.generateblock, self.node, self.wallet.get_descriptor(), [bad.serialize().hex()])
 
         self.log.info("Burning is allowed: an asset input with no asset output")
         tx = self.spend([fee, self.asset_utxo(issue, 2)], [])
