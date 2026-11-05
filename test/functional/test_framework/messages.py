@@ -600,7 +600,7 @@ class CTxWitness:
 
 class CTransaction:
     __slots__ = ("hash", "lock_height", "nLockTime", "version", "sha256", "vin", "vout",
-                 "wit")
+                 "wit", "outwit")
 
     def __init__(self, tx=None):
         if tx is None:
@@ -608,6 +608,7 @@ class CTransaction:
             self.vin = []
             self.vout = []
             self.wit = CTxWitness()
+            self.outwit = []  # output witnesses: empty, or a stack (list of bytes) per output
             self.nLockTime = 0
             self.lock_height = 0
             self.sha256 = None
@@ -621,6 +622,10 @@ class CTransaction:
             self.sha256 = tx.sha256
             self.hash = tx.hash
             self.wit = copy.deepcopy(tx.wit)
+            self.outwit = copy.deepcopy(tx.outwit)
+
+    def has_output_witness(self):
+        return any(len(stack) > 0 for stack in self.outwit)
 
     def deserialize(self, f):
         self.version = int.from_bytes(f.read(4), "little")
@@ -642,11 +647,15 @@ class CTransaction:
                 txin.deserialize(f)
                 self.vin.append(txin)
         self.vout = deser_vector(f, CTxOut)
-        if flags != 0:
+        if flags & 1:
             self.wit.vtxinwit = [CTxInWitness() for _ in range(len(self.vin))]
             self.wit.deserialize(f)
         else:
             self.wit = CTxWitness()
+        if flags & 2:
+            self.outwit = [deser_string_vector(f) for _ in range(len(self.vout))]
+        else:
+            self.outwit = []
         self.nLockTime = int.from_bytes(f.read(4), "little")
         if self.version!=1 or len(self.vin)!=1 or self.vin[0].prevout.hash!=0 or self.vin[0].prevout.n not in (-1,0xffffffff):
             self.lock_height = int.from_bytes(f.read(4), "little")
@@ -663,11 +672,14 @@ class CTransaction:
             r += self.lock_height.to_bytes(4, "little")
         return r
 
-    # Only serialize with witness when explicitly called for
-    def serialize_with_witness(self):
+    # Only serialize with witness when explicitly called for (the output witnesses too,
+    # unless output_witness=False: the wtxid leaves them out)
+    def serialize_with_witness(self, output_witness=True):
         flags = 0
         if not self.wit.is_null():
             flags |= 1
+        if output_witness and self.has_output_witness():
+            flags |= 2
         r = b""
         r += self.version.to_bytes(4, "little")
         if flags:
@@ -683,6 +695,9 @@ class CTransaction:
                 for _ in range(len(self.wit.vtxinwit), len(self.vin)):
                     self.wit.vtxinwit.append(CTxInWitness())
             r += self.wit.serialize()
+        if flags & 2:
+            for n in range(len(self.vout)):
+                r += ser_string_vector(self.outwit[n] if n < len(self.outwit) else [])
         r += self.nLockTime.to_bytes(4, "little")
         if self.version!=1 or len(self.vin)!=1 or self.vin[0].prevout.hash!=0 or self.vin[0].prevout.n not in (-1,0xffffffff):
             r += self.lock_height.to_bytes(4, "little")
@@ -694,7 +709,16 @@ class CTransaction:
         return self.serialize_with_witness()
 
     def getwtxid(self):
-        return hash256(self.serialize())[::-1].hex()
+        return hash256(self.serialize_with_witness(output_witness=False))[::-1].hex()
+
+    def get_output_witness_hash(self):
+        """The leaf of the block's output witness tree (CTransaction::GetOutputWitnessHash)."""
+        if not self.has_output_witness():
+            return 0
+        r = b""
+        for n in range(len(self.vout)):
+            r += ser_string_vector(self.outwit[n] if n < len(self.outwit) else [])
+        return uint256_from_str(hash256(r))
 
     # Recalculate the txid (transaction hash without witness)
     def rehash(self):
@@ -706,8 +730,8 @@ class CTransaction:
     # self.sha256 and self.hash -- those are expected to be the txid.
     def calc_sha256(self, with_witness=False):
         if with_witness:
-            # Don't cache the result, just return it
-            return uint256_from_str(hash256(self.serialize_with_witness()))
+            # Don't cache the result, just return it (the wtxid: input witnesses only)
+            return uint256_from_str(hash256(self.serialize_with_witness(output_witness=False)))
 
         if self.sha256 is None:
             self.sha256 = uint256_from_str(hash256(self.serialize_without_witness()))
@@ -1089,6 +1113,10 @@ class CBlock(CBlockHeader):
         cb.rehash()
         hashes[0] = ser_uint256(cb.sha256)
         return self.get_merkle_root(hashes)
+
+    def calc_output_witness_merkle_root(self):
+        """The root of the block's output witness tree (BlockOutputWitnessMerkleRoot)."""
+        return self.get_fast_merkle_root([ser_uint256(tx.get_output_witness_hash()) for tx in self.vtx])
 
     def calc_witness_merkle_root(self):
         # For witness root purposes, the hash of the coinbase does not

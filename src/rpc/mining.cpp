@@ -686,6 +686,7 @@ static RPCHelpMan getblocktemplate()
                         {RPCResult::Type::NUM, "amount", "the output value, in kria"},
                     }},
                 }},
+                {RPCResult::Type::STR_HEX, "outputwitnessroot", /*optional=*/true, "with the confidential rules: the root of the transactions' output witness tree, which the coinbase witness must carry as the witness commitment's branch (its single item, 32 bytes), the commitment then being one level up (path 0x02)"},
                 {RPCResult::Type::ARR, "coinbasepayouts", /*optional=*/true, "outputs the coinbase must carry to pay the peg-outs of the block, out of what the block-final transaction forwards (not included in coinbasevalue)", {
                     {RPCResult::Type::OBJ, "", "", {
                         {RPCResult::Type::STR_HEX, "scriptPubKey", "the output script"},
@@ -1036,6 +1037,9 @@ static RPCHelpMan getblocktemplate()
             finaltx.pushKV("pool", std::move(pool));
         }
         result.pushKV("finaltx", finaltx);
+        if (DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_CONFIDENTIAL)) {
+            result.pushKV("outputwitnessroot", HexStr(BlockOutputWitnessMerkleRoot(*pblock)));
+        }
         if (!pblocktemplate->ledger_payouts.empty()) {
             UniValue payouts(UniValue::VARR);
             for (const CTxOut& out : pblocktemplate->ledger_payouts) {

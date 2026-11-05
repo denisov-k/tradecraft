@@ -129,24 +129,28 @@ def add_final_tx(info, block):
         'amount': int(finaltx.vout[-1].nValue),
     }]
 
-def get_witness_script(witness_root, witness_nonce):
+def get_witness_script(witness_root, witness_nonce, branch=False):
     witness_path = 0x01
-    if witness_nonce:
+    if witness_nonce or branch:
         witness_path = 0x02
         witness_root = uint256_from_str(fastHash256(ser_uint256(witness_root),
                                                     ser_uint256(witness_nonce)))
     output_data = bytes((witness_path,)) + ser_uint256(witness_root) + WITNESS_COMMITMENT_HEADER
     return CScript([output_data])
 
-def add_witness_commitment(block, nonce=0):
+def add_witness_commitment(block, nonce=0, output_witness=False):
     """Add a witness commitment to the block's coinbase transaction.
 
     According to BIP141, blocks with witness rules active must commit to the
-    hash of all in-block transactions including witness."""
+    hash of all in-block transactions including witness.  With the confidential
+    rules (output_witness=True) the branch's first hash, in the coinbase witness,
+    is the root of the block's output witness tree."""
     # First calculate the merkle root of the block's
     # transactions, with witnesses.
     witness_branch = b''
-    if nonce:
+    if output_witness:
+        nonce = block.calc_output_witness_merkle_root()
+    if nonce or output_witness:
         witness_branch = ser_uint256(nonce)
     output_data = bytes((0,)) + ser_uint256(0) + WITNESS_COMMITMENT_HEADER
     block.vtx[-1].vout[-1].scriptPubKey = CScript([output_data])
@@ -157,7 +161,7 @@ def add_witness_commitment(block, nonce=0):
     block.vtx[0].wit.vtxinwit[0].scriptWitness.stack = [witness_branch]
 
     # witness commitment is the last output in block-final tx
-    block.vtx[-1].vout[-1].scriptPubKey = get_witness_script(witness_root, nonce)
+    block.vtx[-1].vout[-1].scriptPubKey = get_witness_script(witness_root, nonce, branch=output_witness)
     block.vtx[-1].rehash()
     block.hashMerkleRoot = block.calc_merkle_root()
     if block.aux_pow:
