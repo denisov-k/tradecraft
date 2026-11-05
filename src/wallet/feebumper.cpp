@@ -215,7 +215,6 @@ static feebumper::Result BumpFeeInScrip(CWallet& wallet, const CWalletTx& wtx, c
         mtx.vout[*change_pos].scriptPubKey = CScript(program) << AssetExtension(change);
     } else {
         mtx.vout.erase(mtx.vout.begin() + *change_pos);
-        if (*change_pos < mtx.output_witness.size()) mtx.output_witness.erase(mtx.output_witness.begin() + *change_pos);
     }
     new_fee = old_fee - LedgerFeeValue(*wtx.tx, height) + LedgerFeeValue(CTransaction(mtx), height);
     return feebumper::Result::OK;
