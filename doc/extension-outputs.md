@@ -68,7 +68,7 @@ counts for nothing.
 Code: `src/consensus/assets.{h,cpp}` (`GetAssetOutput`, `AssetIssuanceId`, `Consensus::CheckTxAssets`),
 called from `ConnectBlock` and `MemPoolAccept::PreChecks`.
 
-## 4. The scrip ledger (`0x02`–`0x04`)
+## 4. The scrip ledger (`0x02`–`0x05`)
 
 **Units.** Scrip is freicoin valued at the scrip epoch, `FreicoinToScrip(value, height)` with
 `SCRIP_EPOCH = 5040000` (already in `consensus/amount.cpp`).  Held scrip does not decay.  Before the epoch
@@ -83,8 +83,10 @@ version 0 program that anyone can spend, so the block-final transaction can.
 - A peg-in output (value v > 0, on `LedgerBase`) lets its transaction mint up to
   `FreicoinToScrip(v, tx.lock_height)` scrip.  Nobody issues scrip otherwise.
 - A peg-out output (value 0, on the recipient's program) consumes its scrip like an asset output.
-- A peg-out is never spendable (`bad-txns-pegout-spend`); a peg-in or pool output only by the block-final
-  transaction (`bad-txns-ledger-spend`); a pool output appears only in the block-final transaction.
+- A fee output (value 0, on `LedgerBase`) consumes its scrip as a fee to the miner.
+- A peg-out or a fee is never spendable (`bad-txns-pegout-spend`); a peg-in or pool output only by the
+  block-final transaction (`bad-txns-ledger-spend`); a pool output appears only in the block-final
+  transaction.
 - None of them in a coinbase.
 
 **Block rules** (`BlockLedger`, `ComputeLedger`, `Consensus::CheckBlockLedger`):
@@ -97,10 +99,13 @@ version 0 program that anyone can spend, so the block-final transaction can.
   `available` starts at `present(V)`: the prior pool, which backs the queued scrip, so the payouts follow
   from the chain below.  The coinbase must carry an output to the peg-out's program of at least that much,
   one output per payout (`bad-blk-ledger-payout`).
-- The new pool must be exactly `available` after the payouts plus `Σ present(peg-in values)`, recording `S + Σ mintable − Σ s` (a queued
-  peg-out stays in S until paid), as one
-  output before the last (commitment) output of the block-final transaction; no pool output when both are
-  zero (`bad-blk-ledger-pool`, `bad-blk-ledger-pool-count`).
+- Then the fees in scrip leave the pool, the block's peg-ins in: their value is
+  `min(ScripToFreicoin(Σ fee scrip, height), available + Σ present(peg-in values))`, which the block-final
+  transaction forwards to the coinbase as a fee (so the coinbase rule is unchanged).
+- The new pool must be exactly `available` after the payouts, plus `Σ present(peg-in values)`, less the
+  fees' value, recording `S + Σ mintable − Σ s − Σ fee scrip` (a queued peg-out stays in S until paid),
+  as one output before the last (commitment) output of the block-final transaction; no pool output when
+  both are zero (`bad-blk-ledger-pool`, `bad-blk-ledger-pool-count`).
 - Every rounding stays in the pool.  The recorded scrip bounds the scrip outstanding from above: a peg-in
   that mints less than it may leaves that freicoin in the pool.
 
@@ -136,7 +141,10 @@ with them, without the share carrying them (branch `sharechain-ledger`).
 - RPCs: `issueasset` (with an optional `demurrage`), `sendasset`, `getassetbalances`, `pegin`, `pegout`
   (`sendasset` of scrip and `pegout` take `fee_in_scrip`: scrip inputs only, the fee burned in scrip);
   `listunspent` shows `asset` and `asset_amount`, and for an asset with demurrage `asset_demurrage` and
-  `asset_present`.  Balances and sends value such an asset at the next block.  Asset outputs go to native witness addresses only.  Fees are paid in freicoin.
+  `asset_present`.  Balances and sends value such an asset at the next block.  Asset outputs go to native
+  witness addresses only.
+- A fee paid in scrip counts at its freicoin value in fee estimation, and `bumpfee` raises it in scrip, out
+  of the scrip change, with the same inputs.
 
 `scrip-interface` (separate, no consensus): with `-scrip` the wallet RPCs report and accept amounts in
 scrip, valuing each output at its reference height, so held amounts are constant; RPCs that cannot do this
