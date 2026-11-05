@@ -1,4 +1,4 @@
-# Extension outputs: user-issued assets and the scrip ledger
+# Extension outputs: user-issued assets, the scrip ledger, confidential scrip
 
 Status: draft for review.  Branches of `denisov-k/tradecraft`, each on the previous, on `28.1`:
 
@@ -7,10 +7,12 @@ Status: draft for review.  Branches of `denisov-k/tradecraft`, each on the previ
 | `scrip-interface` | `-scrip`: wallet RPC amounts relative to the scrip epoch | no |
 | `extension-assets` | user-issued assets on extension outputs; wallet support | yes (`assets` deployment) |
 | `scrip-ledger` | scrip as an asset backed by a pool in the block-final transaction | yes (same deployment) |
+| `confidential-scrip` | output witnesses; scrip amounts hidden in Pedersen commitments | yes (`confidential` deployment) |
 
 This follows the design described in chat (a witness-like per-output extension, value moved in and out
 through anyone-can-spend pools in the block-final transaction, an inflationary freicoin as the simplest
-asset) and Forward Blocks section XI.  Where it departs from the paper it says so (section 8); two questions are in section 9.
+asset) and Forward Blocks section XI.  Where it departs from the paper it says so (section 10); the open
+questions are in section 11.
 
 ## 1. The extension push
 
@@ -34,6 +36,7 @@ The owner of the output is its witness program, as before: old nodes require the
 | `0x03` | peg-in | 0 (int64) | the freicoin paid in |
 | `0x04` | peg-out | scrip (int64 LE) | 0 |
 | `0x05` | fee | scrip (int64 LE) | 0 |
+| `0x06` | confidential scrip | Pedersen commitment (33) ‖ ephemeral public key (33) | 0 |
 
 Other versions mean nothing yet and are left to future rules.  A known version of the wrong length is
 invalid (`bad-txns-asset-malformed`, `bad-txns-ledger-malformed`).
@@ -68,7 +71,7 @@ counts for nothing.
 Code: `src/consensus/assets.{h,cpp}` (`GetAssetOutput`, `AssetIssuanceId`, `Consensus::CheckTxAssets`),
 called from `ConnectBlock` and `MemPoolAccept::PreChecks`.
 
-## 4. The scrip ledger (`0x02`–`0x04`)
+## 4. The scrip ledger (`0x02`–`0x05`)
 
 **Units.** Scrip is freicoin valued at the scrip epoch, `FreicoinToScrip(value, height)` with
 `SCRIP_EPOCH = 5040000` (already in `consensus/amount.cpp`).  Held scrip does not decay.  Before the epoch
@@ -83,8 +86,10 @@ version 0 program that anyone can spend, so the block-final transaction can.
 - A peg-in output (value v > 0, on `LedgerBase`) lets its transaction mint up to
   `FreicoinToScrip(v, tx.lock_height)` scrip.  Nobody issues scrip otherwise.
 - A peg-out output (value 0, on the recipient's program) consumes its scrip like an asset output.
-- A peg-out is never spendable (`bad-txns-pegout-spend`); a peg-in or pool output only by the block-final
-  transaction (`bad-txns-ledger-spend`); a pool output appears only in the block-final transaction.
+- A fee output (value 0, on `LedgerBase`) consumes its scrip as a fee to the miner.
+- A peg-out or a fee is never spendable (`bad-txns-pegout-spend`); a peg-in or pool output only by the
+  block-final transaction (`bad-txns-ledger-spend`); a pool output appears only in the block-final
+  transaction.
 - None of them in a coinbase.
 
 **Block rules** (`BlockLedger`, `ComputeLedger`, `Consensus::CheckBlockLedger`):
@@ -97,10 +102,13 @@ version 0 program that anyone can spend, so the block-final transaction can.
   `available` starts at `present(V)`: the prior pool, which backs the queued scrip, so the payouts follow
   from the chain below.  The coinbase must carry an output to the peg-out's program of at least that much,
   one output per payout (`bad-blk-ledger-payout`).
-- The new pool must be exactly `available` after the payouts plus `Σ present(peg-in values)`, recording `S + Σ mintable − Σ s` (a queued
-  peg-out stays in S until paid), as one
-  output before the last (commitment) output of the block-final transaction; no pool output when both are
-  zero (`bad-blk-ledger-pool`, `bad-blk-ledger-pool-count`).
+- Then the fees in scrip leave the pool, the block's peg-ins in: their value is
+  `min(ScripToFreicoin(Σ fee scrip, height), available + Σ present(peg-in values))`, which the block-final
+  transaction forwards to the coinbase as a fee (so the coinbase rule is unchanged).
+- The new pool must be exactly `available` after the payouts, plus `Σ present(peg-in values)`, less the
+  fees' value, recording `S + Σ mintable − Σ s − Σ fee scrip` (a queued peg-out stays in S until paid),
+  as one output before the last (commitment) output of the block-final transaction; no pool output when
+  both are zero (`bad-blk-ledger-pool`, `bad-blk-ledger-pool-count`).
 - Every rounding stays in the pool.  The recorded scrip bounds the scrip outstanding from above: a peg-in
   that mints less than it may leaves that freicoin in the pool.
 
@@ -136,20 +144,95 @@ with them, without the share carrying them (branch `sharechain-ledger`).
 - RPCs: `issueasset` (with an optional `demurrage`), `sendasset`, `getassetbalances`, `pegin`, `pegout`
   (`sendasset` of scrip and `pegout` take `fee_in_scrip`: scrip inputs only, the fee burned in scrip);
   `listunspent` shows `asset` and `asset_amount`, and for an asset with demurrage `asset_demurrage` and
-  `asset_present`.  Balances and sends value such an asset at the next block.  Asset outputs go to native witness addresses only.  Fees are paid in freicoin.
+  `asset_present`.  Balances and sends value such an asset at the next block.  Asset outputs go to native
+  witness addresses only.
+- A fee paid in scrip counts at its freicoin value in fee estimation, and `bumpfee` raises it in scrip, out
+  of the scrip change, with the same inputs.
 
 `scrip-interface` (separate, no consensus): with `-scrip` the wallet RPCs report and accept amounts in
 scrip, valuing each output at its reference height, so held amounts are constant; RPCs that cannot do this
 refuse to run.
 
-## 7. Tests
+## 7. Output witnesses
+
+The data structure Forward Blocks (XI-B, footnote 20) gives outputs for range proofs, here general.
+
+- **Transaction.**  Beside `vout`, a vector of witness stacks, one per output (`output_witness`, empty or
+  full size).  It is serialized after the input witnesses under **bit 2 of the extended format's flags**,
+  the byte after the `0xff` marker that was reserved for such extensions; an all-empty record is invalid,
+  as for input witnesses.  `TX_WITH_WITNESS` carries both, `TX_WITH_INPUT_WITNESS` only the input
+  witnesses.
+- **Hashes and weight.**  Neither the txid nor the **wtxid** covers output witnesses, so a node without
+  these rules computes the same witness commitment.  They count as witness data in the weight.
+- **Block commitment.**  The witness commitment in the block-final transaction is the root of a small
+  tree: the witness root, then a Merkle branch of up to seven hashes carried in the coinbase witness,
+  which consensus has left unconstrained.  With these rules its **first hash is the root of a fast Merkle
+  tree of the transactions' output witness hashes** (`BlockOutputWitnessMerkleRoot`; a leaf is
+  `CTransaction::GetOutputWitnessHash`, zero for a transaction without output witnesses).  It is required
+  in every block, so a block stripped of its output witnesses fails it as **mutated**, not invalid
+  (`bad-output-witness-merkle-match`); without the branch the block is invalid
+  (`bad-output-witness-commitment`).  The miner and the stratum server build the commitment one level up
+  (path `0x02`); `getblocktemplate` gives `outputwitnessroot`.
+- **Network.**  Service bit 13, `NODE_OUTPUT_WITNESS` (12 is the share chain's).  Peers with it get
+  transactions and blocks whole; others get them without output witnesses, which their commitment check
+  accepts, and are never announced a transaction that has any.  A `getblocktxn` from such a peer for one
+  is answered with the whole block, stripped.  Under the rules blocks are downloaded only from peers with
+  the bit, and a stripped block from a peer without it is dropped without blaming the peer.
+- **Deployment.**  BIP9 `confidential`, bit 5, not active on any network yet, regtest included (tests opt
+  in with `-vbparams=confidential:-1:9223372036854775807`); not `gbt_force`, as the coinbase witness must
+  carry the root.  Before it the mempool refuses output witnesses (`output-witness-premature`) and a block
+  with any is mutated.
+
+## 8. Confidential scrip (`0x06`)
+
+Only scrip: freicoin and assets with demurrage decay by a fractional factor with rounding, which a
+commitment cannot follow without revealing the amount.  The pool, peg-ins, peg-outs and fees stay explicit,
+so the ledger rules of section 4 do not change.
+
+- **Output.**  Extension `0x06`: a Pedersen commitment to the amount (33 bytes) and the sender's ephemeral
+  public key (33 bytes), 67 bytes, within the push; no freicoin (`bad-txns-ct-nonzero-value`).  Never in
+  the coinbase (`bad-txns-ct-coinbase`) or the block-final transaction.  The generator is derived from the
+  scrip asset id (`secp256k1_generator_generate`), so assets without demurrage could be confidential the
+  same way later.
+- **Range proof.**  The single item of the output's witness (`bad-txns-ct-proof-missing`), at most 5134
+  bytes, a Borromean range proof (secp256k1-zkp `rangeproof`, as in Elements/Liquid) bound to the output's
+  program (`extra_commit`), and proving at most `MAX_MONEY` (`bad-txns-ct-range`).
+- **Balance.**  A transaction with confidential inputs or outputs balances its scrip by the commitments:
+  those of its confidential inputs plus the explicit scrip in (scrip inputs, scrip minted by peg-ins) equal
+  those of its confidential outputs plus the explicit scrip out (scrip outputs, peg-outs, fees), the
+  explicit amounts committed with a zero blinding factor (`secp256k1_pedersen_verify_tally`,
+  `bad-txns-ct-balance`).  That replaces the explicit check of scrip for the transaction.
+- **Activation.**  Before the rules a `0x06` output is an unknown extension; one created then counts for
+  nothing after.  Relay policy: confidential outputs are not dust; output witnesses are standard only on
+  them.
+- **Cryptography.**  The `generator` and `rangeproof` modules of secp256k1-zkp, taken verbatim from
+  `BlockstreamResearch/secp256k1-zkp` 211323d6 (the state closest to our secp256k1 v0.5.1) with the four
+  helpers they need from its core, enabled by the node's configure; their own tests pass on our copy.
+  The `ecdh` module is enabled for the wallet.
+
+**Wallet.**
+- Blinding keys derive from a master blinding key (`ctmasterkey` in the wallet database, unencrypted: it
+  reveals amounts but spends nothing) and the output program.
+- `getconfidentialaddress` gives an address and its blinding public key.  `sendconfidential address amount
+  ( blindingkey )` spends explicit and confidential scrip; with the recipient's blinding key the payment is
+  confidential, without it explicit scrip; the change is confidential (so the payment's blinding factor is
+  random), and the fee is paid in scrip, so no freicoin is needed.  An ephemeral key's ECDH with the
+  recipient's blinding key seeds the range proof (52 private bits), which the recipient rewinds to recover
+  the amount and the blinding factor.  The proofs are added after signing, which does not cover output
+  witnesses.  `listconfidential` lists what the wallet holds, unblinded.
+- `getrawtransaction` and the like show a `witness` array on outputs that have one.
+
+## 9. Tests
 
 `assets_tests` (format, issuance, transfers, swaps, every rejection, pre-activation claims, ledger
 transactions and settlement), `feature_assets.py`, `feature_scrip_ledger.py`, `wallet_assets.py`,
-`wallet_scrip_ledger.py`, `wallet_scrip.py`; existing wallet, mempool, mining and block-final tests pass
-unchanged.
+`wallet_scrip_ledger.py`, `wallet_scrip.py`; `output_witness_tests` (serialization, hashes, weight, the
+block commitment), `confidential_tests` (real commitments and proofs: balance, missing and misbound proofs,
+a proof beyond `MAX_MONEY`, pre-activation commitments), `wallet_confidential.py` (end to end, two nodes);
+the `scrip_ledger` fuzz target; existing wallet, mempool, mining, segwit, compact block and block-final
+tests pass unchanged.
 
-## 8. Departures from Forward Blocks section XI
+## 10. Departures from Forward Blocks section XI
 
 - **Suffix grammar.** The paper has up to eight pushes and a trailing version opcode; the grammar deployed
   with protocol cleanup has one push and no version.  This keeps the deployed grammar and puts the version
@@ -169,12 +252,20 @@ unchanged.
   block-final transaction, which the coinbase may already claim, so the coinbase rule is unchanged.  In
   the mempool the value counts as a modified fee (relay, ranking, RBF), not a base fee, as the block-final
   transaction forwards it.  Rebatable fees (XI-A) are not implemented.
-- **Confidential amounts** would replace the amount in the extension with a commitment and put the range
-  proof in an output witness committed in the block-final transaction; not started.
+- **Confidential amounts** follow XI-B with two differences.  The commitment and the nonce key sit in the
+  extension push itself (67 bytes) instead of a hash of them, as the deployed grammar allows one push of up
+  to 75 bytes.  The output witness root is committed as the first hash of the witness commitment's branch
+  rather than in the segwit witness nonce, which Freicoin's commitment tree had room for.  Only scrip is
+  confidential (section 8).  Explicit-to-confidential and back is a plain transaction, as scrip is one
+  asset whichever form it takes; the payout queue is used only by peg-outs.
 
 The epoch is `SCRIP_EPOCH = 5040000`, as already in `consensus/amount.cpp`.
 
-## 9. Questions
+## 11. Questions
 
 1. **Rates on assets.**  An asset may decay as freicoin does, or not at all (§3), which is what a claim on
    freicoin needs.  Do you want the Freimarkets rates (any rate, or interest) on chain as well?
+2. **Confidential scrip: scope and cryptography.**  Scrip only, with Borromean range proofs from
+   secp256k1-zkp (as in Liquid), committed through the witness commitment's branch.  Is that the XI-B you
+   meant for Freicoin, or did protocol cleanup rule 6 have another layout in mind; and would you rather
+   wait for Bulletproofs (about five times smaller) in secp256k1-zkp proper?
