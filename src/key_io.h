@@ -35,9 +35,9 @@ std::string EncodeExtPubKey(const CExtPubKey& extpubkey);
 std::string EncodeDestination(const CTxDestination& dest);
 
 /** A confidential address: a native witness destination and the blinding public key the
- *  sender hides the amount with, bech32m under the network's prefix with "c" before it
- *  (cfc1..., ctf1..., cfcrt1...).  Longer than 89 characters, past which bech32m only
- *  detects errors with high probability, not with certainty. */
+ *  sender hides the amount with, in blech32m (Elements' longer-checksum bech32m, made for
+ *  addresses this long) under the network's prefix with "c" before it (cfc1..., ctf1...,
+ *  cfcrt1...). */
 std::string EncodeConfidentialAddress(const CTxDestination& dest, const CPubKey& blinding_key);
 /** Decode a confidential address; false if it is not one (of this network). */
 bool DecodeConfidentialAddress(const std::string& str, CTxDestination& dest, CPubKey& blinding_key);

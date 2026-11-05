@@ -223,10 +223,10 @@ so the ledger rules of section 4 do not change.
 - Blinding keys derive from a master blinding key (`ctmasterkey` in the wallet database, unencrypted: it
   reveals amounts but spends nothing) and the output program.
 - `getconfidentialaddress` gives an address, its blinding public key, and both in one **confidential
-  address**: bech32m under the network's prefix with `c` before it (`cfc1...`, `ctf1...`, `cfcrt1...`),
-  the witness version then the blinding key and the program.  It is longer than 89 characters, past which
-  bech32m detects errors with high probability rather than certainty (Elements' blech32 has a longer
-  checksum for this and could replace it).  `sendconfidential address amount
+  address**: blech32m (Elements' variant of bech32m with a 12-character checksum, made for addresses this
+  long; `src/blech32.{h,cpp}` from Elements, passing its test vectors) under the network's prefix with `c`
+  before it (`cfc1...`, `ctf1...`, `cfcrt1...`), the witness version then the blinding key and the
+  program.  `sendconfidential address amount
   ( blindingkey )`, given a confidential address or an address and a blinding key, spends explicit and confidential scrip; with the recipient's blinding key the payment is
   confidential, without it explicit scrip; the change is confidential (so the payment's blinding factor is
   random), and the fee is paid in scrip, so no freicoin is needed.  An ephemeral key's ECDH with the

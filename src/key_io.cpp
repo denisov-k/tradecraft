@@ -17,6 +17,7 @@
 
 #include <base58.h>
 #include <bech32.h>
+#include <blech32.h>
 #include <script/interpreter.h>
 #include <script/solver.h>
 #include <tinyformat.h>
@@ -280,9 +281,6 @@ std::string EncodeExtKey(const CExtKey& key)
     return ret;
 }
 
-/** The longest confidential address: prefix, separator, version, 33 + 40 bytes, checksum. */
-static constexpr size_t CONFIDENTIAL_ADDRESS_LIMIT = 130;
-
 static std::string ConfidentialHRP() { return "c" + Params().Bech32HRP(); }
 
 std::string EncodeConfidentialAddress(const CTxDestination& dest, const CPubKey& blinding_key)
@@ -294,13 +292,13 @@ std::string EncodeConfidentialAddress(const CTxDestination& dest, const CPubKey&
     payload.insert(payload.end(), program.begin(), program.end());
     std::vector<unsigned char> data = {static_cast<unsigned char>(version)};
     ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, payload.begin(), payload.end());
-    return bech32::Encode(bech32::Encoding::BECH32M, ConfidentialHRP(), data);
+    return blech32::Encode(blech32::Encoding::BLECH32M, ConfidentialHRP(), data);
 }
 
 bool DecodeConfidentialAddress(const std::string& str, CTxDestination& dest, CPubKey& blinding_key)
 {
-    const auto dec = bech32::Decode(str, static_cast<bech32::CharLimit>(CONFIDENTIAL_ADDRESS_LIMIT));
-    if (dec.encoding != bech32::Encoding::BECH32M || dec.hrp != ConfidentialHRP() || dec.data.empty() || dec.data[0] > 16) return false;
+    const auto dec = blech32::Decode(str);
+    if (dec.encoding != blech32::Encoding::BLECH32M || dec.hrp != ConfidentialHRP() || dec.data.empty() || dec.data[0] > 16) return false;
     std::vector<unsigned char> payload;
     if (!ConvertBits<5, 8, false>([&](unsigned char c) { payload.push_back(c); }, dec.data.begin() + 1, dec.data.end())) return false;
     if (payload.size() < CPubKey::COMPRESSED_SIZE + 2 || payload.size() > CPubKey::COMPRESSED_SIZE + 40) return false;
