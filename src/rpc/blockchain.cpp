@@ -1443,6 +1443,7 @@ UniValue DeploymentInfo(const CBlockIndex* blockindex, const ChainstateManager& 
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_FINALTX);
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_AUXPOW);
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_ASSETS);
+    SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_CONFIDENTIAL);
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_TESTDUMMY);
     return softforks;
 }
