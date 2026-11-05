@@ -378,7 +378,9 @@ TestChain100Setup::TestChain100Setup(
     SetMockTime(GetTime() + 1);
     this->mineBlocks(COINBASE_MATURITY);
 
-    {
+    // The chain is the same every time, unless the test changed the rules (e.g. with
+    // -vbparams), which may change the blocks' commitments.
+    if (opts.extra_args.empty()) {
         LOCK(::cs_main);
         assert(
             m_node.chainman->ActiveChain().Tip()->GetBlockHash().ToString() ==
