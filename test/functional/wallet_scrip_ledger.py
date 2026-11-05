@@ -82,6 +82,47 @@ class WalletScripLedgerTest(FreicoinTestFramework):
         # the peg-out itself is nothing the wallet can spend
         assert not [u for u in holder.listunspent() if u["address"] == dest and u["amount"] == 0]
 
+        self.log.info("Fees in scrip: a transaction of scrip alone, its fee burned in scrip")
+        assert_equal(holder.getrawmempool(), [])
+        cv_before = holder.getblocktemplate(RULES)["coinbasevalue"]
+        held = {(u["txid"], u["vout"]) for u in holder.listunspent() if u.get("asset") == scrip}
+        before = holder.getassetbalances()[scrip]
+        txid = holder.sendasset(scrip, 1000, payer.getnewaddress(), True)
+        tx = holder.gettransaction(txid, True, True)["decoded"]
+        # scrip in, no freicoin: every input is a scrip output, every output holds nothing
+        assert all((i["txid"], i["vout"]) in held for i in tx["vin"])
+        assert all(o["value"] == 0 for o in tx["vout"])
+        fees = [o["scriptPubKey"]["hex"] for o in tx["vout"] if o["scriptPubKey"]["hex"].startswith("000246530905")]
+        assert_equal(len(fees), 1)
+        fee_scrip = int.from_bytes(bytes.fromhex(fees[0][12:28]), "little")
+        assert fee_scrip > 0
+        height = holder.getblockcount() + 1
+        fee_value = holder.convertscrip(fee_scrip, "freicoin", height)["amount"]
+        # no base fee: the pool forwards it to the coinbase; it ranks the transaction all the same
+        entry = holder.getmempoolentry(txid)
+        assert_equal(entry["fees"]["base"], 0)
+        assert_equal(entry["fees"]["modified"], Decimal(fee_value) / COIN)
+        tmpl = holder.getblocktemplate(RULES)
+        assert txid in [t["txid"] for t in tmpl["transactions"]]
+        assert_equal(tmpl["coinbasevalue"] - cv_before, fee_value)
+        self.sync_mempools()
+        block = holder.getblock(self.generate(holder, 1)[0], 2)
+        assert txid in [t["txid"] for t in block["tx"]]
+        assert_equal(holder.getassetbalances()[scrip], before - 1000 - fee_scrip)
+
+        self.log.info("A peg-out can pay its fee in scrip too")
+        before = holder.getassetbalances()[scrip]
+        res = holder.pegout(500, holder.getnewaddress(), True)
+        tx = holder.gettransaction(res["txid"], True, True)["decoded"]
+        assert all(o["value"] == 0 for o in tx["vout"])
+        fee_scrip = sum(int.from_bytes(bytes.fromhex(o["scriptPubKey"]["hex"][12:28]), "little")
+                        for o in tx["vout"] if o["scriptPubKey"]["hex"].startswith("000246530905"))
+        assert fee_scrip > 0
+        self.sync_mempools()
+        self.generate(holder, 1)
+        assert_equal(holder.getassetbalances()[scrip], before - 500 - fee_scrip)
+        assert_raises_rpc_error(-8, "Only scrip can pay a fee", holder.sendasset, "11" * 32, 1, dest, True)
+
         self.log.info("More than is held is refused")
         assert_raises_rpc_error(-6, "Insufficient asset", holder.pegout, half, dest)
         assert_raises_rpc_error(-3, "Amount out of range", holder.pegout, 0, dest)

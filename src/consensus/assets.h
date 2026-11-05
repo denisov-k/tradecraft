@@ -94,10 +94,15 @@ namespace Consensus {
  *  later pays (a payout queue: what a block owes follows from the chain below it,
  *  so a share of the share chain can be checked, and a reorg near the tip cannot
  *  move a payout).  To nodes that do not know these rules the pool is a trivially
- *  spendable output and the payouts are fees, so this is a soft fork. */
+ *  spendable output and the payouts are fees, so this is a soft fork.
+ *
+ *  A fee may be paid in scrip (Forward Blocks XI-B, the explicit fee): a fee output
+ *  burns scrip, and the block's pool gives up its freicoin value, which reaches the
+ *  coinbase as a fee of the block-final transaction, like any implicit fee. */
 static constexpr unsigned char EXTENSION_POOL = 0x02;   //!< the pool: scrip outstanding, at most
 static constexpr unsigned char EXTENSION_PEGIN = 0x03;  //!< freicoin paid into the pool
 static constexpr unsigned char EXTENSION_PEGOUT = 0x04; //!< scrip paid out to the output's program
+static constexpr unsigned char EXTENSION_FEE = 0x05;    //!< scrip paid as a fee to the miner
 /** A ledger output's extension: version, amount (64-bit little endian). */
 static constexpr size_t LEDGER_EXTENSION_SIZE = 1 + 8;
 
@@ -112,7 +117,8 @@ enum class LedgerOutputType {
     POOL,      //!< amount: the scrip the peg-ins could mint less the peg-outs, a bound on the scrip outstanding; value: the freicoin backing it
     PEGIN,     //!< value: the freicoin paid in
     PEGOUT,    //!< amount: the scrip paid out, to the output's witness program
-    MALFORMED, //!< a ledger extension of the wrong size, or a pool or peg-in on another program
+    FEE,       //!< amount: the scrip paid as a fee
+    MALFORMED, //!< a ledger extension of the wrong size, or a pool, peg-in or fee on another program
 };
 
 /** Read the ledger extension of an output, if it has one. */
@@ -127,25 +133,28 @@ struct BlockLedger {
     CAmount prior_scrip{0};   //!< scrip outstanding before the block
     CAmount pegin_value{0};   //!< freicoin paid in, at its present value
     CAmount minted{0};        //!< scrip minted by the peg-ins
+    CAmount fee_scrip{0};     //!< scrip paid as fees
     std::vector<COutPoint> pegins;
     //! The peg-outs this block pays: those of the block ledger_payout_delay below (destination program, scrip)
     std::vector<std::pair<CScript, CAmount>> pegouts;
 
     /** A prior block-final output: the pool, if it is one (and was made since activation). */
     void AddPriorOutput(const Coin& coin, int height, int asset_height);
-    /** A transaction of the block (not the coinbase or the block-final one): its peg-ins. */
+    /** A transaction of the block (not the coinbase or the block-final one): its peg-ins and fees. */
     void AddTransaction(const CTransaction& tx, int height);
-    bool Active() const { return prior_value || prior_scrip || !pegins.empty() || !pegouts.empty(); }
+    bool Active() const { return prior_value || prior_scrip || !pegins.empty() || !pegouts.empty() || fee_scrip; }
 };
 
 /** The pool after a block and the payouts its coinbase owes.  Each peg-out is paid
  *  ScripToFreicoin of its scrip at the block height, out of the prior pool, in order
  *  (the block's own peg-ins join the pool after); a payout the pool cannot cover in
  *  full gets what is left (the pool keeps every rounding, so only the last kria of the
- *  last scrip could). */
+ *  last scrip could).  Then the fees paid in scrip leave the pool, peg-ins included,
+ *  at their freicoin value at the block height. */
 struct LedgerResult {
     CAmount pool_value{0};
     CAmount pool_scrip{0};
+    CAmount fee_value{0}; //!< the freicoin the fees in scrip forward to the coinbase
     std::vector<std::pair<CScript, CAmount>> payouts; //!< destination program, freicoin
 };
 LedgerResult ComputeLedger(const BlockLedger& ledger, int height);
