@@ -340,6 +340,12 @@ enum ServiceFlags : uint64_t {
     // NODE_P2P_V2 means the node supports BIP324 transport
     NODE_P2P_V2 = (1 << 11),
 
+    // NODE_OUTPUT_WITNESS means the node can be sent, and asked for, transactions and
+    // blocks with their output witnesses (the confidential deployment).  Peers
+    // without it get them without, and are not sent transactions that have any.
+    // (Bit 12 is the share chain's.)
+    NODE_OUTPUT_WITNESS = (1 << 13),
+
     // Bits 24-31 are reserved for temporary experiments. Just pick a bit that
     // isn't getting used, or one not being used much, and notify the
     // freicoin-development mailing list. Remember that service bits are just

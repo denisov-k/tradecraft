@@ -1286,6 +1286,18 @@ static bool IsLimitedPeer(const Peer& peer)
 }
 
 /** Whether this peer can serve us witness data */
+static bool CanServeOutputWitnesses(const Peer& peer)
+{
+    return peer.m_their_services & NODE_OUTPUT_WITNESS;
+}
+
+/** How transactions are serialized with their witnesses for a peer: with the output
+ *  witnesses only if it knows them. */
+static TransactionSerParams WitnessParamsFor(const Peer& peer)
+{
+    return CanServeOutputWitnesses(peer) ? TX_WITH_WITNESS : TX_WITH_INPUT_WITNESS;
+}
+
 static bool CanServeWitnesses(const Peer& peer)
 {
     return peer.m_their_services & NODE_WITNESS;
@@ -1622,6 +1634,10 @@ void PeerManagerImpl::FindNextBlocks(std::vector<const CBlockIndex*>& vBlocks, c
 
             if (!CanServeWitnesses(peer) && DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_SEGWIT)) {
                 // We wouldn't download this block or its descendants from this peer.
+                return;
+            }
+            if (!CanServeOutputWitnesses(peer) && DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_CONFIDENTIAL)) {
+                // Nor without its output witnesses.
                 return;
             }
 
@@ -2559,7 +2575,7 @@ void PeerManagerImpl::ProcessGetBlockData(CNode& pfrom, Peer& peer, const CInv& 
         if (inv.IsMsgBlk()) {
             MakeAndPushMessage(pfrom, NetMsgType::BLOCK, TX_NO_WITNESS(*pblock));
         } else if (inv.IsMsgWitnessBlk()) {
-            MakeAndPushMessage(pfrom, NetMsgType::BLOCK, TX_WITH_WITNESS(*pblock));
+            MakeAndPushMessage(pfrom, NetMsgType::BLOCK, WitnessParamsFor(peer)(*pblock));
         } else if (inv.IsMsgFilteredBlk()) {
             bool sendMerkleBlock = false;
             CMerkleBlock merkleBlock;
@@ -2597,7 +2613,7 @@ void PeerManagerImpl::ProcessGetBlockData(CNode& pfrom, Peer& peer, const CInv& 
                     MakeAndPushMessage(pfrom, NetMsgType::CMPCTBLOCK, cmpctblock);
                 }
             } else {
-                MakeAndPushMessage(pfrom, NetMsgType::BLOCK, TX_WITH_WITNESS(*pblock));
+                MakeAndPushMessage(pfrom, NetMsgType::BLOCK, WitnessParamsFor(peer)(*pblock));
             }
         }
     }
@@ -2666,7 +2682,7 @@ void PeerManagerImpl::ProcessGetData(CNode& pfrom, Peer& peer, const std::atomic
         CTransactionRef tx = FindTxForGetData(*tx_relay, ToGenTxid(inv));
         if (tx) {
             // WTX and WITNESS_TX imply we serialize with witness
-            const auto maybe_with_witness = (inv.IsMsgTx() ? TX_NO_WITNESS : TX_WITH_WITNESS);
+            const auto maybe_with_witness = (inv.IsMsgTx() ? TX_NO_WITNESS : WitnessParamsFor(peer));
             MakeAndPushMessage(pfrom, NetMsgType::TX, maybe_with_witness(*tx));
             m_mempool.RemoveUnbroadcastTx(tx->GetHash());
         } else {
@@ -2724,6 +2740,11 @@ void PeerManagerImpl::SendBlockTransactions(CNode& pfrom, Peer& peer, const CBlo
             return;
         }
         resp.txn[i] = block.vtx[req.indexes[i]];
+        // A peer without output witnesses gets the whole block without them instead.
+        if (resp.txn[i]->HasOutputWitness() && !CanServeOutputWitnesses(peer)) {
+            MakeAndPushMessage(pfrom, NetMsgType::BLOCK, TX_WITH_INPUT_WITNESS(block));
+            return;
+        }
     }
 
     MakeAndPushMessage(pfrom, NetMsgType::BLOCKTXN, resp);
@@ -2966,7 +2987,8 @@ void PeerManagerImpl::HeadersDirectFetchBlocks(CNode& pfrom, const Peer& peer, c
         while (pindexWalk && !m_chainman.ActiveChain().Contains(pindexWalk) && vToFetch.size() <= MAX_BLOCKS_IN_TRANSIT_PER_PEER) {
             if (!(pindexWalk->nStatus & BLOCK_HAVE_DATA) &&
                     !IsBlockRequested(pindexWalk->GetBlockHash()) &&
-                    (!DeploymentActiveAt(*pindexWalk, m_chainman, Consensus::DEPLOYMENT_SEGWIT) || CanServeWitnesses(peer))) {
+                    (!DeploymentActiveAt(*pindexWalk, m_chainman, Consensus::DEPLOYMENT_SEGWIT) || CanServeWitnesses(peer)) &&
+                    (!DeploymentActiveAt(*pindexWalk, m_chainman, Consensus::DEPLOYMENT_CONFIDENTIAL) || CanServeOutputWitnesses(peer))) {
                 // We don't have this block, and it's not yet in flight.
                 vToFetch.push_back(pindexWalk);
             }
@@ -5077,11 +5099,15 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
 
         // Check for possible mutation if it connects to something we know so we can check for DEPLOYMENT_SEGWIT being active
+        const bool check_output_witness_root = prev_block && DeploymentActiveAfter(prev_block, m_chainman, Consensus::DEPLOYMENT_CONFIDENTIAL);
         if (prev_block && IsBlockMutated(/*block=*/*pblock, m_chainparams.GetConsensus(),
                            /*check_witness_root=*/DeploymentActiveAfter(prev_block, m_chainman, Consensus::DEPLOYMENT_SEGWIT),
-                           /*check_output_witness_root=*/DeploymentActiveAfter(prev_block, m_chainman, Consensus::DEPLOYMENT_CONFIDENTIAL))) {
-            LogDebug(BCLog::NET, "Received mutated block from peer=%d\n", peer->m_id);
-            Misbehaving(*peer, "mutated block");
+                           check_output_witness_root)) {
+            // A peer without output witnesses can only have the block without them: not its fault.
+            const bool stripped = check_output_witness_root && !CanServeOutputWitnesses(*peer) &&
+                !IsBlockMutated(*pblock, m_chainparams.GetConsensus(), DeploymentActiveAfter(prev_block, m_chainman, Consensus::DEPLOYMENT_SEGWIT), false);
+            LogDebug(BCLog::NET, "Received %s block from peer=%d\n", stripped ? "output-witness-stripped" : "mutated", peer->m_id);
+            if (!stripped) Misbehaving(*peer, "mutated block");
             WITH_LOCK(cs_main, RemoveBlockRequest(pblock->GetHash(), peer->m_id));
             return;
         }
@@ -6194,6 +6220,8 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                         if (txinfo.fee + LedgerFeeValue(*txinfo.tx, m_best_height + 1) < filterrate.GetFee(txinfo.vsize)) {
                             continue;
                         }
+                        // nor ones it could only get without their output witnesses
+                        if (txinfo.tx->HasOutputWitness() && !CanServeOutputWitnesses(*peer)) continue;
                         if (tx_relay->m_bloom_filter) {
                             if (!tx_relay->m_bloom_filter->IsRelevantAndUpdate(*txinfo.tx)) continue;
                         }
@@ -6247,6 +6275,8 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                         if (txinfo.fee + LedgerFeeValue(*txinfo.tx, m_best_height + 1) < filterrate.GetFee(txinfo.vsize)) {
                             continue;
                         }
+                        // Nor one the peer could only get without its output witnesses.
+                        if (txinfo.tx->HasOutputWitness() && !CanServeOutputWitnesses(*peer)) continue;
                         if (tx_relay->m_bloom_filter && !tx_relay->m_bloom_filter->IsRelevantAndUpdate(*txinfo.tx)) continue;
                         // Send
                         vInv.push_back(inv);
