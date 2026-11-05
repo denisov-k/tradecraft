@@ -82,8 +82,10 @@ namespace Consensus {
  *  inputs, valued at the transaction's lock height, except the assets the
  *  transaction issues; an asset's outputs and inputs all agree on its demurrage.  Inputs created below
  *  `asset_height`, the activation height, never had their claims checked and
- *  count for nothing.  The coins spent must be in `inputs`. */
-[[nodiscard]] bool CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inputs, int asset_height, TxValidationState& state, bool block_final = false);
+ *  count for nothing.  The coins spent must be in `inputs`.  With the confidential
+ *  rules (`confidential_height` >= 0, their activation height), scrip may also be
+ *  confidential: the commitments balance the scrip instead (CheckTxConfidential). */
+[[nodiscard]] bool CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inputs, int asset_height, TxValidationState& state, bool block_final = false, int confidential_height = -1);
 } // namespace Consensus
 
 /** The scrip ledger (Forward Blocks, section XI): scrip is freicoin valued at the

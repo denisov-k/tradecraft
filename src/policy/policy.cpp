@@ -21,6 +21,7 @@
 #include <coins.h>
 #include <consensus/amount.h>
 #include <consensus/assets.h>
+#include <consensus/confidential.h>
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
 #include <policy/feerate.h>
@@ -72,11 +73,13 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
     return dustRelayFeeIn.GetFee(nSize);
 }
 
-/** An asset output holds no freicoin by rule, and is not dust for that. */
+/** An asset output (or confidential scrip) holds no freicoin by rule, and is not dust for that. */
 static bool IsAssetOutput(const CTxOut& txout)
 {
     AssetAmount amount;
-    return GetAssetOutput(txout, amount) == AssetOutputType::ASSET;
+    ConfidentialOutput confidential;
+    return GetAssetOutput(txout, amount) == AssetOutputType::ASSET ||
+           GetConfidentialOutput(txout, confidential) == ConfidentialOutputType::CONFIDENTIAL;
 }
 
 bool IsDust(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
@@ -141,6 +144,15 @@ bool IsStandardTx(const CTransaction& tx, const std::optional<unsigned>& max_dat
         }
         if (!txin.scriptSig.IsPushOnly()) {
             reason = "scriptsig-not-pushonly";
+            return false;
+        }
+    }
+
+    // Output witnesses are for confidential outputs (their range proofs), nothing else yet.
+    for (size_t n = 0; n < tx.output_witness.size() && n < tx.vout.size(); ++n) {
+        ConfidentialOutput confidential;
+        if (!tx.output_witness[n].IsNull() && GetConfidentialOutput(tx.vout[n], confidential) != ConfidentialOutputType::CONFIDENTIAL) {
+            reason = "output-witness";
             return false;
         }
     }

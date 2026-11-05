@@ -165,6 +165,7 @@ FREICOIN_CORE_H = \
   consensus/merkleproof.h \
   consensus/tx_check.h \
   consensus/assets.h \
+  consensus/confidential.h \
   consensus/tx_verify.h \
   core_io.h \
   core_memusage.h \
@@ -700,6 +701,7 @@ libfreicoin_common_a_SOURCES = \
   chainparams.cpp \
   coins.cpp \
   consensus/assets.cpp \
+  consensus/confidential.cpp \
   common/args.cpp \
   common/bloom.cpp \
   common/config.cpp \
@@ -954,6 +956,7 @@ libfreicoinkernel_la_SOURCES = \
   consensus/merkle.cpp \
   consensus/merkleproof.cpp \
   consensus/assets.cpp \
+  consensus/confidential.cpp \
   consensus/tx_check.cpp \
   consensus/tx_verify.cpp \
   core_read.cpp \

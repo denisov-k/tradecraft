@@ -24,6 +24,7 @@
 #include <clientversion.h>
 #include <consensus/amount.h>
 #include <consensus/assets.h>
+#include <consensus/confidential.h>
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
 #include <consensus/tx_check.h>
@@ -935,7 +936,9 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
         ChainstateManager& chainman = m_active_chainstate.m_chainman;
         if (DeploymentActiveAfter(tip, chainman, Consensus::DEPLOYMENT_ASSETS)) {
             const int asset_height = chainman.m_versionbitscache.StateSinceHeight(tip, chainman.GetConsensus(), Consensus::DEPLOYMENT_ASSETS);
-            if (!Consensus::CheckTxAssets(tx, m_view, asset_height, state)) {
+            const int confidential_height = DeploymentActiveAfter(tip, chainman, Consensus::DEPLOYMENT_CONFIDENTIAL)
+                ? chainman.m_versionbitscache.StateSinceHeight(tip, chainman.GetConsensus(), Consensus::DEPLOYMENT_CONFIDENTIAL) : -1;
+            if (!Consensus::CheckTxAssets(tx, m_view, asset_height, state, /*block_final=*/false, confidential_height)) {
                 return false; // state filled in by CheckTxAssets
             }
             // The ledger needs a block-final transaction in the next block: none
@@ -964,6 +967,14 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
                 AssetAmount asset;
                 CAmount ledger_amount = 0;
                 if (GetAssetOutput(txout, asset) != AssetOutputType::NONE || GetLedgerOutput(txout, ledger_amount) != LedgerOutputType::NONE) {
+                    return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "extension-output-premature");
+                }
+            }
+        }
+        if (!DeploymentActiveAfter(tip, chainman, Consensus::DEPLOYMENT_CONFIDENTIAL)) {
+            for (const CTxOut& txout : tx.vout) {
+                ConfidentialOutput c;
+                if (GetConfidentialOutput(txout, c) != ConfidentialOutputType::NONE) {
                     return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "extension-output-premature");
                 }
             }
@@ -2820,6 +2831,8 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     // Asset rules (consensus/assets.h), from the block the deployment activates in.
     const bool enforce_assets = DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_ASSETS);
     const int asset_height = enforce_assets ? m_chainman.m_versionbitscache.StateSinceHeight(pindex->pprev, params.GetConsensus(), Consensus::DEPLOYMENT_ASSETS) : 0;
+    const int confidential_height = enforce_assets && DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_CONFIDENTIAL)
+        ? m_chainman.m_versionbitscache.StateSinceHeight(pindex->pprev, params.GetConsensus(), Consensus::DEPLOYMENT_CONFIDENTIAL) : -1;
 
     // The scrip ledger of the block, starting from the pool in the prior
     // block-final transaction.
@@ -2850,7 +2863,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         if (enforce_assets) {
             const bool is_final_tx = enforce_block_final && i + 1 == block.vtx.size() && i > 0;
             TxValidationState tx_state;
-            if (!Consensus::CheckTxAssets(tx, view, asset_height, tx_state, is_final_tx)) {
+            if (!Consensus::CheckTxAssets(tx, view, asset_height, tx_state, is_final_tx, confidential_height)) {
                 state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
                             tx_state.GetRejectReason(), tx_state.GetDebugMessage());
                 LogError("%s: Consensus::CheckTxAssets: %s, %s\n", __func__, tx.GetHash().ToString(), state.ToString());

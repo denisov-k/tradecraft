@@ -15,6 +15,7 @@
 #include <consensus/assets.h>
 
 #include <coins.h>
+#include <consensus/confidential.h>
 #include <primitives/block.h>
 #include <consensus/validation.h>
 #include <crypto/common.h>
@@ -260,8 +261,17 @@ bool Consensus::CheckBlockLedger(const CBlock& block, const BlockLedger& ledger,
     return true;
 }
 
-bool Consensus::CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inputs, int asset_height, TxValidationState& state, bool block_final)
+bool Consensus::CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inputs, int asset_height, TxValidationState& state, bool block_final, int confidential_height)
 {
+    // Confidential scrip is never in the coinbase or the block-final transaction.
+    if (confidential_height >= 0 && (tx.IsCoinBase() || block_final)) {
+        for (const CTxOut& txout : tx.vout) {
+            ConfidentialOutput c;
+            if (GetConfidentialOutput(txout, c) != ConfidentialOutputType::NONE) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, tx.IsCoinBase() ? "bad-txns-ct-coinbase" : "bad-txns-ledger-final-output");
+            }
+        }
+    }
     std::map<uint256, CAmount> value_out;
     // every output and input of an asset agrees on its demurrage (scrip has none)
     std::map<uint256, bool> demurrage;
@@ -380,8 +390,21 @@ bool Consensus::CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inp
         }
     }
 
+    // Confidential scrip: the commitments, with the explicit scrip in and out, must
+    // balance; that replaces the explicit check of scrip.
+    bool confidential = false;
+    if (confidential_height >= 0) {
+        const auto in = value_in.find(ScripAssetId());
+        const auto out = value_out.find(ScripAssetId());
+        if (!Consensus::CheckTxConfidential(tx, inputs, confidential_height, in == value_in.end() ? 0 : in->second,
+                                            out == value_out.end() ? 0 : out->second, &confidential, state)) {
+            return false;
+        }
+    }
+
     // An asset input with no asset output is burned, which needs no check.
     for (const auto& [asset, amount] : value_out) {
+        if (confidential && asset == ScripAssetId()) continue;
         // the issuance: any supply, once (with the demurrage the id commits to)
         const auto decays = demurrage.find(asset);
         if (decays != demurrage.end() && asset == AssetIssuanceId(tx.vin[0].prevout, decays->second)) continue;
