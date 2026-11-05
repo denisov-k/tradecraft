@@ -22,6 +22,7 @@
 #include <common/args.h>
 #include <consensus/amount.h>
 #include <consensus/assets.h>
+#include <consensus/confidential.h>
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
 #include <consensus/tx_verify.h>
@@ -97,6 +98,7 @@ void BlockAssembler::resetBlock()
     // Reserve space for coinbase tx
     nBlockWeight = m_options.coinbase_max_additional_weight;
     m_ledger_final_weight = 0;
+    m_block_ct_bits = 0;
     nBlockSigOpsCost = m_options.coinbase_output_max_additional_sigops;
 
     // These counters do not include coinbase tx
@@ -314,14 +316,17 @@ bool BlockAssembler::TestPackage(uint64_t packageSize, int64_t packageSigOpsCost
 
 // Perform transaction-level checks before adding to block:
 // - transaction finality (locktime)
+// - the block's range-proof bits (confidential scrip)
 bool BlockAssembler::TestPackageTransactions(const CTxMemPool::setEntries& package) const
 {
+    int64_t ct_bits = 0;
     for (CTxMemPool::txiter it : package) {
         if (!IsFinalTx(it->GetTx(), nHeight, m_lock_time_cutoff)) {
             return false;
         }
+        ct_bits += ConfidentialProofBits(it->GetTx());
     }
-    return true;
+    return m_block_ct_bits + ct_bits <= MAX_BLOCK_CONFIDENTIAL_BITS;
 }
 
 void BlockAssembler::AddToBlock(CTxMemPool::txiter iter)
@@ -346,6 +351,7 @@ void BlockAssembler::AddToBlock(CTxMemPool::txiter iter)
     }
     ++nBlockTx;
     nBlockSigOpsCost += iter->GetSigOpCost();
+    m_block_ct_bits += ConfidentialProofBits(iter->GetTx());
     nFees += GetTimeAdjustedValue(iter->GetFee(), nHeight - iter->GetReferenceHeight());
     inBlock.insert(iter->GetSharedTx()->GetHash());
 

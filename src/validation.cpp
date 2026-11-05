@@ -938,6 +938,9 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
             const int asset_height = chainman.m_versionbitscache.StateSinceHeight(tip, chainman.GetConsensus(), Consensus::DEPLOYMENT_ASSETS);
             const int confidential_height = DeploymentActiveAfter(tip, chainman, Consensus::DEPLOYMENT_CONFIDENTIAL)
                 ? chainman.m_versionbitscache.StateSinceHeight(tip, chainman.GetConsensus(), Consensus::DEPLOYMENT_CONFIDENTIAL) : -1;
+            if (confidential_height >= 0 && ConfidentialProofBits(tx) > MAX_STANDARD_TX_CONFIDENTIAL_BITS) {
+                return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "ct-cost");
+            }
             if (!Consensus::CheckTxAssets(tx, m_view, asset_height, state, /*block_final=*/false, confidential_height)) {
                 return false; // state filled in by CheckTxAssets
             }
@@ -2833,6 +2836,15 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     const int asset_height = enforce_assets ? m_chainman.m_versionbitscache.StateSinceHeight(pindex->pprev, params.GetConsensus(), Consensus::DEPLOYMENT_ASSETS) : 0;
     const int confidential_height = enforce_assets && DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_CONFIDENTIAL)
         ? m_chainman.m_versionbitscache.StateSinceHeight(pindex->pprev, params.GetConsensus(), Consensus::DEPLOYMENT_CONFIDENTIAL) : -1;
+    // The range proofs' bits, counted from their headers before any is verified.
+    if (confidential_height >= 0) {
+        int64_t ct_bits = 0;
+        for (const auto& tx : block.vtx) ct_bits += ConfidentialProofBits(*tx);
+        if (ct_bits > MAX_BLOCK_CONFIDENTIAL_BITS) {
+            LogError("ConnectBlock(): too many range-proof bits (%d)\n", ct_bits);
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-ct-cost");
+        }
+    }
 
     // The scrip ledger of the block, starting from the pool in the prior
     // block-final transaction.

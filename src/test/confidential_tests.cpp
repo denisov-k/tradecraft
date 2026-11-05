@@ -158,6 +158,26 @@ BOOST_AUTO_TEST_CASE(confidential_outputs)
     BOOST_CHECK(f.Check({held}, {missing}, reason, /*confidential_height=*/-1));
 }
 
+BOOST_AUTO_TEST_CASE(confidential_cost)
+{
+    Maker m;
+    // the bits a proof covers, read from its header: the wallet's 52, or fewer for a small range
+    CMutableTransaction tx;
+    const auto small = m.Make(600, B1, PROGRAM_A);
+    tx.vout = {small.first, Explicit(5).first, small.first};
+    tx.output_witness.resize(3);
+    tx.output_witness[0].stack = {small.second};
+    tx.output_witness[2].stack = {small.second};
+    const int64_t bits = ConfidentialProofBits(CTransaction(tx));
+    BOOST_CHECK(bits > 0 && bits <= 2 * 64);
+    BOOST_CHECK_EQUAL(bits % 2, 0);
+    // a missing proof counts in full
+    tx.output_witness[2].stack.clear();
+    BOOST_CHECK_EQUAL(ConfidentialProofBits(CTransaction(tx)), bits / 2 + 64);
+    // the limits: a block's worth is a few seconds of checks, a transaction a tenth
+    BOOST_CHECK_EQUAL(MAX_STANDARD_TX_CONFIDENTIAL_BITS * 10, MAX_BLOCK_CONFIDENTIAL_BITS - MAX_BLOCK_CONFIDENTIAL_BITS % 10);
+}
+
 BOOST_AUTO_TEST_CASE(confidential_placement)
 {
     Maker m;

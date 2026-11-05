@@ -162,6 +162,8 @@ private:
     uint64_t nBlockWeight;
     //! Weight reserved for the block-final transaction's part of the ledger (peg-in inputs, the pool)
     uint64_t m_ledger_final_weight{0};
+    //! Range-proof bits of the selected transactions (MAX_BLOCK_CONFIDENTIAL_BITS)
+    int64_t m_block_ct_bits{0};
     uint64_t nBlockTx;
     uint64_t nBlockSigOpsCost;
     CAmount nFees;

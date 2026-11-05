@@ -799,6 +799,9 @@ private:
 
     /** The height of the best chain */
     std::atomic<int> m_best_height{-1};
+    /** Whether the confidential rules apply to the next block: then output witnesses
+     *  are a desirable service (cached here for the connection threads). */
+    std::atomic<bool> m_want_output_witness{false};
     /** The time of the best chain tip block */
     std::atomic<std::chrono::seconds> m_best_block_time{0s};
 
@@ -1866,13 +1869,16 @@ bool PeerManagerImpl::HasAllDesirableServiceFlags(ServiceFlags services) const
 
 ServiceFlags PeerManagerImpl::GetDesirableServiceFlags(ServiceFlags services) const
 {
+    // Once the confidential rules apply, blocks come only from peers that serve output
+    // witnesses: outbound connections go to them (as NODE_WITNESS for segwit).
+    const ServiceFlags witness = m_want_output_witness ? ServiceFlags(NODE_WITNESS | NODE_OUTPUT_WITNESS) : NODE_WITNESS;
     if (services & NODE_NETWORK_LIMITED) {
         // Limited peers are desirable when we are close to the tip.
         if (ApproximateBestBlockDepth() < NODE_NETWORK_LIMITED_ALLOW_CONN_BLOCKS) {
-            return ServiceFlags(NODE_NETWORK_LIMITED | NODE_WITNESS);
+            return ServiceFlags(NODE_NETWORK_LIMITED | witness);
         }
     }
-    return ServiceFlags(NODE_NETWORK | NODE_WITNESS);
+    return ServiceFlags(NODE_NETWORK | witness);
 }
 
 PeerRef PeerManagerImpl::GetPeerRef(NodeId id) const
@@ -2126,6 +2132,8 @@ PeerManagerImpl::PeerManagerImpl(CConnman& connman, AddrMan& addrman,
     if (opts.reconcile_txs) {
         m_txreconciliation = std::make_unique<TxReconciliationTracker>(TXRECONCILIATION_VERSION);
     }
+    // the chain is loaded: whether output witnesses are wanted already
+    m_want_output_witness = DeploymentActiveAfter(WITH_LOCK(::cs_main, return m_chainman.ActiveChain().Tip()), m_chainman, Consensus::DEPLOYMENT_CONFIDENTIAL);
 }
 
 void PeerManagerImpl::StartScheduledTasks(CScheduler& scheduler)
@@ -2278,6 +2286,7 @@ void PeerManagerImpl::NewPoWValidBlock(const CBlockIndex *pindex, const std::sha
 void PeerManagerImpl::UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload)
 {
     SetBestBlock(pindexNew->nHeight, std::chrono::seconds{pindexNew->GetBlockTime()});
+    m_want_output_witness = DeploymentActiveAfter(pindexNew, m_chainman, Consensus::DEPLOYMENT_CONFIDENTIAL);
 
     // Don't relay inventory during initial block download.
     if (fInitialDownload) return;

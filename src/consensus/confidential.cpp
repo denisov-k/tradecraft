@@ -73,6 +73,25 @@ std::vector<unsigned char> ConfidentialExtension(const ConfidentialOutput& out)
     return ext;
 }
 
+int64_t ConfidentialProofBits(const CTransaction& tx)
+{
+    int64_t bits = 0;
+    for (size_t n = 0; n < tx.vout.size(); ++n) {
+        ConfidentialOutput c;
+        if (GetConfidentialOutput(tx.vout[n], c) == ConfidentialOutputType::NONE) continue;
+        int exp = 0, mantissa = 0;
+        uint64_t min_value = 0, max_value = 0;
+        if (n < tx.output_witness.size() && tx.output_witness[n].stack.size() == 1 && !tx.output_witness[n].stack[0].empty() &&
+            secp256k1_rangeproof_info(Context(), &exp, &mantissa, &min_value, &max_value,
+                                      tx.output_witness[n].stack[0].data(), tx.output_witness[n].stack[0].size())) {
+            bits += std::max(mantissa, 1);
+        } else {
+            bits += 64;
+        }
+    }
+    return bits;
+}
+
 bool Consensus::CheckTxConfidential(const CTransaction& tx, const CCoinsViewCache& inputs, int confidential_height,
                                     CAmount explicit_in, CAmount explicit_out, bool* has_confidential, TxValidationState& state)
 {
