@@ -177,7 +177,9 @@ The data structure Forward Blocks (XI-B, footnote 20) gives outputs for range pr
   transactions and blocks whole; others get them without output witnesses, which their commitment check
   accepts, and are never announced a transaction that has any.  A `getblocktxn` from such a peer for one
   is answered with the whole block, stripped.  Under the rules blocks are downloaded only from peers with
-  the bit, and a stripped block from a peer without it is dropped without blaming the peer.
+  the bit, a stripped block from a peer without it is dropped without blaming the peer, and the bit
+  joins the desirable service flags, so outbound connections go to such peers (as `NODE_WITNESS` did for
+  segwit).
 - **Deployment.**  BIP9 `confidential`, bit 5, not active on any network yet, regtest included (tests opt
   in with `-vbparams=confidential:-1:9223372036854775807`); not `gbt_force`, as the coinbase witness must
   carry the root.  Before it the mempool refuses output witnesses (`output-witness-premature`) and a block
@@ -202,6 +204,13 @@ so the ledger rules of section 4 do not change.
   those of its confidential outputs plus the explicit scrip out (scrip outputs, peg-outs, fees), the
   explicit amounts committed with a zero blinding factor (`secp256k1_pedersen_verify_tally`,
   `bad-txns-ct-balance`).  That replaces the explicit check of scrip for the transaction.
+- **Verification budget.**  A block may give at most 65536 range-proof bits to check
+  (`MAX_BLOCK_CONFIDENTIAL_BITS`, `bad-blk-ct-cost`), counted from the proofs' headers
+  (`secp256k1_rangeproof_info`) before any is verified; a missing or unreadable proof counts 64.
+  Verification takes about 0.11 ms a bit on one core of the test server (`bench_rangeproof`; an ECDSA
+  check takes 0.06 ms), so that is some 7 s, about 1260 outputs of 52 bits; with size expansion a block's
+  weight (up to 2 GiB) would not bound it.  The miner keeps within it; policy gives a transaction a tenth
+  (`ct-cost`).
 - **Activation.**  Before the rules a `0x06` output is an unknown extension; one created then counts for
   nothing after.  Relay policy: confidential outputs are not dust; output witnesses are standard only on
   them.
@@ -213,8 +222,12 @@ so the ledger rules of section 4 do not change.
 **Wallet.**
 - Blinding keys derive from a master blinding key (`ctmasterkey` in the wallet database, unencrypted: it
   reveals amounts but spends nothing) and the output program.
-- `getconfidentialaddress` gives an address and its blinding public key.  `sendconfidential address amount
-  ( blindingkey )` spends explicit and confidential scrip; with the recipient's blinding key the payment is
+- `getconfidentialaddress` gives an address, its blinding public key, and both in one **confidential
+  address**: bech32m under the network's prefix with `c` before it (`cfc1...`, `ctf1...`, `cfcrt1...`),
+  the witness version then the blinding key and the program.  It is longer than 89 characters, past which
+  bech32m detects errors with high probability rather than certainty (Elements' blech32 has a longer
+  checksum for this and could replace it).  `sendconfidential address amount
+  ( blindingkey )`, given a confidential address or an address and a blinding key, spends explicit and confidential scrip; with the recipient's blinding key the payment is
   confidential, without it explicit scrip; the change is confidential (so the payment's blinding factor is
   random), and the fee is paid in scrip, so no freicoin is needed.  An ephemeral key's ECDH with the
   recipient's blinding key seeds the range proof (52 private bits), which the recipient rewinds to recover
