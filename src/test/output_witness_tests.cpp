@@ -115,6 +115,7 @@ BOOST_AUTO_TEST_CASE(block_commitment)
     final_tx.output_witness.resize(final_tx.vout.size());
     final_tx.output_witness[0].stack = {{0x01}};
     changed.vtx.back() = MakeTransactionRef(std::move(final_tx));
+    changed.m_checked_witness_commitment = false; // the block caches the check
     BOOST_CHECK(IsBlockMutated(changed, params, true, true));
 
     // The coinbase witness carries the branch: without it the block is mutated.
@@ -122,6 +123,7 @@ BOOST_AUTO_TEST_CASE(block_commitment)
     CMutableTransaction cb(*bare.vtx[0]);
     cb.vin[0].scriptWitness.stack.clear();
     bare.vtx[0] = MakeTransactionRef(std::move(cb));
+    bare.m_checked_witness_commitment = false;
     BOOST_CHECK(IsBlockMutated(bare, params, true, true));
 }
 
