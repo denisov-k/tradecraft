@@ -101,6 +101,12 @@ class WalletScripLedgerTest(FreicoinTestFramework):
         entry = holder.getmempoolentry(txid)
         assert_equal(entry["fees"]["base"], 0)
         assert_equal(entry["fees"]["modified"], Decimal(fee_value) / COIN)
+        # the wallet reports it, in scrip and in what the miner gets; the receiver does not
+        wtx = holder.gettransaction(txid)
+        assert_equal(wtx["scripfee"], -fee_scrip)
+        assert_equal(wtx["scripfeevalue"], -Decimal(fee_value) / COIN)
+        self.sync_mempools()
+        assert "scripfee" not in payer.gettransaction(txid)
 
         self.log.info("bumpfee raises a fee paid in scrip in scrip, from the scrip change")
         self.sync_mempools()
@@ -122,6 +128,8 @@ class WalletScripLedgerTest(FreicoinTestFramework):
         # the block-final transaction forwards it to the coinbase (nothing else moves the pool here)
         assert_equal(int(block["tx"][-1]["fee"] * COIN), fee_value)
         assert_equal(holder.getassetbalances()[scrip], before - 1000 - fee_scrip)
+        assert_equal(holder.gettransaction(txid)["scripfee"], -fee_scrip)
+        assert_equal(holder.gettransaction(txid)["scripfeevalue"], -Decimal(fee_value) / COIN)
 
         self.log.info("A peg-out can pay its fee in scrip too")
         before = holder.getassetbalances()[scrip]
@@ -131,6 +139,7 @@ class WalletScripLedgerTest(FreicoinTestFramework):
         fee_scrip = sum(int.from_bytes(bytes.fromhex(o["scriptPubKey"]["hex"][12:28]), "little")
                         for o in tx["vout"] if o["scriptPubKey"]["hex"].startswith("000246530905"))
         assert fee_scrip > 0
+        assert_equal(holder.gettransaction(res["txid"])["scripfee"], -fee_scrip)
         self.sync_mempools()
         self.generate(holder, 1)
         assert_equal(holder.getassetbalances()[scrip], before - 500 - fee_scrip)

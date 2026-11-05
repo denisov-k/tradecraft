@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include <consensus/assets.h>
 #include <core_io.h>
 #include <key_io.h>
 #include <policy/rbf.h>
@@ -25,6 +26,24 @@
 using interfaces::FoundBlock;
 
 namespace wallet {
+/** The scrip a transaction this wallet spends from pays as a fee (its fee outputs), in
+ *  kria of scrip.  Such a transaction may spend no freicoin of the wallet at all. */
+static CAmount ScripFeePaid(const CWallet& wallet, const CWalletTx& wtx, const isminefilter& filter)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    CAmount fee_scrip = 0;
+    for (const CTxOut& txout : wtx.tx->vout) {
+        CAmount amount = 0;
+        if (GetLedgerOutput(txout, amount) != LedgerOutputType::FEE || amount <= 0 || !MoneyRange(fee_scrip + amount)) continue;
+        fee_scrip += amount;
+    }
+    if (!fee_scrip) return 0;
+    for (const CTxIn& txin : wtx.tx->vin) {
+        if (InputIsMine(wallet, txin) & filter) return fee_scrip;
+    }
+    return 0;
+}
+
 static void WalletTxToJSON(const CWallet& wallet, const CWalletTx& wtx, UniValue& entry)
     EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
@@ -732,6 +751,10 @@ RPCHelpMan gettransaction()
                                      "'send' category of transactions."},
                         {RPCResult::Type::STR_AMOUNT, "demurrage", /*optional=*/true, "The amount of the input demurrage in " + CURRENCY_UNIT + ". This is negative and only available for the\n"
                                      "'send' category of transactions."},
+                        {RPCResult::Type::NUM, "scripfee", /*optional=*/true, "The fee paid in scrip, in kria of scrip.  This is negative and only available for a\n"
+                                     "transaction this wallet spends from that pays a fee in scrip."},
+                        {RPCResult::Type::STR_AMOUNT, "scripfeevalue", /*optional=*/true, "What the fee paid in scrip forwards to the miner in " + CURRENCY_UNIT + ", at the height of the\n"
+                                     "block that confirms the transaction (or the next block).  This is negative."},
                     },
                     TransactionDescriptionString()),
                     {
@@ -815,6 +838,12 @@ RPCHelpMan gettransaction()
     if (CachedTxIsFromMe(*pwallet, wtx, filter)) {
         entry.pushKV("fee", ValueFromAmount(nFee));
         entry.pushKV("demurrage", ValueFromAmount(demurrage));
+    }
+    if (const CAmount fee_scrip = ScripFeePaid(*pwallet, wtx, filter)) {
+        const auto* conf = wtx.state<TxStateConfirmed>();
+        const int height = conf ? conf->confirmed_block_height : pwallet->GetLastBlockHeight() + 1;
+        entry.pushKV("scripfee", -fee_scrip);
+        entry.pushKV("scripfeevalue", ValueFromAmount(-ScripToFreicoin(fee_scrip, height)));
     }
 
     WalletTxToJSON(*pwallet, wtx, entry);
