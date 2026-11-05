@@ -1851,16 +1851,16 @@ static event_base* g_event_base = nullptr;
 static void SendWorkToAllClients(evutil_socket_t, short, void* arg);
 void BlockWatcher()
 {
-    std::chrono::steady_clock::time_point checktxtime = std::chrono::steady_clock::now();
     while (true) {
         {
             WAIT_LOCK(g_best_block_mutex, lock);
-            checktxtime += std::chrono::seconds(15);
-            // On a new block, or every 15 seconds regardless: SendWorkToAllClients
+            // On a new block, or 15 seconds from now regardless: SendWorkToAllClients
             // sends only to clients whose tip changed or who are due a keepalive.
-            // (Waking only when the mempool changed left the keepalive unsent on a
-            // quiet chain, and cgminer-based miners reconnecting in a loop.)
-            g_best_block_cv.wait_until(lock, checktxtime);
+            // (The deadline used to advance 15 seconds on every wake-up, blocks
+            // included, so after many blocks it lay far ahead and, with the wait
+            // also skipped while the mempool was unchanged, the keepalive never went
+            // out: cgminer-based miners then reconnected in a loop.)
+            g_best_block_cv.wait_until(lock, std::chrono::steady_clock::now() + std::chrono::seconds(15));
         }
 
         if (g_shutdown) {
