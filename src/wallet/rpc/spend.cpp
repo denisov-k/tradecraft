@@ -539,10 +539,10 @@ static CTransactionRef SendPayingFeeInScrip(CWallet& wallet, const std::vector<C
         if (size.vsize < 0) throw JSONRPCError(RPC_WALLET_ERROR, "Cannot estimate the size of the transaction");
         const CAmount needed = FreicoinToScrip(feerate.GetFee(size.vsize), refheight) + 1;
         if (needed <= fee_scrip) {
-            res = CreateTransaction(wallet, all, refheight, /*change_pos=*/std::nullopt, coin_control, /*sign=*/true);
-            if (!res) throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, util::ErrorString(res).original);
-            wallet.CommitTransaction(res->tx, /*mapValue=*/{}, /*orderForm=*/{});
-            return res->tx;
+            auto signed_res = CreateTransaction(wallet, all, refheight, /*change_pos=*/std::nullopt, coin_control, /*sign=*/true);
+            if (!signed_res) throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, util::ErrorString(signed_res).original);
+            wallet.CommitTransaction(signed_res->tx, /*mapValue=*/{}, /*orderForm=*/{});
+            return signed_res->tx;
         }
         fee_scrip = needed;
     }
