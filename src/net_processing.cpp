@@ -22,6 +22,7 @@
 #include <blockfilter.h>
 #include <chainparams.h>
 #include <consensus/amount.h>
+#include <consensus/assets.h>
 #include <consensus/validation.h>
 #include <deploymentstatus.h>
 #include <hash.h>
@@ -6188,7 +6189,8 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                         tx_relay->m_tx_inventory_to_send.erase(inv.hash);
 
                         // Don't send transactions that peers will not put into their mempool
-                        if (txinfo.fee < filterrate.GetFee(txinfo.vsize)) {
+                        // (a fee paid in scrip counts: the peer's mempool takes it)
+                        if (txinfo.fee + LedgerFeeValue(*txinfo.tx, m_best_height + 1) < filterrate.GetFee(txinfo.vsize)) {
                             continue;
                         }
                         if (tx_relay->m_bloom_filter) {
@@ -6241,7 +6243,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                             continue;
                         }
                         // Peer told you to not send transactions at that feerate? Don't bother sending it.
-                        if (txinfo.fee < filterrate.GetFee(txinfo.vsize)) {
+                        if (txinfo.fee + LedgerFeeValue(*txinfo.tx, m_best_height + 1) < filterrate.GetFee(txinfo.vsize)) {
                             continue;
                         }
                         if (tx_relay->m_bloom_filter && !tx_relay->m_bloom_filter->IsRelevantAndUpdate(*txinfo.tx)) continue;
