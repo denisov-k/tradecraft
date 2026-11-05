@@ -1852,18 +1852,15 @@ static void SendWorkToAllClients(evutil_socket_t, short, void* arg);
 void BlockWatcher()
 {
     std::chrono::steady_clock::time_point checktxtime = std::chrono::steady_clock::now();
-    unsigned int txns_updated_last = 0;
     while (true) {
         {
             WAIT_LOCK(g_best_block_mutex, lock);
             checktxtime += std::chrono::seconds(15);
-            if (g_best_block_cv.wait_until(lock, checktxtime) == std::cv_status::timeout) {
-                // Timeout: Check to see if mempool was updated.
-                unsigned int txns_updated_next = g_context->mempool ? g_context->mempool->GetTransactionsUpdated() : txns_updated_last;
-                if (txns_updated_last == txns_updated_next)
-                    continue;
-                txns_updated_last = txns_updated_next;
-            }
+            // On a new block, or every 15 seconds regardless: SendWorkToAllClients
+            // sends only to clients whose tip changed or who are due a keepalive.
+            // (Waking only when the mempool changed left the keepalive unsent on a
+            // quiet chain, and cgminer-based miners reconnecting in a loop.)
+            g_best_block_cv.wait_until(lock, checktxtime);
         }
 
         if (g_shutdown) {
@@ -1881,6 +1878,10 @@ void BlockWatcher()
         }
     }
 }
+
+//! A client that has heard nothing for this long gets its work again: miners treat a
+//! silent connection as dead (cgminer after ~90 s), and BlockWatcher wakes every 15 s.
+static constexpr int64_t KEEPALIVE_SECONDS{30};
 
 //! Runs in the event loop thread (scheduled by BlockWatcher): send new work to
 //! every client whose block tip changed, or to all of them after a share
@@ -1915,11 +1916,11 @@ static void SendWorkToAllClients(evutil_socket_t, short, void* arg)
             // work notification again, moments later.  Due to race conditions
             // there could be more than one miner that have already received an
             // update, however.
-            // Re-send work to a client that has heard nothing for a minute, even
+            // Re-send work to a client that has heard nothing for a while, even
             // if nothing changed: miners treat a silent connection as dead
             // (cgminer after ~90 s, ESP-Miner after 180 s) and reconnect.
             // (Reported by Vintage Hash from a live setup; same fix as in mergemine.)
-            const bool keepalive = (GetTime() - client.m_last_work_time) >= 60;
+            const bool keepalive = (GetTime() - client.m_last_work_time) >= KEEPALIVE_SECONDS;
             if (client.m_last_tip == tip && !share_tip_changed && !keepalive) {
                 continue;
             }

@@ -351,6 +351,22 @@ class ShareChainTest(FreicoinTestFramework):
         m.close()
         assert_equal(owners(n0), owners(n1))
 
+        self.log.info("a quiet chain still keeps a stratum connection alive: the work is sent again")
+        # cgminer-based miners drop a connection silent for ~90 s; with no block and no share
+        # the server must still speak within KEEPALIVE_SECONDS (30) plus its 15 s wake-up
+        m = StratumMiner(stratum_port(0), addr[0], self.log)
+        height = n0.getblockcount()
+        notes = []
+        deadline = time.time() + 60
+        while time.time() < deadline and not (notes and notes[-1] - notes[0] >= 20):
+            msg = m.readline(timeout=max(0.1, deadline - time.time()))
+            if msg is not None and msg.get("method") == "mining.notify":
+                notes.append(time.time())
+        assert_equal(n0.getblockcount(), height)
+        # the work sent on connecting, and again later with nothing new in between
+        assert notes and notes[-1] - notes[0] >= 20, notes
+        m.close()
+
         self.log.info("stratum usernames: address.worker is accepted; a non-address only with -stratumanyusername")
         assert_equal(stratum_authorize(stratum_port(0), addr[0] + ".rig1"), (True, None))
         assert_equal(stratum_authorize(stratum_port(0), addr[0] + ".rig1+0.000001"), (True, None))
