@@ -104,7 +104,7 @@ BOOST_AUTO_TEST_CASE(block_commitment)
     const auto& branch = block.vtx[0]->vin[0].scriptWitness.stack[0];
     BOOST_REQUIRE_EQUAL(branch.size(), 32U);
     BOOST_CHECK(uint256(branch) == BlockOutputWitnessMerkleRoot(block));
-    const Consensus::Params& params = Params().GetConsensus();
+    const Consensus::Params& params = m_node.chainman->GetConsensus();
     BOOST_CHECK(!IsBlockMutated(block, params, /*check_witness_root=*/true, /*check_output_witness_root=*/true));
 
     // Output witnesses added to (or stripped from) a transaction change the output
