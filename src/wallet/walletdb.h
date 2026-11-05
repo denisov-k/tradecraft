@@ -100,6 +100,7 @@ extern const std::string WALLETDESCRIPTORCKEY;
 extern const std::string WALLETDESCRIPTORKEY;
 extern const std::string WATCHMETA;
 extern const std::string WATCHS;
+extern const std::string CT_MASTER_KEY;
 extern const std::string WITNESS_V0;
 
 // Keys in this set pertain only to the legacy wallet (LegacyScriptPubKeyMan) and are removed during migration from legacy to descriptors.
@@ -300,6 +301,7 @@ public:
     bool EraseRecords(const std::unordered_set<std::string>& types);
 
     bool WriteWalletFlags(const uint64_t flags);
+    bool WriteCTMasterKey(const uint256& key);
     //! Begin a new transaction
     bool TxnBegin();
     //! Commit current transaction

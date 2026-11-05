@@ -1097,6 +1097,9 @@ RPCHelpMan sendall();
 RPCHelpMan issueasset();
 RPCHelpMan sendasset();
 RPCHelpMan pegin();
+RPCHelpMan getconfidentialaddress();
+RPCHelpMan listconfidential();
+RPCHelpMan sendconfidential();
 RPCHelpMan pegout();
 RPCHelpMan walletprocesspst();
 RPCHelpMan walletcreatefundedpst();
@@ -1170,6 +1173,9 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &migratewallet},
         {"wallet", &newkeypool},
         {"wallet", &pegin},
+        {"wallet", &getconfidentialaddress},
+        {"wallet", &listconfidential},
+        {"wallet", &sendconfidential},
         {"wallet", &pegout},
         {"wallet", &removeprunedfunds},
         {"wallet", &rescanblockchain},

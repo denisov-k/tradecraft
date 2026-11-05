@@ -249,6 +249,8 @@ BASE_SCRIPTS = [
     'feature_scrip_ledger.py',
     'wallet_scrip_ledger.py --descriptors',
     'wallet_scrip_ledger.py --legacy-wallet',
+    'wallet_confidential.py --descriptors',
+    'wallet_confidential.py --legacy-wallet',
     'wallet_assets.py --descriptors',
     'wallet_assets.py --legacy-wallet',
     'rpc_deprecated.py',

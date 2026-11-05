@@ -56,6 +56,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "sendasset", 1, "amount" },
     { "sendasset", 3, "fee_in_scrip" },
     { "pegin", 0, "amount" },
+    { "sendconfidential", 1, "amount" },
     { "pegout", 0, "amount" },
     { "pegout", 2, "fee_in_scrip" },
     { "sendtoaddress", 4, "subtractfeefromamount" },

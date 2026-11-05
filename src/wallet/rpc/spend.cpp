@@ -15,6 +15,7 @@
 
 #include <chainparams.h>
 #include <common/messages.h>
+#include <consensus/confidential.h>
 #include <consensus/validation.h>
 #include <core_io.h>
 #include <key_io.h>
@@ -27,6 +28,7 @@
 #include <util/translation.h>
 #include <util/vector.h>
 #include <wallet/coincontrol.h>
+#include <wallet/confidential.h>
 #include <wallet/feebumper.h>
 #include <wallet/fees.h>
 #include <wallet/rpc/util.h>
@@ -730,6 +732,242 @@ RPCHelpMan pegout()
     result.pushKV("freicoin", ValueFromAmount(ScripToFreicoin(amount, payout_height)));
     result.pushKV("payout_height", payout_height);
     return result;
+},
+    };
+}
+
+/** The wallet's scrip it can spend: explicit outputs (blinding factor zero) and
+ *  confidential ones it can unblind. */
+struct HeldScrip {
+    COutPoint outpoint;
+    CAmount value;
+    Blind blind;
+    bool confidential;
+};
+
+static std::vector<HeldScrip> ListHeldScrip(CWallet& wallet, uint32_t refheight) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    CoinFilterParams params;
+    params.min_amount = 0;
+    params.include_extension_outputs = true;
+    CCoinControl list_control;
+    std::vector<HeldScrip> held;
+    for (const COutput& out : AvailableCoinsListUnspent(wallet, refheight, &list_control, params).All()) {
+        AssetAmount a;
+        if (GetAssetOutput(out.txout, a) == AssetOutputType::ASSET && a.asset == ScripAssetId() && IsCountedAssetOutput(wallet, out, refheight - 1)) {
+            held.push_back({out.outpoint, a.amount, Blind{}, false});
+            continue;
+        }
+        ConfidentialOutput c;
+        if (GetConfidentialOutput(out.txout, c) != ConfidentialOutputType::CONFIDENTIAL) continue;
+        const CWalletTx* wtx = wallet.GetWalletTx(out.outpoint.hash);
+        if (!wtx || out.outpoint.n >= wtx->tx->output_witness.size() || wtx->tx->output_witness[out.outpoint.n].stack.size() != 1) continue;
+        HeldScrip h{out.outpoint, 0, Blind{}, true};
+        if (UnblindOutput(wallet, out.txout, wtx->tx->output_witness[out.outpoint.n].stack[0], h.value, h.blind)) held.push_back(h);
+    }
+    std::sort(held.begin(), held.end(), [](const HeldScrip& a, const HeldScrip& b) { return a.value > b.value; });
+    return held;
+}
+
+RPCHelpMan getconfidentialaddress()
+{
+    return RPCHelpMan{"getconfidentialaddress",
+        "\nAn address of this wallet to receive confidential scrip at, with its blinding public key,\n"
+        "which the sender needs (sendconfidential) to hide the amount from everyone but this wallet.\n",
+        {
+            {"address", RPCArg::Type::STR, RPCArg::DefaultHint{"a new address of this wallet"}, "A native witness address of this wallet"},
+        },
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::STR, "address", "The address"},
+            {RPCResult::Type::STR_HEX, "blindingkey", "Its blinding public key"},
+        }},
+        RPCExamples{HelpExampleCli("getconfidentialaddress", "") + HelpExampleRpc("getconfidentialaddress", "")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+    LOCK(pwallet->cs_wallet);
+    const CTxDestination dest = AssetDestination(*pwallet, request.params[0], /*change=*/false);
+    const CScript program = GetScriptForDestination(dest);
+    if (!pwallet->IsMine(program)) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Not an address of this wallet");
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("address", EncodeDestination(dest));
+    result.pushKV("blindingkey", HexStr(BlindingKey(*pwallet, program).GetPubKey()));
+    return result;
+},
+    };
+}
+
+RPCHelpMan listconfidential()
+{
+    return RPCHelpMan{"listconfidential",
+        "\nThe confidential scrip this wallet holds, unblinded.\n",
+        {},
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::NUM, "total", "The scrip held confidentially, in kria of scrip"},
+            {RPCResult::Type::ARR, "outputs", "", {
+                {RPCResult::Type::OBJ, "", "", {
+                    {RPCResult::Type::STR_HEX, "txid", "The transaction id"},
+                    {RPCResult::Type::NUM, "vout", "The output index"},
+                    {RPCResult::Type::NUM, "amount", "The scrip, in kria of scrip"},
+                }},
+            }},
+        }},
+        RPCExamples{HelpExampleCli("listconfidential", "") + HelpExampleRpc("listconfidential", "")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+    pwallet->BlockUntilSyncedToCurrentChain();
+    LOCK(pwallet->cs_wallet);
+    CAmount total = 0;
+    UniValue outputs(UniValue::VARR);
+    for (const HeldScrip& h : ListHeldScrip(*pwallet, NextHeight(*pwallet))) {
+        if (!h.confidential) continue;
+        UniValue o(UniValue::VOBJ);
+        o.pushKV("txid", h.outpoint.hash.GetHex());
+        o.pushKV("vout", (int)h.outpoint.n);
+        o.pushKV("amount", h.value);
+        outputs.push_back(std::move(o));
+        total += h.value;
+    }
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("total", total);
+    result.pushKV("outputs", std::move(outputs));
+    return result;
+},
+    };
+}
+
+RPCHelpMan sendconfidential()
+{
+    return RPCHelpMan{"sendconfidential",
+        "\nSend scrip from this wallet's explicit and confidential scrip.  With the recipient's\n"
+        "blinding key (getconfidentialaddress) the amount is confidential; without, it is paid as\n"
+        "explicit scrip.  The change is confidential, and the fee is paid in scrip: no freicoin is\n"
+        "needed.\n" +
+        HELP_REQUIRING_PASSPHRASE,
+        {
+            {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The native witness address to send to"},
+            {"amount", RPCArg::Type::NUM, RPCArg::Optional::NO, "The scrip, in kria of scrip"},
+            {"blindingkey", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "The recipient's blinding public key: send confidentially"},
+        },
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::STR_HEX, "txid", "The transaction id"},
+            {RPCResult::Type::NUM, "fee", "The fee, in kria of scrip"},
+        }},
+        RPCExamples{HelpExampleCli("sendconfidential", "\"" + EXAMPLE_ADDRESS[0] + "\" 100000 \"<blindingkey>\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+    pwallet->BlockUntilSyncedToCurrentChain();
+    LOCK(pwallet->cs_wallet);
+    EnsureWalletIsUnlocked(*pwallet);
+
+    const CTxDestination dest = AssetDestination(*pwallet, request.params[0], /*change=*/false);
+    const CScript dest_program = GetScriptForDestination(dest);
+    const CAmount amount = ParseAssetAmount(request.params[1]);
+    std::optional<CPubKey> recipient_key;
+    if (!request.params[2].isNull()) {
+        const std::vector<unsigned char> bytes = ParseHexV(request.params[2], "blindingkey");
+        recipient_key = CPubKey(bytes);
+        if (!recipient_key->IsFullyValid()) throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid blinding key");
+    }
+    const uint32_t refheight = NextHeight(*pwallet);
+    const std::vector<HeldScrip> held = ListHeldScrip(*pwallet, refheight);
+    const CTxDestination change_dest = AssetDestination(*pwallet, UniValue(), /*change=*/true);
+    const CScript change_program = GetScriptForDestination(change_dest);
+    const CPubKey change_key = BlindingKey(*pwallet, change_program).GetPubKey();
+    FeeCalculation fee_calc;
+    const CFeeRate feerate = GetMinimumFeeRate(*pwallet, CCoinControl(), &fee_calc);
+    const std::vector<unsigned char> pool_program{'F', 'S'};
+
+    CAmount fee_scrip = 1;
+    for (int round = 0; round < 4; ++round) {
+        // inputs, largest first
+        CCoinControl coin_control;
+        coin_control.m_allow_other_inputs = false;
+        coin_control.fOverrideFeeRate = true;
+        coin_control.m_feerate = CFeeRate(0);
+        CAmount selected = 0;
+        bool any_confidential = recipient_key.has_value();
+        std::vector<Blind> in_blinds;
+        for (const HeldScrip& h : held) {
+            if (selected >= amount + fee_scrip) break;
+            coin_control.Select(h.outpoint);
+            selected += h.value;
+            if (h.confidential) {
+                any_confidential = true;
+                in_blinds.push_back(h.blind);
+            }
+        }
+        if (selected < amount + fee_scrip) throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient scrip");
+        if (!any_confidential) throw JSONRPCError(RPC_INVALID_PARAMETER, "Nothing confidential: use sendasset for explicit scrip");
+        const CAmount change = selected - amount - fee_scrip;
+
+        // outputs: the payment, the change (always confidential, so the payment's blinding
+        // factor can be random), the fee
+        std::vector<CRecipient> recipients;
+        std::map<CScript, std::vector<unsigned char>> proofs;
+        std::vector<Blind> out_blinds;
+        if (recipient_key) {
+            const Blind blind = RandomBlind();
+            CTxOut out;
+            std::vector<unsigned char> proof;
+            if (!MakeConfidentialOutput(amount, blind, dest_program, *recipient_key, out, proof)) throw JSONRPCError(RPC_WALLET_ERROR, "Cannot make the confidential output");
+            std::vector<unsigned char> ext;
+            out.scriptPubKey.GetExtensionOutput(ext);
+            recipients.push_back(CRecipient{dest, 0, false, std::nullopt, ext});
+            proofs[out.scriptPubKey] = proof;
+            out_blinds.push_back(blind);
+        } else {
+            recipients.push_back(CRecipient{dest, 0, false, AssetAmount{ScripAssetId(), amount}});
+        }
+        const std::optional<Blind> change_blind = BalancingBlind(in_blinds, out_blinds);
+        if (!change_blind) continue; // the factors cancelled: try again with another
+        {
+            CTxOut out;
+            std::vector<unsigned char> proof;
+            if (!MakeConfidentialOutput(change, *change_blind, change_program, change_key, out, proof)) throw JSONRPCError(RPC_WALLET_ERROR, "Cannot make the confidential change");
+            std::vector<unsigned char> ext;
+            out.scriptPubKey.GetExtensionOutput(ext);
+            recipients.push_back(CRecipient{change_dest, 0, false, std::nullopt, ext});
+            proofs[out.scriptPubKey] = proof;
+        }
+        recipients.push_back(CRecipient{WitnessUnknown{0, pool_program}, 0, false, std::nullopt, LedgerExtension(EXTENSION_FEE, fee_scrip)});
+
+        const auto attach = [&](CMutableTransaction& mtx) {
+            mtx.output_witness.assign(mtx.vout.size(), CScriptWitness{});
+            for (size_t n = 0; n < mtx.vout.size(); ++n) {
+                const auto it = proofs.find(mtx.vout[n].scriptPubKey);
+                if (it != proofs.end()) mtx.output_witness[n].stack = {it->second};
+            }
+        };
+        auto res = CreateTransaction(*pwallet, recipients, refheight, /*change_pos=*/std::nullopt, coin_control, /*sign=*/false);
+        if (!res) throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, util::ErrorString(res).original);
+        CMutableTransaction sized(*res->tx);
+        attach(sized);
+        const TxSize size = CalculateMaximumSignedTxSize(CTransaction(sized), pwallet.get(), &coin_control);
+        if (size.vsize < 0) throw JSONRPCError(RPC_WALLET_ERROR, "Cannot estimate the size of the transaction");
+        const CAmount needed = FreicoinToScrip(feerate.GetFee(size.vsize), refheight) + 1;
+        if (needed > fee_scrip) {
+            fee_scrip = needed;
+            continue;
+        }
+        auto signed_res = CreateTransaction(*pwallet, recipients, refheight, /*change_pos=*/std::nullopt, coin_control, /*sign=*/true);
+        if (!signed_res) throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, util::ErrorString(signed_res).original);
+        // the signatures do not cover the output witnesses: the proofs go on after
+        CMutableTransaction mtx(*signed_res->tx);
+        attach(mtx);
+        const CTransactionRef tx = MakeTransactionRef(std::move(mtx));
+        pwallet->CommitTransaction(tx, /*mapValue=*/{}, /*orderForm=*/{});
+        UniValue result(UniValue::VOBJ);
+        result.pushKV("txid", tx->GetHash().GetHex());
+        result.pushKV("fee", fee_scrip);
+        return result;
+    }
+    throw JSONRPCError(RPC_WALLET_ERROR, "Could not settle the confidential transaction");
 },
     };
 }

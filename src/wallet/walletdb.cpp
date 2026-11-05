@@ -76,6 +76,7 @@ const std::string WALLETDESCRIPTORCKEY{"walletdescriptorckey"};
 const std::string WALLETDESCRIPTORKEY{"walletdescriptorkey"};
 const std::string WATCHMETA{"watchmeta"};
 const std::string WATCHS{"watchs"};
+const std::string CT_MASTER_KEY{"ctmasterkey"};
 const std::string WITNESS_V0{"witv0"};
 const std::unordered_set<std::string> LEGACY_TYPES{CRYPTED_KEY, CSCRIPT, DEFAULTKEY, HDCHAIN, KEYMETA, KEY, OLD_KEY, POOL, WATCHMETA, WATCHS, WITNESS_V0};
 } // namespace DBKeys
@@ -1238,6 +1239,10 @@ DBErrors WalletBatch::LoadWallet(CWallet* pwallet)
 
         // Load decryption keys
         result = std::max(LoadDecryptionKeys(pwallet, *m_batch), result);
+
+        // The master blinding key of confidential scrip, if one was made
+        uint256 ct_master_key;
+        if (m_batch->Read(DBKeys::CT_MASTER_KEY, ct_master_key)) pwallet->m_ct_master_key = ct_master_key;
     } catch (...) {
         // Exceptions that can be ignored or treated as non-critical are handled by the individual loading functions.
         // Any uncaught exceptions will be caught here and treated as critical.
@@ -1364,6 +1369,11 @@ bool WalletBatch::WriteHDChain(const CHDChain& chain)
 bool WalletBatch::WriteWalletFlags(const uint64_t flags)
 {
     return WriteIC(DBKeys::FLAGS, flags);
+}
+
+bool WalletBatch::WriteCTMasterKey(const uint256& key)
+{
+    return WriteIC(DBKeys::CT_MASTER_KEY, key);
 }
 
 bool WalletBatch::EraseRecords(const std::unordered_set<std::string>& types)

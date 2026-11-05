@@ -746,6 +746,8 @@ public:
      * CWallet::TransactionChangeType for details).
      */
     std::optional<OutputType> m_default_change_type{};
+    //! The master key the blinding keys of confidential scrip derive from (wallet/confidential.h).
+    std::optional<uint256> m_ct_master_key GUARDED_BY(cs_wallet);
     /** Absolute maximum transaction fee (in kria) used by default for the wallet */
     CAmount m_default_max_tx_fee{DEFAULT_TRANSACTION_MAXFEE};
 

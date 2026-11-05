@@ -259,6 +259,11 @@ void TxToUniv(const CTransaction& tx, const uint256& block_hash, UniValue& entry
         UniValue o(UniValue::VOBJ);
         ScriptToUniv(txout.scriptPubKey, /*out=*/o, /*include_hex=*/true, /*include_address=*/true);
         out.pushKV("scriptPubKey", std::move(o));
+        if (i < tx.output_witness.size() && !tx.output_witness[i].IsNull()) {
+            UniValue witness(UniValue::VARR);
+            for (const auto& item : tx.output_witness[i].stack) witness.push_back(HexStr(item));
+            out.pushKV("witness", std::move(witness));
+        }
         vout.push_back(std::move(out));
 
         if (have_undo) {
