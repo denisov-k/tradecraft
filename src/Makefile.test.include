@@ -78,6 +78,7 @@ FREICOIN_TESTS =\
   test/allocator_tests.cpp \
   test/amount_tests.cpp \
   test/assets_tests.cpp \
+  test/output_witness_tests.cpp \
   test/argsman_tests.cpp \
   test/arith_uint256_tests.cpp \
   test/banman_tests.cpp \

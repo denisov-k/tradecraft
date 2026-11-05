@@ -145,6 +145,12 @@ uint256 ComputeStableMerkleRootFromBranch(const uint256& leaf, const std::vector
  * used in later calls to ComputeFastMerkleRootFromBranch.
  */
 uint256 ComputeFastMerkleRoot(const std::vector<uint256>& leaves);
+
+/** The root of the block's output witness tree: a fast Merkle tree whose leaves are
+ *  the transactions' output witness hashes (CTransaction::GetOutputWitnessHash, zero
+ *  for a transaction without output witnesses).  With the confidential rules it is the
+ *  first hash of the coinbase's witness commitment branch (CheckWitnessMalleation). */
+uint256 BlockOutputWitnessMerkleRoot(const CBlock& block);
 std::pair<std::vector<uint256>, uint32_t> ComputeFastMerkleBranch(const std::vector<uint256>& leaves, uint32_t position);
 uint256 ComputeFastMerkleRootFromBranch(const uint256& leaf, const std::vector<uint256>& branch, uint32_t path, bool* invalid = nullptr);
 

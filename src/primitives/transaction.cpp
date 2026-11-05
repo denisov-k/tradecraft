@@ -75,7 +75,7 @@ std::string CTxOut::ToString() const
 }
 
 CMutableTransaction::CMutableTransaction() : version{CTransaction::CURRENT_VERSION}, nLockTime{0}, lock_height{0} {}
-CMutableTransaction::CMutableTransaction(const CTransaction& tx) : vin(tx.vin), vout(tx.vout), version{tx.version}, nLockTime{tx.nLockTime}, lock_height{tx.lock_height} {}
+CMutableTransaction::CMutableTransaction(const CTransaction& tx) : vin(tx.vin), vout(tx.vout), output_witness(tx.output_witness), version{tx.version}, nLockTime{tx.nLockTime}, lock_height{tx.lock_height} {}
 
 Txid CMutableTransaction::GetHash() const
 {
@@ -100,11 +100,22 @@ Wtxid CTransaction::ComputeWitnessHash() const
         return Wtxid::FromUint256(hash.ToUint256());
     }
 
-    return Wtxid::FromUint256((HashWriter{} << TX_WITH_WITNESS(*this)).GetHash());
+    // the input witnesses only: nodes that do not know output witnesses compute the same
+    return Wtxid::FromUint256((HashWriter{} << TX_WITH_INPUT_WITNESS(*this)).GetHash());
 }
 
-CTransaction::CTransaction(const CMutableTransaction& tx) : vin(tx.vin), vout(tx.vout), version{tx.version}, nLockTime{tx.nLockTime}, lock_height{tx.lock_height}, m_has_witness{ComputeHasWitness()}, hash{ComputeHash()}, m_witness_hash{ComputeWitnessHash()} {}
-CTransaction::CTransaction(CMutableTransaction&& tx) : vin(std::move(tx.vin)), vout(std::move(tx.vout)), version{tx.version}, nLockTime{tx.nLockTime}, lock_height{tx.lock_height}, m_has_witness{ComputeHasWitness()}, hash{ComputeHash()}, m_witness_hash{ComputeWitnessHash()} {}
+uint256 CTransaction::GetOutputWitnessHash() const
+{
+    if (!HasOutputWitness()) return uint256::ZERO;
+    HashWriter hasher{};
+    for (size_t i = 0; i < vout.size(); ++i) {
+        hasher << (i < output_witness.size() ? output_witness[i].stack : std::vector<std::vector<unsigned char>>{});
+    }
+    return hasher.GetHash();
+}
+
+CTransaction::CTransaction(const CMutableTransaction& tx) : vin(tx.vin), vout(tx.vout), output_witness(tx.output_witness), version{tx.version}, nLockTime{tx.nLockTime}, lock_height{tx.lock_height}, m_has_witness{ComputeHasWitness()}, hash{ComputeHash()}, m_witness_hash{ComputeWitnessHash()} {}
+CTransaction::CTransaction(CMutableTransaction&& tx) : vin(std::move(tx.vin)), vout(std::move(tx.vout)), output_witness(std::move(tx.output_witness)), version{tx.version}, nLockTime{tx.nLockTime}, lock_height{tx.lock_height}, m_has_witness{ComputeHasWitness()}, hash{ComputeHash()}, m_witness_hash{ComputeWitnessHash()} {}
 
 CAmount CTransaction::GetValueOut() const
 {

@@ -922,6 +922,12 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
         return false; // state filled in by CheckTxInputs
     }
 
+    // Output witnesses mean nothing until the confidential rules apply, when the
+    // next block must commit to them.
+    if (tx.HasOutputWitness() && !DeploymentActiveAfter(m_active_chainstate.m_chain.Tip(), m_active_chainstate.m_chainman, Consensus::DEPLOYMENT_CONFIDENTIAL)) {
+        return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "output-witness-premature");
+    }
+
     // Asset rules as the next block will apply them.
     CAmount ledger_fee = 0; // the freicoin value of the fees paid in scrip
     {
@@ -4278,7 +4284,7 @@ static bool CheckMerkleRoot(const CBlock& block, const Consensus::Params& consen
  * Note: If the witness commitment is expected (i.e. `expect_witness_commitment
  * = true`), then the block is required to have at least one transaction and the
  * first transaction needs to have at least one input. */
-static bool CheckWitnessMalleation(const CBlock& block, bool expect_witness_commitment, BlockValidationState& state)
+static bool CheckWitnessMalleation(const CBlock& block, bool expect_witness_commitment, BlockValidationState& state, bool expect_output_witness_commitment = false)
 {
     if (expect_witness_commitment) {
         if (block.m_checked_witness_commitment) return true;
@@ -4335,6 +4341,32 @@ static bool CheckWitnessMalleation(const CBlock& block, bool expect_witness_comm
                     /*reject_reason=*/"bad-witness-merkle-match",
                     /*debug_message=*/strprintf("%s : witness merkle commitment mismatch", __func__));
             }
+            // The output witnesses: their tree's root is the first hash of the branch,
+            // which nodes without these rules leave unconstrained.  Always, so that a
+            // block stripped of its output witnesses fails here, as mutated.
+            if (expect_output_witness_commitment) {
+                if (branch.empty()) {
+                    return state.Invalid(
+                        /*result=*/BlockValidationResult::BLOCK_CONSENSUS,
+                        /*reject_reason=*/"bad-output-witness-commitment",
+                        /*debug_message=*/strprintf("%s : no output witness commitment", __func__));
+                }
+                if (branch[0] != BlockOutputWitnessMerkleRoot(block)) {
+                    return state.Invalid(
+                        /*result=*/BlockValidationResult::BLOCK_MUTATED,
+                        /*reject_reason=*/"bad-output-witness-merkle-match",
+                        /*debug_message=*/strprintf("%s : output witness merkle commitment mismatch", __func__));
+                }
+            } else {
+                for (const auto& tx : block.vtx) {
+                    if (tx->HasOutputWitness()) {
+                        return state.Invalid(
+                            /*result=*/BlockValidationResult::BLOCK_MUTATED,
+                            /*reject_reason=*/"unexpected-output-witness",
+                            /*debug_message=*/strprintf("%s : output witness data before the rules apply", __func__));
+                    }
+                }
+            }
 
             block.m_checked_witness_commitment = true;
             return true;
@@ -4343,7 +4375,7 @@ static bool CheckWitnessMalleation(const CBlock& block, bool expect_witness_comm
 
     // No witness data is allowed in blocks that don't commit to witness data, as this would otherwise leave room for spam
     for (const auto& tx : block.vtx) {
-        if (tx->HasWitness()) {
+        if (tx->HasWitness() || tx->HasOutputWitness()) {
             return state.Invalid(
                 /*result=*/BlockValidationResult::BLOCK_MUTATED,
                 /*reject_reason=*/"unexpected-witness",
@@ -4431,6 +4463,11 @@ void ChainstateManager::UpdateUncommittedBlockStructures(CBlock& block, const CB
         CMutableTransaction tx(*block.vtx[0]);
         tx.vin[0].scriptWitness.stack.resize(1);
         tx.vin[0].scriptWitness.stack[0] = nonce;
+        // with the confidential rules the branch starts with the output witness root
+        if (DeploymentActiveAfter(pindexPrev, *this, Consensus::DEPLOYMENT_CONFIDENTIAL)) {
+            const uint256 ow_root = BlockOutputWitnessMerkleRoot(block);
+            tx.vin[0].scriptWitness.stack[0].assign(ow_root.begin(), ow_root.end());
+        }
         block.vtx[0] = MakeTransactionRef(std::move(tx));
     }
 }
@@ -4458,6 +4495,16 @@ void ChainstateManager::GenerateCoinbaseCommitment(CBlock& block, const CBlockIn
         CMutableTransaction tx(*block.vtx.back());
         CScript& script = tx.vout.back().scriptPubKey;
         script[1] = 0x01;
+        // With the confidential rules the commitment root is one level up: the
+        // witness root on the left, the output witness root (in the coinbase's
+        // witness) on the right.
+        if (DeploymentActiveAfter(pindexPrev, *this, Consensus::DEPLOYMENT_CONFIDENTIAL)) {
+            script[1] = 0x02;
+            witnessroot = ComputeFastMerkleRootFromBranch(witnessroot, {BlockOutputWitnessMerkleRoot(block)}, 0);
+            CMutableTransaction cb(*block.vtx[0]);
+            cb.vin[0].scriptWitness.stack.clear(); // set by UpdateUncommittedBlockStructures
+            block.vtx[0] = MakeTransactionRef(std::move(cb));
+        }
         memcpy(&script[2], witnessroot.begin(), 32);
         block.vtx.back() = MakeTransactionRef(std::move(tx));
     }
@@ -4470,7 +4517,7 @@ bool HasValidProofOfWork(const std::vector<CBlockHeader>& headers, const Consens
             [&](const auto& header) { return CheckAuxiliaryProofOfWork(header, consensusParams) && (IsProtocolCleanupActive(consensusParams, std::chrono::seconds(header.nTime)) || CheckProofOfWork(header, consensusParams));});
 }
 
-bool IsBlockMutated(const CBlock& block, const Consensus::Params& consensusParams, bool check_witness_root)
+bool IsBlockMutated(const CBlock& block, const Consensus::Params& consensusParams, bool check_witness_root, bool check_output_witness_root)
 {
     BlockValidationState state;
     if (!CheckMerkleRoot(block, consensusParams, state)) {
@@ -4493,7 +4540,7 @@ bool IsBlockMutated(const CBlock& block, const Consensus::Params& consensusParam
         // here as it requires at least 224 bits of work.
     }
 
-    if (!CheckWitnessMalleation(block, check_witness_root, state)) {
+    if (!CheckWitnessMalleation(block, check_witness_root, state, check_output_witness_root)) {
         LogDebug(BCLog::VALIDATION, "Block mutated: %s\n", state.ToString());
         return true;
     }
@@ -4650,7 +4697,8 @@ static bool ContextualCheckBlock(const CBlock& block, BlockValidationState& stat
     // * The block-final transaction, when serialized, ends with a single byte encoding of the path from the commitment root
     //   to the witness root, the 32-byte commitment root, the 4 bytes {0x49, 0x4a, 0x4b, 0x4c}, and the 8 bytes which of
     //   the block-final transaction's nLockTime and lock_height fields.
-    if (!CheckWitnessMalleation(block, DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_SEGWIT), state)) {
+    if (!CheckWitnessMalleation(block, DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_SEGWIT), state,
+                                DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_CONFIDENTIAL))) {
         return false;
     }
 

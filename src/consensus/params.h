@@ -63,6 +63,7 @@ enum DeploymentPos : uint16_t {
     DEPLOYMENT_FINALTX, // Deployment of block-final miner commitment transaction.
     DEPLOYMENT_AUXPOW, // Deployment of merge mining.
     DEPLOYMENT_ASSETS, // Deployment of user-issued assets on extension outputs.
+    DEPLOYMENT_CONFIDENTIAL, // Deployment of output witnesses and confidential scrip.
     // NOTE: Also add new deployments to VersionBitsDeploymentInfo in deploymentinfo.cpp
     MAX_VERSION_BITS_DEPLOYMENTS
 };

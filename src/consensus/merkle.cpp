@@ -575,6 +575,14 @@ uint256 BlockWitnessMerkleRoot(const CBlock& block)
     return ComputeFastMerkleRoot(leaves);
 }
 
+uint256 BlockOutputWitnessMerkleRoot(const CBlock& block)
+{
+    std::vector<uint256> leaves;
+    leaves.reserve(block.vtx.size());
+    for (const auto& tx : block.vtx) leaves.push_back(tx->GetOutputWitnessHash());
+    return ComputeFastMerkleRoot(leaves);
+}
+
 std::vector<uint256> BlockMerkleBranch(const CBlock& block, uint32_t position)
 {
     std::vector<uint256> leaves;

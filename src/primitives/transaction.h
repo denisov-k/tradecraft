@@ -25,6 +25,7 @@
 #include <uint256.h>
 #include <util/transaction_identifier.h> // IWYU pragma: export
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <ios>
@@ -296,9 +297,14 @@ struct CMutableTransaction;
 
 struct TransactionSerParams {
     const bool allow_witness;
+    //! The output witnesses too (extension data such as range proofs).  The wtxid
+    //! leaves them out, so a node that does not know them still checks the block's
+    //! witness commitment; it is sent transactions and blocks without them.
+    const bool allow_output_witness{allow_witness};
     SER_PARAMS_OPFUNC
 };
 static constexpr TransactionSerParams TX_WITH_WITNESS{.allow_witness = true};
+static constexpr TransactionSerParams TX_WITH_INPUT_WITNESS{.allow_witness = true, .allow_output_witness = false};
 static constexpr TransactionSerParams TX_NO_WITNESS{.allow_witness = false};
 
 /**
@@ -317,6 +323,8 @@ static constexpr TransactionSerParams TX_NO_WITNESS{.allow_witness = false};
  * - std::vector<CTxOut> vout
  * - if (flags & 1):
  *   - CScriptWitness scriptWitness; (deserialized into CTxIn)
+ * - if (flags & 2):
+ *   - CScriptWitness, one per output (deserialized into output_witness)
  * - uint32_t nLockTime
  * - uint32_t lock_height
  */
@@ -329,6 +337,7 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
     unsigned char flags = 0;
     tx.vin.clear();
     tx.vout.clear();
+    tx.output_witness.clear();
     // We don't know yet if we are reading a CompactSize for the number of CTxIn
     // structures, or the dummy value indicating an extended transaction
     // serialization format.
@@ -398,6 +407,17 @@ void UnserializeTransaction(TxType& tx, Stream& s, const TransactionSerParams& p
             throw std::ios_base::failure("Superfluous witness record");
         }
     }
+    if ((flags & 2) && params.allow_output_witness) {
+        /* The output witnesses, one stack per output. */
+        flags ^= 2;
+        tx.output_witness.resize(tx.vout.size());
+        for (size_t i = 0; i < tx.vout.size(); i++) {
+            s >> tx.output_witness[i].stack;
+        }
+        if (!tx.HasOutputWitness()) {
+            throw std::ios_base::failure("Superfluous output witness record");
+        }
+    }
     if (flags) {
         /* Unknown flag in the serialization */
         throw std::ios_base::failure("Unknown transaction optional data");
@@ -424,6 +444,9 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
             flags |= 1;
         }
     }
+    if (params.allow_output_witness && tx.HasOutputWitness()) {
+        flags |= 2;
+    }
     if (flags) {
         /* Use extended format in case witnesses are to be serialized. */
         unsigned char dummy = 255;
@@ -435,6 +458,11 @@ void SerializeTransaction(const TxType& tx, Stream& s, const TransactionSerParam
     if (flags & 1) {
         for (size_t i = 0; i < tx.vin.size(); i++) {
             s << tx.vin[i].scriptWitness.stack;
+        }
+    }
+    if (flags & 2) {
+        for (size_t i = 0; i < tx.vout.size(); i++) {
+            s << (i < tx.output_witness.size() ? tx.output_witness[i].stack : std::vector<std::vector<unsigned char>>{});
         }
     }
     s << tx.nLockTime;
@@ -466,6 +494,9 @@ public:
     // structure, including the hash.
     const std::vector<CTxIn> vin;
     const std::vector<CTxOut> vout;
+    //! The output witnesses: empty, or one per output.  Not in the txid or the wtxid
+    //! (see TransactionSerParams); committed in the block by GetOutputWitnessHash.
+    const std::vector<CScriptWitness> output_witness;
     const uint32_t version;
     const uint32_t nLockTime;
     const uint32_t lock_height;
@@ -541,6 +572,15 @@ public:
     std::string ToString() const;
 
     bool HasWitness() const { return m_has_witness; }
+
+    bool HasOutputWitness() const
+    {
+        return std::any_of(output_witness.begin(), output_witness.end(), [](const CScriptWitness& w) { return !w.IsNull(); });
+    }
+
+    /** The hash of the output witnesses, a leaf of the block's output witness tree:
+     *  zero for a transaction without any. */
+    uint256 GetOutputWitnessHash() const;
 };
 
 /** A mutable version of CTransaction. */
@@ -548,6 +588,7 @@ struct CMutableTransaction
 {
     std::vector<CTxIn> vin;
     std::vector<CTxOut> vout;
+    std::vector<CScriptWitness> output_witness; //!< empty, or one per output
     uint32_t version;
     uint32_t nLockTime;
     uint32_t lock_height;
@@ -586,6 +627,14 @@ struct CMutableTransaction
             if (!vin[i].scriptWitness.IsNull()) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    bool HasOutputWitness() const
+    {
+        for (const CScriptWitness& w : output_witness) {
+            if (!w.IsNull()) return true;
         }
         return false;
     }

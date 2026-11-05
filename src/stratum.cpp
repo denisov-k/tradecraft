@@ -185,6 +185,9 @@ struct StratumWork {
     // First we generate the segwit commitment for the miner's coinbase with
     // ComputeFastMerkleBranch.
     std::vector<uint256> m_cb_wit_branch;
+    //! With the confidential rules: the output witness root, which the commitment pairs
+    //! with the witness root (it does not depend on the coinbase).
+    std::optional<uint256> m_ow_root;
     // Then we compute the initial right-branch for the block-tx Merkle tree
     // using ComputeStableMerkleBranch...
     std::vector<uint256> m_bf_branch;
@@ -251,6 +254,10 @@ StratumWork::StratumWork(const CTxDestination& coinbase_dest, const node::CBlock
         if (scriptPubKey.size() < 37) {
             throw std::runtime_error("Expected last output of block-final transaction to have enough room for segwit commitment, but alas.");
         }
+        // the template's commitment path tells whether the output witness root is in it
+        if (scriptPubKey[scriptPubKey.size()-37] == 0x02) {
+            m_ow_root = BlockOutputWitnessMerkleRoot(m_block_template.block);
+        }
         std::fill_n(&scriptPubKey[scriptPubKey.size()-37], 33, 0x00);
         leaves.back() = bf.GetHash();
         m_cb_wit_branch = ComputeFastMerkleBranch(leaves, 0).first;
@@ -264,10 +271,13 @@ void UpdateSegwitCommitment(const ChainstateManager& chainman, const StratumWork
     cb2.vin[0].scriptSig = CScript();
     cb2.vin[0].nSequence = 0;
     auto witnessroot = ComputeFastMerkleRootFromBranch(cb2.GetHash(), current_work.m_cb_wit_branch, 0, nullptr);
+    if (current_work.m_ow_root) {
+        witnessroot = ComputeFastMerkleRootFromBranch(witnessroot, {*current_work.m_ow_root}, 0, nullptr);
+    }
 
     // Build block-final tx
     CScript& scriptPubKey = bf.vout.back().scriptPubKey;
-    scriptPubKey[scriptPubKey.size()-37] = 0x01;
+    scriptPubKey[scriptPubKey.size()-37] = current_work.m_ow_root ? 0x02 : 0x01;
     std::copy(witnessroot.begin(),
               witnessroot.end(),
               &scriptPubKey[scriptPubKey.size()-36]);
