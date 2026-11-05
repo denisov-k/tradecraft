@@ -16,6 +16,8 @@
 #include <consensus/assets.h>
 #include <consensus/confidential.h>
 #include <consensus/validation.h>
+#include <key.h>
+#include <key_io.h>
 #include <primitives/transaction.h>
 #include <script/script.h>
 #include <test/util/setup_common.h>
@@ -176,6 +178,28 @@ BOOST_AUTO_TEST_CASE(confidential_cost)
     BOOST_CHECK_EQUAL(ConfidentialProofBits(CTransaction(tx)), bits / 2 + 64);
     // the limits: a block's worth is a few seconds of checks, a transaction a tenth
     BOOST_CHECK_EQUAL(MAX_STANDARD_TX_CONFIDENTIAL_BITS * 10, MAX_BLOCK_CONFIDENTIAL_BITS - MAX_BLOCK_CONFIDENTIAL_BITS % 10);
+}
+
+BOOST_AUTO_TEST_CASE(confidential_address)
+{
+    CKey key;
+    key.MakeNewKey(true);
+    for (const size_t size : {20, 32}) {
+        CTxDestination dest;
+        BOOST_REQUIRE(ExtractDestination(CScript() << OP_0 << std::vector<unsigned char>(size, 0x5a), dest));
+        const std::string address = EncodeConfidentialAddress(dest, key.GetPubKey());
+        BOOST_CHECK(address.rfind("cfc1", 0) == 0);
+        CTxDestination back;
+        CPubKey blinding;
+        BOOST_REQUIRE(DecodeConfidentialAddress(address, back, blinding));
+        BOOST_CHECK(back == dest);
+        BOOST_CHECK(blinding == key.GetPubKey());
+        // a typo is caught, and a plain address is not a confidential one
+        std::string typo = address;
+        typo[10] = typo[10] == 'q' ? 'p' : 'q';
+        BOOST_CHECK(!DecodeConfidentialAddress(typo, back, blinding));
+        BOOST_CHECK(!DecodeConfidentialAddress(EncodeDestination(dest), back, blinding));
+    }
 }
 
 BOOST_AUTO_TEST_CASE(confidential_placement)

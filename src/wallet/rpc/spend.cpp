@@ -780,6 +780,7 @@ RPCHelpMan getconfidentialaddress()
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::STR, "address", "The address"},
             {RPCResult::Type::STR_HEX, "blindingkey", "Its blinding public key"},
+            {RPCResult::Type::STR, "confidential", "Both in one confidential address (sendconfidential takes it alone)"},
         }},
         RPCExamples{HelpExampleCli("getconfidentialaddress", "") + HelpExampleRpc("getconfidentialaddress", "")},
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
@@ -791,8 +792,10 @@ RPCHelpMan getconfidentialaddress()
     const CScript program = GetScriptForDestination(dest);
     if (!pwallet->IsMine(program)) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Not an address of this wallet");
     UniValue result(UniValue::VOBJ);
+    const CPubKey blinding_key = BlindingKey(*pwallet, program).GetPubKey();
     result.pushKV("address", EncodeDestination(dest));
-    result.pushKV("blindingkey", HexStr(BlindingKey(*pwallet, program).GetPubKey()));
+    result.pushKV("blindingkey", HexStr(blinding_key));
+    result.pushKV("confidential", EncodeConfidentialAddress(dest, blinding_key));
     return result;
 },
     };
@@ -848,9 +851,9 @@ RPCHelpMan sendconfidential()
         "needed.\n" +
         HELP_REQUIRING_PASSPHRASE,
         {
-            {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The native witness address to send to"},
+            {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The native witness address to send to, or a confidential address (getconfidentialaddress) to send confidentially"},
             {"amount", RPCArg::Type::NUM, RPCArg::Optional::NO, "The scrip, in kria of scrip"},
-            {"blindingkey", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "The recipient's blinding public key: send confidentially"},
+            {"blindingkey", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "The recipient's blinding public key, with a plain address: send confidentially"},
         },
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::STR_HEX, "txid", "The transaction id"},
@@ -865,10 +868,18 @@ RPCHelpMan sendconfidential()
     LOCK(pwallet->cs_wallet);
     EnsureWalletIsUnlocked(*pwallet);
 
-    const CTxDestination dest = AssetDestination(*pwallet, request.params[0], /*change=*/false);
-    const CScript dest_program = GetScriptForDestination(dest);
-    const CAmount amount = ParseAssetAmount(request.params[1]);
     std::optional<CPubKey> recipient_key;
+    CTxDestination dest;
+    CPubKey confidential_key;
+    if (DecodeConfidentialAddress(request.params[0].get_str(), dest, confidential_key)) {
+        if (!request.params[2].isNull()) throw JSONRPCError(RPC_INVALID_PARAMETER, "A confidential address carries its blinding key already");
+        recipient_key = confidential_key;
+    } else {
+        dest = AssetDestination(*pwallet, request.params[0], /*change=*/false);
+    }
+    const CScript dest_program = GetScriptForDestination(dest);
+    if (!dest_program.IsWitnessProgram()) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Assets need a native witness address");
+    const CAmount amount = ParseAssetAmount(request.params[1]);
     if (!request.params[2].isNull()) {
         const std::vector<unsigned char> bytes = ParseHexV(request.params[2], "blindingkey");
         recipient_key = CPubKey(bytes);

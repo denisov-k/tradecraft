@@ -280,6 +280,37 @@ std::string EncodeExtKey(const CExtKey& key)
     return ret;
 }
 
+/** The longest confidential address: prefix, separator, version, 33 + 40 bytes, checksum. */
+static constexpr size_t CONFIDENTIAL_ADDRESS_LIMIT = 130;
+
+static std::string ConfidentialHRP() { return "c" + Params().Bech32HRP(); }
+
+std::string EncodeConfidentialAddress(const CTxDestination& dest, const CPubKey& blinding_key)
+{
+    int version = 0;
+    std::vector<unsigned char> program;
+    if (!blinding_key.IsCompressed() || !GetScriptForDestination(dest).IsWitnessProgram(&version, &program) || version > 16) return "";
+    std::vector<unsigned char> payload(blinding_key.begin(), blinding_key.end());
+    payload.insert(payload.end(), program.begin(), program.end());
+    std::vector<unsigned char> data = {static_cast<unsigned char>(version)};
+    ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, payload.begin(), payload.end());
+    return bech32::Encode(bech32::Encoding::BECH32M, ConfidentialHRP(), data);
+}
+
+bool DecodeConfidentialAddress(const std::string& str, CTxDestination& dest, CPubKey& blinding_key)
+{
+    const auto dec = bech32::Decode(str, static_cast<bech32::CharLimit>(CONFIDENTIAL_ADDRESS_LIMIT));
+    if (dec.encoding != bech32::Encoding::BECH32M || dec.hrp != ConfidentialHRP() || dec.data.empty() || dec.data[0] > 16) return false;
+    std::vector<unsigned char> payload;
+    if (!ConvertBits<5, 8, false>([&](unsigned char c) { payload.push_back(c); }, dec.data.begin() + 1, dec.data.end())) return false;
+    if (payload.size() < CPubKey::COMPRESSED_SIZE + 2 || payload.size() > CPubKey::COMPRESSED_SIZE + 40) return false;
+    blinding_key.Set(payload.begin(), payload.begin() + CPubKey::COMPRESSED_SIZE);
+    if (!blinding_key.IsFullyValid()) return false;
+    const std::vector<unsigned char> program(payload.begin() + CPubKey::COMPRESSED_SIZE, payload.end());
+    const CScript script = CScript() << CScript::EncodeOP_N(dec.data[0]) << program;
+    return ExtractDestination(script, dest) && IsValidDestination(dest);
+}
+
 std::string EncodeDestination(const CTxDestination& dest)
 {
     return std::visit(DestinationEncoder(Params()), dest);

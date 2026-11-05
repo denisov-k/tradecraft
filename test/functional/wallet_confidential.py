@@ -79,10 +79,12 @@ class WalletConfidentialTest(FreicoinTestFramework):
         assert_equal(payer.getassetbalances()[scrip], 40000)
         assert_equal(holder.listconfidential()["total"], 100000 - 40000 - back["fee"])
 
-        self.log.info("Confidential to confidential")
+        self.log.info("Confidential to confidential, to a confidential address (the blinding key inside)")
         info0 = payer.getconfidentialaddress()
+        assert info0["confidential"].startswith("cfcrt1")
+        assert_raises_rpc_error(-8, "carries its blinding key already", holder.sendconfidential, info0["confidential"], 1, info0["blindingkey"])
         before = payer.listconfidential()["total"]
-        res = holder.sendconfidential(info0["address"], 10000, info0["blindingkey"])
+        res = holder.sendconfidential(info0["confidential"], 10000)
         self.sync_mempools()
         self.generate(payer, 1)
         assert_equal(payer.listconfidential()["total"], before + 10000)
