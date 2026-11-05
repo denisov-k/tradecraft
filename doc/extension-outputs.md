@@ -252,12 +252,21 @@ tests pass unchanged.
   block-final transaction, which the coinbase may already claim, so the coinbase rule is unchanged.  In
   the mempool the value counts as a modified fee (relay, ranking, RBF), not a base fee, as the block-final
   transaction forwards it.  Rebatable fees (XI-A) are not implemented.
-- **Confidential amounts** follow XI-B with two differences.  The commitment and the nonce key sit in the
-  extension push itself (67 bytes) instead of a hash of them, as the deployed grammar allows one push of up
-  to 75 bytes.  The output witness root is committed as the first hash of the witness commitment's branch
-  rather than in the segwit witness nonce, which Freicoin's commitment tree had room for.  Only scrip is
-  confidential (section 8).  Explicit-to-confidential and back is a plain transaction, as scrip is one
-  asset whichever form it takes; the payout queue is used only by peg-outs.
+- **Confidential amounts** follow XI-B, adapted to what Freicoin already deployed:
+  - The commitment and the nonce key sit in the extension push itself (67 bytes) rather than a hash of
+    them.  That is what the push was made for: "an unconstrained field ... for things like confidential
+    transactions or issued assets, or commitments to these values" (release notes 13.2), and confidential
+    outputs are the zero-valued outputs protocol cleanup rule 6 exempts from `lock_height` monotonicity
+    with them in mind.  Neither fixes a layout beyond that.
+  - The output witness root goes where the paper suggests, the segwit witness nonce, which in Freicoin is
+    the coinbase witness holding the witness commitment's branch: its first hash.
+  - Only scrip is confidential (section 8): a commitment cannot follow demurrage's fractional factor without
+    revealing the amount, so this is not a choice.
+  - The range proofs are Borromean (secp256k1-zkp `rangeproof`, in production in Liquid since 2018), not
+    Bulletproofs, which would be about five times smaller but have no mature implementation in
+    secp256k1-zkp proper; a later extension version can switch.
+  - Explicit-to-confidential and back is a plain transaction, as scrip is one asset whichever form it
+    takes; the payout queue is used only by peg-outs.
 
 The epoch is `SCRIP_EPOCH = 5040000`, as already in `consensus/amount.cpp`.
 
@@ -265,7 +274,3 @@ The epoch is `SCRIP_EPOCH = 5040000`, as already in `consensus/amount.cpp`.
 
 1. **Rates on assets.**  An asset may decay as freicoin does, or not at all (§3), which is what a claim on
    freicoin needs.  Do you want the Freimarkets rates (any rate, or interest) on chain as well?
-2. **Confidential scrip: scope and cryptography.**  Scrip only, with Borromean range proofs from
-   secp256k1-zkp (as in Liquid), committed through the witness commitment's branch.  Is that the XI-B you
-   meant for Freicoin, or did protocol cleanup rule 6 have another layout in mind; and would you rather
-   wait for Bulletproofs (about five times smaller) in secp256k1-zkp proper?
