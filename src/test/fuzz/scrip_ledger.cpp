@@ -57,7 +57,19 @@ FUZZ_TARGET(scrip_ledger)
         payable -= out;
         outstanding -= out;
     }
-    const CAmount slack = static_cast<CAmount>(ledger.pegins.size() + ledger.pegouts.size()) + 1;
+    // fees in scrip, out of what holders still have (the minted scrip included)
+    CAmount feeable = payable + ledger.minted;
+    size_t fees = 0;
+    LIMITED_WHILE(fdp.ConsumeBool() && feeable > 0, 8) {
+        const CAmount fee = fdp.ConsumeIntegralInRange<CAmount>(1, std::min<CAmount>(feeable, MAX_MONEY));
+        CMutableTransaction tx;
+        tx.vout.emplace_back(0, LedgerBase() << LedgerExtension(EXTENSION_FEE, fee));
+        ledger.AddTransaction(CTransaction(tx), height);
+        feeable -= fee;
+        outstanding -= fee;
+        ++fees;
+    }
+    const CAmount slack = static_cast<CAmount>(ledger.pegins.size() + ledger.pegouts.size() + fees) + 1;
 
     const LedgerResult r = ComputeLedger(ledger, height);
     assert(r.payouts.size() == ledger.pegouts.size());
@@ -68,7 +80,11 @@ FUZZ_TARGET(scrip_ledger)
         assert(r.payouts[i].second + slack >= full);
         paid += r.payouts[i].second;
     }
-    assert(paid + r.pool_value == ledger.prior_value + ledger.pegin_value);
+    // the fees reach the coinbase at their freicoin value, short of a kria a fee at most
+    const CAmount full_fee = ScripToFreicoin(ledger.fee_scrip, height);
+    assert(r.fee_value >= 0 && r.fee_value <= full_fee);
+    assert(r.fee_value + slack >= full_fee);
+    assert(paid + r.fee_value + r.pool_value == ledger.prior_value + ledger.pegin_value);
     assert(r.pool_value >= 0);
     assert(r.pool_scrip == outstanding);
     assert(r.pool_value + slack >= ScripToFreicoin(r.pool_scrip, height));

@@ -101,6 +101,20 @@ class WalletScripLedgerTest(FreicoinTestFramework):
         entry = holder.getmempoolentry(txid)
         assert_equal(entry["fees"]["base"], 0)
         assert_equal(entry["fees"]["modified"], Decimal(fee_value) / COIN)
+
+        self.log.info("bumpfee raises a fee paid in scrip in scrip, from the scrip change")
+        self.sync_mempools()
+        bumped = holder.bumpfee(txid)
+        tx2 = holder.gettransaction(bumped["txid"], True, True)["decoded"]
+        assert_equal(sorted((i["txid"], i["vout"]) for i in tx2["vin"]), sorted((i["txid"], i["vout"]) for i in tx["vin"]))
+        assert all(o["value"] == 0 for o in tx2["vout"])
+        [fee2] = [o["scriptPubKey"]["hex"] for o in tx2["vout"] if o["scriptPubKey"]["hex"].startswith("000246530905")]
+        fee2_scrip = int.from_bytes(bytes.fromhex(fee2[12:28]), "little")
+        assert fee2_scrip > fee_scrip
+        assert txid not in holder.getrawmempool()
+        txid, fee_scrip = bumped["txid"], fee2_scrip
+        fee_value = holder.convertscrip(fee_scrip, "freicoin", height)["amount"]
+        assert_equal(holder.getmempoolentry(txid)["fees"]["modified"], Decimal(fee_value) / COIN)
         self.sync_mempools()
         block = holder.getblock(self.generate(holder, 1)[0], 2)
         [mined] = [t for t in block["tx"] if t["txid"] == txid]

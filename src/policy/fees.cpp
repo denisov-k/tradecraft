@@ -19,6 +19,7 @@
 #include <clientversion.h>
 #include <common/system.h>
 #include <consensus/amount.h>
+#include <consensus/assets.h>
 #include <kernel/mempool_entry.h>
 #include <logging.h>
 #include <policy/feerate.h>
@@ -633,8 +634,9 @@ void CBlockPolicyEstimator::processTransaction(const NewMempoolTransactionInfo& 
     }
     trackedTxs++;
 
-    // Feerates are stored and reported as FRC-per-kb:
-    const CFeeRate feeRate(tx.info.m_fee, tx.info.m_virtual_transaction_size);
+    // Feerates are stored and reported as FRC-per-kb (a fee paid in scrip counts at its
+    // freicoin value: the block-final transaction forwards it to the coinbase):
+    const CFeeRate feeRate(tx.info.m_fee + LedgerFeeValue(*tx.info.m_tx, txHeight + 1), tx.info.m_virtual_transaction_size);
 
     mapMemPoolTxs[hash].blockHeight = txHeight;
     unsigned int bucketIndex = feeStats->NewTx(txHeight, static_cast<double>(feeRate.GetFeePerK()));
