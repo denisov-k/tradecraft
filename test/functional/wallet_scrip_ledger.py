@@ -84,7 +84,6 @@ class WalletScripLedgerTest(FreicoinTestFramework):
 
         self.log.info("Fees in scrip: a transaction of scrip alone, its fee burned in scrip")
         assert_equal(holder.getrawmempool(), [])
-        cv_before = holder.getblocktemplate(RULES)["coinbasevalue"]
         held = {(u["txid"], u["vout"]) for u in holder.listunspent() if u.get("asset") == scrip}
         before = holder.getassetbalances()[scrip]
         txid = holder.sendasset(scrip, 1000, payer.getnewaddress(), True)
@@ -102,12 +101,12 @@ class WalletScripLedgerTest(FreicoinTestFramework):
         entry = holder.getmempoolentry(txid)
         assert_equal(entry["fees"]["base"], 0)
         assert_equal(entry["fees"]["modified"], Decimal(fee_value) / COIN)
-        tmpl = holder.getblocktemplate(RULES)
-        assert txid in [t["txid"] for t in tmpl["transactions"]]
-        assert_equal(tmpl["coinbasevalue"] - cv_before, fee_value)
         self.sync_mempools()
         block = holder.getblock(self.generate(holder, 1)[0], 2)
-        assert txid in [t["txid"] for t in block["tx"]]
+        [mined] = [t for t in block["tx"] if t["txid"] == txid]
+        assert_equal(mined["fee"], 0)
+        # the block-final transaction forwards it to the coinbase (nothing else moves the pool here)
+        assert_equal(int(block["tx"][-1]["fee"] * COIN), fee_value)
         assert_equal(holder.getassetbalances()[scrip], before - 1000 - fee_scrip)
 
         self.log.info("A peg-out can pay its fee in scrip too")
