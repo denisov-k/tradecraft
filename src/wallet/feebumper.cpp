@@ -14,6 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <common/system.h>
+#include <consensus/assets.h>
 #include <consensus/validation.h>
 #include <interfaces/chain.h>
 #include <node/types.h>
@@ -160,6 +161,66 @@ static CFeeRate EstimateFeeRate(const CWallet& wallet, const CWalletTx& wtx, con
     return std::max(feerate, min_feerate);
 }
 
+/** Bump a transaction that pays its fee in scrip (a fee output): raise the fee output
+ *  by what the new feerate needs, out of the scrip change, keeping every input.  The
+ *  fees are reported at their freicoin value (freicoin fee plus the scrip fee's). */
+static feebumper::Result BumpFeeInScrip(CWallet& wallet, const CWalletTx& wtx, const CCoinControl& coin_control, CAmount& old_fee,
+                                        CAmount& new_fee, CMutableTransaction& mtx, std::vector<bilingual_str>& errors) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    const uint32_t height = wtx.tx->lock_height;
+    old_fee += LedgerFeeValue(*wtx.tx, height);
+    const int64_t vsize = GetVirtualTransactionSize(*wtx.tx);
+    CAmount target;
+    if (coin_control.m_feerate) {
+        target = coin_control.m_feerate->GetFee(vsize);
+        const CAmount min_total = old_fee + wallet.chain().relayIncrementalFee().GetFee(vsize);
+        if (target < min_total) {
+            errors.push_back(strprintf(Untranslated("Insufficient total fee %s, must be at least %s"), FormatMoney(target), FormatMoney(min_total)));
+            return feebumper::Result::INVALID_PARAMETER;
+        }
+    } else {
+        target = EstimateFeeRate(wallet, wtx, old_fee, coin_control).GetFee(vsize);
+    }
+    const CAmount extra_scrip = FreicoinToScrip(std::max<CAmount>(target - old_fee, 0), height) + 1;
+
+    mtx = CMutableTransaction(*wtx.tx);
+    for (CTxIn& txin : mtx.vin) {
+        txin.scriptSig.clear();
+        txin.scriptWitness.SetNull();
+    }
+    std::optional<size_t> fee_pos, change_pos;
+    for (size_t n = 0; n < mtx.vout.size(); ++n) {
+        CAmount amount = 0;
+        AssetAmount asset;
+        if (!fee_pos && GetLedgerOutput(mtx.vout[n], amount) == LedgerOutputType::FEE) fee_pos = n;
+        if (GetAssetOutput(mtx.vout[n], asset) == AssetOutputType::ASSET && asset.asset == ScripAssetId() &&
+            wallet.IsMine(mtx.vout[n]) && OutputIsChange(wallet, mtx.vout[n])) change_pos = n;
+    }
+    AssetAmount change;
+    CAmount fee_scrip = 0;
+    if (!fee_pos || !change_pos || GetAssetOutput(mtx.vout[*change_pos], change) != AssetOutputType::ASSET ||
+        GetLedgerOutput(mtx.vout[*fee_pos], fee_scrip) != LedgerOutputType::FEE) {
+        errors.push_back(Untranslated("The transaction pays its fee in scrip but has no scrip change to raise it from"));
+        return feebumper::Result::WALLET_ERROR;
+    }
+    if (change.amount < extra_scrip) {
+        errors.push_back(strprintf(Untranslated("The scrip change (%d) cannot cover the higher fee (%d more scrip)"), change.amount, extra_scrip));
+        return feebumper::Result::WALLET_ERROR;
+    }
+    const CScript pool_program = mtx.vout[*fee_pos].scriptPubKey.WithoutExtension();
+    mtx.vout[*fee_pos].scriptPubKey = CScript(pool_program) << LedgerExtension(EXTENSION_FEE, fee_scrip + extra_scrip);
+    change.amount -= extra_scrip;
+    if (change.amount > 0) {
+        const CScript program = mtx.vout[*change_pos].scriptPubKey.WithoutExtension();
+        mtx.vout[*change_pos].scriptPubKey = CScript(program) << AssetExtension(change);
+    } else {
+        mtx.vout.erase(mtx.vout.begin() + *change_pos);
+        if (*change_pos < mtx.output_witness.size()) mtx.output_witness.erase(mtx.output_witness.begin() + *change_pos);
+    }
+    new_fee = old_fee - LedgerFeeValue(*wtx.tx, height) + LedgerFeeValue(CTransaction(mtx), height);
+    return feebumper::Result::OK;
+}
+
 namespace feebumper {
 
 bool TransactionCanBeBumped(const CWallet& wallet, const uint256& txid)
@@ -259,6 +320,12 @@ Result CreateRateBumpTransaction(CWallet& wallet, const uint256& txid, const CCo
     }
 
     old_fee = input_value - output_value;
+
+    // A transaction that pays its fee in scrip is bumped in scrip: the same inputs, the
+    // fee output raised out of the scrip change, no freicoin needed.
+    if (outputs.empty() && !original_change_index && LedgerFeeValue(*wtx.tx, wtx.tx->lock_height) > 0) {
+        return BumpFeeInScrip(wallet, wtx, coin_control, old_fee, new_fee, mtx, errors);
+    }
 
     // Fill in recipients (and preserve a single change key if there
     // is one). If outputs vector is non-empty, replace original
