@@ -38,7 +38,12 @@ class WalletConfidentialTest(FreicoinTestFramework):
         self.skip_if_no_wallet()
 
     def confidential_outputs(self, node, txid):
-        return [o for o in node.getrawtransaction(txid, True)["vout"] if o["scriptPubKey"]["hex"][68:72] == "4306"]
+        """The outputs whose extension push (after the witness program) is a confidential one: 0x43 (a
+        67-byte push), then version 0x06."""
+        def is_confidential(spk):
+            ext = 4 + 2 * int(spk[2:4], 16)  # witness version, program push length, program
+            return spk[ext:ext + 4] == "4306"
+        return [o for o in node.getrawtransaction(txid, True)["vout"] if is_confidential(o["scriptPubKey"]["hex"])]
 
     def run_test(self):
         payer, holder = self.nodes
