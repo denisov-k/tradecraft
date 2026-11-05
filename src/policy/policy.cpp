@@ -150,8 +150,8 @@ bool IsStandardTx(const CTransaction& tx, const std::optional<unsigned>& max_dat
     for (const CTxOut& txout : tx.vout) {
         CAmount ledger_amount = 0;
         const LedgerOutputType ledger = GetLedgerOutput(txout, ledger_amount);
-        // a peg-in pays the pool's program; a peg-out holds no freicoin by rule
-        if (ledger == LedgerOutputType::PEGIN) continue;
+        // a peg-in or a fee goes to the pool's program; a peg-out holds no freicoin by rule
+        if (ledger == LedgerOutputType::PEGIN || ledger == LedgerOutputType::FEE) continue;
         if (ledger == LedgerOutputType::PEGOUT && ::IsStandard(txout.scriptPubKey, max_datacarrier_bytes, whichType)) continue;
         if (!::IsStandard(txout.scriptPubKey, max_datacarrier_bytes, whichType)) {
             reason = "scriptpubkey";

@@ -509,6 +509,46 @@ static CAmount SelectAsset(CWallet& wallet, const uint256& asset, CAmount amount
     return selected;
 }
 
+/** Send `recipients`, which consume `scrip_out` of scrip, paying the fee in scrip too:
+ *  scrip inputs only, a fee output burning the scrip worth the wallet's fee at the
+ *  transaction's size, and the rest of the scrip as change.  The fee's freicoin comes
+ *  out of the pool (the block-final transaction forwards it to the coinbase). */
+static CTransactionRef SendPayingFeeInScrip(CWallet& wallet, const std::vector<CRecipient>& recipients, CAmount scrip_out, uint32_t refheight) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    EnsureWalletIsUnlocked(wallet);
+    FeeCalculation fee_calc;
+    const CFeeRate feerate = GetMinimumFeeRate(wallet, CCoinControl(), &fee_calc);
+    const std::vector<unsigned char> pool_program{'F', 'S'};
+    CAmount fee_scrip = 1;
+    // the fee depends on the size, which depends on the inputs the fee needs: a few rounds settle it
+    for (int round = 0; round < 4; ++round) {
+        CCoinControl coin_control;
+        coin_control.m_allow_other_inputs = false;
+        coin_control.fOverrideFeeRate = true;
+        coin_control.m_feerate = CFeeRate(0);
+        bool demurrage = false;
+        const CAmount selected = SelectAsset(wallet, ScripAssetId(), scrip_out + fee_scrip, refheight, coin_control, demurrage);
+        std::vector<CRecipient> all = recipients;
+        all.push_back(CRecipient{WitnessUnknown{0, pool_program}, 0, false, std::nullopt, LedgerExtension(EXTENSION_FEE, fee_scrip)});
+        if (selected > scrip_out + fee_scrip) {
+            all.push_back(CRecipient{AssetDestination(wallet, UniValue(), /*change=*/true), 0, false, AssetAmount{ScripAssetId(), selected - scrip_out - fee_scrip}});
+        }
+        auto res = CreateTransaction(wallet, all, refheight, /*change_pos=*/std::nullopt, coin_control, /*sign=*/false);
+        if (!res) throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, util::ErrorString(res).original);
+        const TxSize size = CalculateMaximumSignedTxSize(*res->tx, &wallet, &coin_control);
+        if (size.vsize < 0) throw JSONRPCError(RPC_WALLET_ERROR, "Cannot estimate the size of the transaction");
+        const CAmount needed = FreicoinToScrip(feerate.GetFee(size.vsize), refheight) + 1;
+        if (needed <= fee_scrip) {
+            res = CreateTransaction(wallet, all, refheight, /*change_pos=*/std::nullopt, coin_control, /*sign=*/true);
+            if (!res) throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, util::ErrorString(res).original);
+            wallet.CommitTransaction(res->tx, /*mapValue=*/{}, /*orderForm=*/{});
+            return res->tx;
+        }
+        fee_scrip = needed;
+    }
+    throw JSONRPCError(RPC_WALLET_ERROR, "Could not settle the fee in scrip");
+}
+
 RPCHelpMan issueasset()
 {
     return RPCHelpMan{"issueasset",
@@ -555,12 +595,14 @@ RPCHelpMan sendasset()
     return RPCHelpMan{"sendasset",
         "\nSend an amount of an asset this wallet holds to an address.  The asset outputs spent\n"
         "are chosen largest first, the rest of the asset returns to a new change address,\n"
-        "and the fee is paid in freicoin.  An asset with demurrage is valued at the next block.\n" +
+        "and the fee is paid in freicoin (or, for scrip, in scrip).  An asset with demurrage is\n"
+        "valued at the next block.\n" +
         HELP_REQUIRING_PASSPHRASE,
         {
             {"asset", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The id of the asset"},
             {"amount", RPCArg::Type::NUM, RPCArg::Optional::NO, "The amount, in whole units of the asset"},
             {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The native witness address to send to"},
+            {"fee_in_scrip", RPCArg::Type::BOOL, RPCArg::Default{false}, "For scrip: pay the fee in scrip as well, with no freicoin"},
         },
         RPCResult{RPCResult::Type::STR_HEX, "txid", "The transaction id"},
         RPCExamples{HelpExampleCli("sendasset", "\"<asset>\" 250 \"" + EXAMPLE_ADDRESS[0] + "\"")},
@@ -574,9 +616,13 @@ RPCHelpMan sendasset()
     const uint256 asset = ParseAssetId(request.params[0]);
     const CAmount amount = ParseAssetAmount(request.params[1]);
     const CTxDestination dest = AssetDestination(*pwallet, request.params[2], /*change=*/false);
+    const uint32_t refheight = NextHeight(*pwallet);
+    if (!request.params[3].isNull() && request.params[3].get_bool()) {
+        if (asset != ScripAssetId()) throw JSONRPCError(RPC_INVALID_PARAMETER, "Only scrip can pay a fee");
+        return SendPayingFeeInScrip(*pwallet, {CRecipient{dest, 0, false, AssetAmount{asset, amount}}}, amount, refheight)->GetHash().GetHex();
+    }
 
     CCoinControl coin_control;
-    const uint32_t refheight = NextHeight(*pwallet);
     bool demurrage = false;
     const CAmount selected = SelectAsset(*pwallet, asset, amount, refheight, coin_control, demurrage);
 
@@ -641,18 +687,19 @@ RPCHelpMan pegout()
         "\nBurn scrip this wallet holds and have its freicoin value paid to an address by the\n"
         "coinbase of the block a fixed number of blocks after the one that confirms the\n"
         "transaction (at that block's height).  The rest of the scrip spent returns to a\n"
-        "change address; the fee is paid in freicoin.\n" +
+        "change address; the fee is paid in freicoin, or in scrip.\n" +
         HELP_REQUIRING_PASSPHRASE,
         {
             {"amount", RPCArg::Type::NUM, RPCArg::Optional::NO, "The scrip to pay out, in kria of scrip"},
             {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The native witness address to receive the freicoin"},
+            {"fee_in_scrip", RPCArg::Type::BOOL, RPCArg::Default{false}, "Pay the fee in scrip as well, with no freicoin"},
         },
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::STR_HEX, "txid", "The transaction id"},
             {RPCResult::Type::STR_AMOUNT, "freicoin", "The payout if confirmed in the next block"},
             {RPCResult::Type::NUM, "payout_height", "The block that pays it, if confirmed in the next block"},
         }},
-        RPCExamples{HelpExampleCli("pegout", "100000 \"" + EXAMPLE_ADDRESS[0] + "\"")},
+        RPCExamples{HelpExampleCli("pegout", "100000 \"" + EXAMPLE_ADDRESS[0] + "\"") + HelpExampleCli("pegout", "100000 \"" + EXAMPLE_ADDRESS[0] + "\" true")},
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
@@ -662,16 +709,20 @@ RPCHelpMan pegout()
 
     const CAmount amount = ParseAssetAmount(request.params[0]);
     const CTxDestination dest = AssetDestination(*pwallet, request.params[1], /*change=*/false);
-    CCoinControl coin_control;
-    bool demurrage = false;
-    const CAmount selected = SelectAsset(*pwallet, ScripAssetId(), amount, NextHeight(*pwallet), coin_control, demurrage);
-
-    std::vector<CRecipient> recipients;
-    recipients.push_back(CRecipient{dest, 0, false, std::nullopt, LedgerExtension(EXTENSION_PEGOUT, amount)});
-    if (selected > amount) {
-        recipients.push_back(CRecipient{AssetDestination(*pwallet, UniValue(), /*change=*/true), 0, false, AssetAmount{ScripAssetId(), selected - amount}});
+    const CRecipient pegout{dest, 0, false, std::nullopt, LedgerExtension(EXTENSION_PEGOUT, amount)};
+    CTransactionRef tx;
+    if (!request.params[2].isNull() && request.params[2].get_bool()) {
+        tx = SendPayingFeeInScrip(*pwallet, {pegout}, amount, NextHeight(*pwallet));
+    } else {
+        CCoinControl coin_control;
+        bool demurrage = false;
+        const CAmount selected = SelectAsset(*pwallet, ScripAssetId(), amount, NextHeight(*pwallet), coin_control, demurrage);
+        std::vector<CRecipient> recipients{pegout};
+        if (selected > amount) {
+            recipients.push_back(CRecipient{AssetDestination(*pwallet, UniValue(), /*change=*/true), 0, false, AssetAmount{ScripAssetId(), selected - amount}});
+        }
+        tx = SendAssets(*pwallet, coin_control, recipients);
     }
-    const CTransactionRef tx = SendAssets(*pwallet, coin_control, recipients);
 
     UniValue result(UniValue::VOBJ);
     result.pushKV("txid", tx->GetHash().GetHex());

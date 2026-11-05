@@ -92,12 +92,14 @@ LedgerOutputType GetLedgerOutput(const CTxOut& txout, CAmount& amount)
         case EXTENSION_POOL: type = LedgerOutputType::POOL; break;
         case EXTENSION_PEGIN: type = LedgerOutputType::PEGIN; break;
         case EXTENSION_PEGOUT: type = LedgerOutputType::PEGOUT; break;
+        case EXTENSION_FEE: type = LedgerOutputType::FEE; break;
         default: return LedgerOutputType::NONE;
     }
     if (ext.size() != LEDGER_EXTENSION_SIZE) {
         return LedgerOutputType::MALFORMED;
     }
-    // the pool and the peg-ins must be spendable by the block-final transaction
+    // the pool and the peg-ins must be spendable by the block-final transaction (and
+    // a fee pays no one: it goes there too, with no freicoin)
     if (type != LedgerOutputType::PEGOUT && txout.scriptPubKey.WithoutExtension() != LedgerBase()) {
         return LedgerOutputType::MALFORMED;
     }
@@ -136,6 +138,9 @@ void BlockLedger::AddTransaction(const CTransaction& tx, int height)
             case LedgerOutputType::PEGOUT:
                 // paid later, by the block ledger_payout_delay above (BlockPegouts)
                 break;
+            case LedgerOutputType::FEE:
+                fee_scrip += amount;
+                break;
             default:
                 break;
         }
@@ -155,7 +160,12 @@ LedgerResult ComputeLedger(const BlockLedger& ledger, int height)
         result.pool_scrip -= scrip;
         result.payouts.emplace_back(dest, pay);
     }
-    result.pool_value = available + ledger.pegin_value;
+    available += ledger.pegin_value;
+    // fees in scrip: their freicoin value at the block height, out of the whole pool
+    // (scrip minted in this block may pay a fee in it)
+    result.fee_value = std::min(ScripToFreicoin(ledger.fee_scrip, height), available);
+    result.pool_scrip -= ledger.fee_scrip;
+    result.pool_value = available - result.fee_value;
     return result;
 }
 
@@ -276,12 +286,13 @@ bool Consensus::CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inp
             minted += FreicoinToScrip(txout.GetReferenceValue(), tx.lock_height);
             continue;
         }
-        if (ledger == LedgerOutputType::PEGOUT) {
+        if (ledger == LedgerOutputType::PEGOUT || ledger == LedgerOutputType::FEE) {
+            const bool fee = ledger == LedgerOutputType::FEE;
             if (txout.GetReferenceValue() != 0) {
-                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-pegout-nonzero-value");
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, fee ? "bad-txns-ledger-fee-nonzero-value" : "bad-txns-pegout-nonzero-value");
             }
             if (ledger_amount <= 0 || ledger_amount > MAX_MONEY) {
-                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-pegout-amount-outofrange");
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, fee ? "bad-txns-ledger-fee-amount-outofrange" : "bad-txns-pegout-amount-outofrange");
             }
             CAmount& sum = value_out[ScripAssetId()];
             sum += ledger_amount;
@@ -330,6 +341,7 @@ bool Consensus::CheckTxAssets(const CTransaction& tx, const CCoinsViewCache& inp
         CAmount ledger_amount = 0;
         switch (GetLedgerOutput(coin.out, ledger_amount)) {
             case LedgerOutputType::PEGOUT:
+            case LedgerOutputType::FEE:
                 // its freicoin went to the coinbase; the output is spent for good
                 return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-pegout-spend");
             case LedgerOutputType::PEGIN:

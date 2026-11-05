@@ -296,6 +296,74 @@ BOOST_AUTO_TEST_CASE(scrip_ledger_transactions)
     BOOST_CHECK_EQUAL(state.GetRejectReason(), "bad-txns-ledger-pool");
 }
 
+BOOST_AUTO_TEST_CASE(scrip_ledger_fees)
+{
+    Fixture f;
+    std::string reason;
+    const uint256 scrip = ScripAssetId();
+    CAmount amount = -1;
+    // A fee output burns scrip on the pool's program, holding no freicoin.
+    const CTxOut fee(0, LedgerBase() << LedgerExtension(EXTENSION_FEE, 50));
+    BOOST_CHECK(GetLedgerOutput(fee, amount) == LedgerOutputType::FEE);
+    BOOST_CHECK_EQUAL(amount, 50);
+    BOOST_CHECK(GetLedgerOutput(CTxOut(0, WitnessScript(LedgerExtension(EXTENSION_FEE, 50))), amount) == LedgerOutputType::MALFORMED);
+
+    // A transaction of scrip alone pays its fee in scrip: no freicoin in or out.
+    const COutPoint held = f.Add(AssetOut(scrip, 1000), 150);
+    BOOST_CHECK(f.Check({held}, {AssetOut(scrip, 950), fee}, reason));
+    BOOST_CHECK(!f.Check({held}, {AssetOut(scrip, 951), fee}, reason));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-asset-in-belowout");
+    BOOST_CHECK(!f.Check({held}, {AssetOut(scrip, 900), CTxOut(1, fee.scriptPubKey)}, reason));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-ledger-fee-nonzero-value");
+    BOOST_CHECK(!f.Check({held}, {CTxOut(0, LedgerBase() << LedgerExtension(EXTENSION_FEE, 0))}, reason));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-ledger-fee-amount-outofrange");
+    // spent for good, never in a coinbase or the block-final transaction
+    const COutPoint burned = f.Add(fee, 150);
+    BOOST_CHECK(!f.Check({burned}, {}, reason));
+    BOOST_CHECK_EQUAL(reason, "bad-txns-pegout-spend");
+    CMutableTransaction cb;
+    cb.vin.emplace_back(COutPoint());
+    cb.vin[0].scriptSig = CScript() << 1 << OP_0;
+    cb.vout.push_back(fee);
+    TxValidationState state;
+    BOOST_CHECK(!Consensus::CheckTxAssets(CTransaction(cb), f.view, 100, state));
+    BOOST_CHECK_EQUAL(state.GetRejectReason(), "bad-txns-ledger-coinbase");
+    CMutableTransaction final_tx;
+    final_tx.vin.emplace_back(held);
+    final_tx.vout.push_back(fee);
+    BOOST_CHECK(!Consensus::CheckTxAssets(CTransaction(final_tx), f.view, 100, state, /*block_final=*/true));
+    BOOST_CHECK_EQUAL(state.GetRejectReason(), "bad-txns-ledger-final-output");
+
+    // The block: the fees leave the pool at their freicoin value, after the payouts,
+    // out of the whole pool (peg-ins included).
+    const int height = 1000;
+    BlockLedger ledger;
+    ledger.prior_value = 5 * COIN;
+    ledger.prior_scrip = FreicoinToScrip(5 * COIN, height);
+    CMutableTransaction tx;
+    tx.vout.push_back(CTxOut(0, LedgerBase() << LedgerExtension(EXTENSION_FEE, 3000)));
+    tx.vout.push_back(CTxOut(0, LedgerBase() << LedgerExtension(EXTENSION_FEE, 2000)));
+    ledger.AddTransaction(CTransaction(tx), height);
+    BOOST_CHECK_EQUAL(ledger.fee_scrip, 5000);
+    BOOST_CHECK(ledger.Active());
+    const LedgerResult r = ComputeLedger(ledger, height);
+    BOOST_CHECK_EQUAL(r.fee_value, ScripToFreicoin(5000, height));
+    BOOST_CHECK_EQUAL(r.pool_value, 5 * COIN - r.fee_value);
+    BOOST_CHECK_EQUAL(r.pool_scrip, ledger.prior_scrip - 5000);
+    BOOST_CHECK_GE(r.pool_value + 1, ScripToFreicoin(r.pool_scrip, height));
+    // with nothing before, a fee in fresh scrip comes out of its own peg-in
+    BlockLedger fresh;
+    CMutableTransaction both;
+    both.lock_height = height;
+    both.vout.emplace_back(COIN, LedgerBase() << LedgerExtension(EXTENSION_PEGIN, 0));
+    both.vout.push_back(CTxOut(0, LedgerBase() << LedgerExtension(EXTENSION_FEE, 1000)));
+    fresh.AddTransaction(CTransaction(both), height);
+    const LedgerResult r2 = ComputeLedger(fresh, height);
+    BOOST_CHECK_EQUAL(r2.fee_value, ScripToFreicoin(1000, height));
+    BOOST_CHECK_EQUAL(r2.pool_value, fresh.pegin_value - r2.fee_value);
+    BOOST_CHECK_EQUAL(r2.pool_scrip, fresh.minted - 1000);
+}
+
 BOOST_AUTO_TEST_CASE(scrip_ledger_settlement)
 {
     const int height = 1000;

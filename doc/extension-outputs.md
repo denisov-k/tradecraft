@@ -33,6 +33,7 @@ The owner of the output is its witness program, as before: old nodes require the
 | `0x02` | pool | scrip (int64 LE) | the freicoin backing it |
 | `0x03` | peg-in | 0 (int64) | the freicoin paid in |
 | `0x04` | peg-out | scrip (int64 LE) | 0 |
+| `0x05` | fee | scrip (int64 LE) | 0 |
 
 Other versions mean nothing yet and are left to future rules.  A known version of the wrong length is
 invalid (`bad-txns-asset-malformed`, `bad-txns-ledger-malformed`).
@@ -132,7 +133,8 @@ with them, without the share carrying them (branch `sharechain-ledger`).
 - Automatic coin selection and `sendall` never spend extension outputs (they would burn the asset);
   ledger outputs are never offered at all.  `bumpfee` and `fundrawtransaction` keep asset outputs as they
   are; asset change is never folded into freicoin change.
-- RPCs: `issueasset` (with an optional `demurrage`), `sendasset`, `getassetbalances`, `pegin`, `pegout`;
+- RPCs: `issueasset` (with an optional `demurrage`), `sendasset`, `getassetbalances`, `pegin`, `pegout`
+  (`sendasset` of scrip and `pegout` take `fee_in_scrip`: scrip inputs only, the fee burned in scrip);
   `listunspent` shows `asset` and `asset_amount`, and for an asset with demurrage `asset_demurrage` and
   `asset_present`.  Balances and sends value such an asset at the next block.  Asset outputs go to native witness addresses only.  Fees are paid in freicoin.
 
@@ -161,8 +163,12 @@ unchanged.
   block of delay is ten minutes a user waits.  We read the paper's lock-in and maturation as needed for
   the peg between two chains in Forward Blocks, which a single chain does not have.  Regtest keeps D = 10
   so the queue is visible in tests.
-- **Fees** are paid in freicoin; fees in scrip (an explicit fee output, XI-B, or rebatable fees, XI-A) are
-  not implemented.
+- **Fees in scrip** follow the paper's explicit fee (XI-B, mechanism 1): a fee output (`0x05`, on the
+  pool's program, no freicoin) burns scrip, and the block's pool gives up its freicoin value at the block
+  height, after the payouts and with the block's peg-ins in.  To old nodes that is a fee of the
+  block-final transaction, which the coinbase may already claim, so the coinbase rule is unchanged.  In
+  the mempool the value counts as a modified fee (relay, ranking, RBF), not a base fee, as the block-final
+  transaction forwards it.  Rebatable fees (XI-A) are not implemented.
 - **Confidential amounts** would replace the amount in the extension with a commitment and put the range
   proof in an output witness committed in the block-final transaction; not started.
 

@@ -923,6 +923,7 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     }
 
     // Asset rules as the next block will apply them.
+    CAmount ledger_fee = 0; // the freicoin value of the fees paid in scrip
     {
         const CBlockIndex* tip = m_active_chainstate.m_chain.Tip();
         ChainstateManager& chainman = m_active_chainstate.m_chainman;
@@ -934,10 +935,14 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
             // The ledger needs a block-final transaction in the next block: none
             // until the block-final rules apply (the first outputs mature).
             bool ledger_tx = false;
+            CAmount fee_scrip = 0;
             for (const CTxOut& txout : tx.vout) {
                 CAmount ledger_amount = 0;
-                ledger_tx |= GetLedgerOutput(txout, ledger_amount) != LedgerOutputType::NONE;
+                const LedgerOutputType ledger = GetLedgerOutput(txout, ledger_amount);
+                ledger_tx |= ledger != LedgerOutputType::NONE;
+                if (ledger == LedgerOutputType::FEE) fee_scrip += ledger_amount; // in range: CheckTxAssets
             }
+            ledger_fee = ScripToFreicoin(fee_scrip, tip->nHeight + 1);
             if (ledger_tx) {
                 const BlockFinalTxEntry final_entry = coins_cache.GetFinalTx();
                 bool final_ready = !final_entry.IsNull();
@@ -973,8 +978,10 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
 
     int64_t nSigOpsCost = GetTransactionSigOpCost(tx, m_view, STANDARD_SCRIPT_VERIFY_FLAGS);
 
-    // ws.m_modified_fees includes any fee deltas from PrioritiseTransaction
-    ws.m_modified_fees = ws.m_base_fees;
+    // ws.m_modified_fees includes any fee deltas from PrioritiseTransaction, and the
+    // fees paid in scrip: not in the base fee, as the block-final transaction forwards
+    // them to the coinbase, but they rank the transaction like any fee.
+    ws.m_modified_fees = ws.m_base_fees + ledger_fee;
     m_pool.ApplyDelta(hash, ws.m_modified_fees);
 
     // Keep track of transactions that spend a coinbase, which we re-scan
@@ -993,6 +1000,7 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     const uint64_t entry_sequence = bypass_limits ? 0 : m_pool.GetSequence();
     entry.reset(new CTxMemPoolEntry(ptx, ws.m_base_fees, nAcceptTime, m_active_chainstate.m_chain.Height(), entry_sequence,
                                     fSpendsCoinbase, nSigOpsCost, lock_points.value()));
+    if (ledger_fee) entry->UpdateModifiedFee(ledger_fee);
     ws.m_vsize = entry->GetTxSize();
 
     if (nSigOpsCost > MAX_STANDARD_TX_SIGOPS_COST)
