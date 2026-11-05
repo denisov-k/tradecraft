@@ -187,6 +187,20 @@ static SECP256K1_INLINE void *checked_malloc(const secp256k1_callback* cb, size_
 
 #define ROUND_TO_ALIGN(size) (CEIL_DIV(size, ALIGNMENT) * ALIGNMENT)
 
+SECP256K1_INLINE static int secp256k1_clz64_var(uint64_t x) {
+    int ret;
+    if (!x) {
+        return 64;
+    }
+# if defined(HAVE_BUILTIN_CLZLL)
+    ret = __builtin_clzll(x);
+# else
+    /*FIXME: debruijn fallback. */
+    for (ret = 0; ((x & (1ULL << 63)) == 0); x <<= 1, ret++);
+# endif
+    return ret;
+}
+
 /* Macro for restrict, when available and not in a VERIFY build. */
 #if defined(SECP256K1_BUILD) && defined(VERIFY)
 # define SECP256K1_RESTRICT

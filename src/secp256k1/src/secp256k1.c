@@ -50,6 +50,14 @@
 #include "selftest.h"
 #include "hsort_impl.h"
 
+#ifdef ENABLE_MODULE_GENERATOR
+# include "../include/secp256k1_generator.h"
+#endif
+
+#ifdef ENABLE_MODULE_RANGEPROOF
+# include "../include/secp256k1_rangeproof.h"
+#endif
+
 #ifdef SECP256K1_NO_BUILD
 # error "secp256k1.h processed without SECP256K1_BUILD defined while building secp256k1.c"
 #endif
@@ -844,4 +852,12 @@ int secp256k1_tagged_sha256(const secp256k1_context* ctx, unsigned char *hash32,
 
 #ifdef ENABLE_MODULE_ELLSWIFT
 # include "modules/ellswift/main_impl.h"
+#endif
+
+#ifdef ENABLE_MODULE_GENERATOR
+# include "modules/generator/main_impl.h"
+#endif
+
+#ifdef ENABLE_MODULE_RANGEPROOF
+# include "modules/rangeproof/main_impl.h"
 #endif

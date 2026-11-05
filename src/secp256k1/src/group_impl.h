@@ -325,6 +325,22 @@ static void secp256k1_ge_clear(secp256k1_ge *r) {
     SECP256K1_GE_VERIFY(r);
 }
 
+static int secp256k1_ge_set_xquad(secp256k1_ge *r, const secp256k1_fe *x) {
+    secp256k1_fe x2, x3;
+    int ret;
+    SECP256K1_FE_VERIFY(x);
+
+    r->x = *x;
+    secp256k1_fe_sqr(&x2, x);
+    secp256k1_fe_mul(&x3, x, &x2);
+    r->infinity = 0;
+    secp256k1_fe_add_int(&x3, SECP256K1_B);
+    ret = secp256k1_fe_sqrt(&r->y, &x3);
+
+    SECP256K1_GE_VERIFY(r);
+    return ret;
+}
+
 static int secp256k1_ge_set_xo_var(secp256k1_ge *r, const secp256k1_fe *x, int odd) {
     secp256k1_fe x2, x3;
     int ret;

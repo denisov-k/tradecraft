@@ -129,6 +129,23 @@ static void testrand256_test(unsigned char *b32) {
     testrand_bytes_test(b32, 32);
 }
 
+SECP256K1_INLINE static int64_t testrandi64(uint64_t min, uint64_t max) {
+    uint64_t range;
+    uint64_t r;
+    uint64_t clz;
+    VERIFY_CHECK(max >= min);
+    if (max == min) {
+        return min;
+    }
+    range = max - min;
+    clz = secp256k1_clz64_var(range);
+    do {
+        r = ((uint64_t)testrand32() << 32) | testrand32();
+        r >>= clz;
+    } while (r > range);
+    return min + (int64_t)r;
+}
+
 static void testrand_flip(unsigned char *b, size_t len) {
     b[testrand_int(len)] ^= (1 << testrand_bits(3));
 }

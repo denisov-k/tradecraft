@@ -45,6 +45,9 @@ static void testrand256(unsigned char *b32);
 /** Generate a pseudorandom 32-byte array with long sequences of zero and one bits. */
 static void testrand256_test(unsigned char *b32);
 
+/** Generate a pseudorandom 64-bit integer in the range min..max, inclusive. */
+static int64_t testrandi64(uint64_t min, uint64_t max);
+
 /** Generate pseudorandom bytes with long sequences of zero and one bits. */
 static void testrand_bytes_test(unsigned char *bytes, size_t len);
 
