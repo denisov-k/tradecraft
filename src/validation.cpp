@@ -935,14 +935,11 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
             // The ledger needs a block-final transaction in the next block: none
             // until the block-final rules apply (the first outputs mature).
             bool ledger_tx = false;
-            CAmount fee_scrip = 0;
             for (const CTxOut& txout : tx.vout) {
                 CAmount ledger_amount = 0;
-                const LedgerOutputType ledger = GetLedgerOutput(txout, ledger_amount);
-                ledger_tx |= ledger != LedgerOutputType::NONE;
-                if (ledger == LedgerOutputType::FEE) fee_scrip += ledger_amount; // in range: CheckTxAssets
+                ledger_tx |= GetLedgerOutput(txout, ledger_amount) != LedgerOutputType::NONE;
             }
-            ledger_fee = ScripToFreicoin(fee_scrip, tip->nHeight + 1);
+            ledger_fee = LedgerFeeValue(tx, tip->nHeight + 1);
             if (ledger_tx) {
                 const BlockFinalTxEntry final_entry = coins_cache.GetFinalTx();
                 bool final_ready = !final_entry.IsNull();

@@ -169,6 +169,18 @@ LedgerResult ComputeLedger(const BlockLedger& ledger, int height)
     return result;
 }
 
+CAmount LedgerFeeValue(const CTransaction& tx, int height)
+{
+    CAmount fee_scrip = 0;
+    for (const CTxOut& txout : tx.vout) {
+        CAmount amount = 0;
+        if (GetLedgerOutput(txout, amount) != LedgerOutputType::FEE || amount <= 0 || amount > MAX_MONEY) continue;
+        fee_scrip += amount;
+        if (!MoneyRange(fee_scrip)) return 0;
+    }
+    return fee_scrip ? ScripToFreicoin(fee_scrip, height) : 0;
+}
+
 std::vector<std::pair<CScript, CAmount>> BlockPegouts(const CBlock& block)
 {
     std::vector<std::pair<CScript, CAmount>> pegouts;

@@ -159,6 +159,12 @@ struct LedgerResult {
 };
 LedgerResult ComputeLedger(const BlockLedger& ledger, int height);
 
+/** The freicoin value at `height` of the fees a transaction pays in scrip (its fee
+ *  outputs), which reaches the coinbase through the pool: what relay and mining policy
+ *  add to its freicoin fee.  Out-of-range fee outputs, which make the transaction
+ *  invalid, count for nothing. */
+CAmount LedgerFeeValue(const CTransaction& tx, int height);
+
 /** The peg-outs a block makes, in order: what the block ledger_payout_delay above it pays. */
 std::vector<std::pair<CScript, CAmount>> BlockPegouts(const CBlock& block);
 
